@@ -8,7 +8,7 @@
     xmlns:prop="clr-namespace:IndigoMovieManager.Properties"
     Title="共通設定"
     Width="800"
-    Height="370"
+    Height="420"
     ResizeMode="NoResize"
     WindowStartupLocation="CenterOwner"
     mc:Ignorable="d">
@@ -120,6 +120,30 @@
                         FontSize="14"
                         IsChecked="{Binding IsResizeThumb, Source={x:Static prop:Settings.Default}}"
                         ToolTip="※縮小する＝WBのサムネサイズに準拠。縮小しない＝1枚辺り上限320x240です。" />
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal">
+                    <Label
+                        Width="300"
+                        Margin="5"
+                        Content="サムネイル作成の並列数"
+                        FontSize="14"
+                        ToolTip="同時に作成するサムネイル数。多いほど速くなりますが、PC負荷も上がります。" />
+                    <TextBlock
+                        Width="50"
+                        Margin="5"
+                        VerticalAlignment="Center"
+                        FontSize="14"
+                        Text="{Binding ThumbnailParallelism, Source={x:Static prop:Settings.Default}}" />
+                    <Slider
+                        Width="100"
+                        Margin="16,0,0,0"
+                        VerticalAlignment="Center"
+                        Maximum="32"
+                        Minimum="1"
+                        Style="{StaticResource MaterialDesignDiscreteSlider}"
+                        TickFrequency="1"
+                        Value="{Binding ThumbnailParallelism, Source={x:Static prop:Settings.Default}}" />
                 </StackPanel>
 
                 <StackPanel Orientation="Horizontal">

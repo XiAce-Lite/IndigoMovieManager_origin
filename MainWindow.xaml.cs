@@ -5,6 +5,7 @@ using Microsoft.VisualBasic.FileIO;
 using Microsoft.Win32;
 using Notification.Wpf;
 using OpenCvSharp;
+using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Data;
@@ -37,6 +38,7 @@ namespace IndigoMovieManager
         }
         private Task _thumbCheckTask;
         private CancellationTokenSource _thumbCheckCts = new();
+        private readonly ThumbnailQueueProcessor _thumbnailQueueProcessor = new();
 
         [GeneratedRegex(@"^\r\n+")]
         private static partial Regex MyRegex();
@@ -45,7 +47,7 @@ namespace IndigoMovieManager
         private Stack<string> recentFiles = new();
 
         private IEnumerable<MovieRecords> filterList = [];
-        private static readonly Queue<QueueObj> queueThumb = [];
+        private static readonly ConcurrentQueue<QueueObj> queueThumb = new();
 
         private DataTable systemData;
         private DataTable movieData;
@@ -271,9 +273,21 @@ namespace IndigoMovieManager
             }
         }
 
+        private static void ClearThumbnailQueue()
+        {
+            while (queueThumb.TryDequeue(out _)) { }
+        }
+
+        private static int GetThumbnailQueueMaxParallelism()
+        {
+            return ThumbnailQueueProcessor.ClampThumbnailParallelism(
+                Properties.Settings.Default.ThumbnailParallelism
+            );
+        }
+
         private void RestartThumbnailTask()
         {
-            queueThumb.Clear();
+            ClearThumbnailQueue();
 
             // 既存タスクのキャンセル
             _thumbCheckCts.Cancel();
@@ -450,7 +464,7 @@ namespace IndigoMovieManager
         {
             //強制的に-1にする。前回のタブが0だった場合の対応
             Tabs.SelectedIndex = -1;
-            queueThumb.Clear();
+            ClearThumbnailQueue();
             watchData?.Clear();
             fileWatchers?.Clear();
             MainVM.DbInfo.SearchKeyword = "";
@@ -1194,7 +1208,7 @@ namespace IndigoMovieManager
         {
             if (sender as TabControl != null && e.OriginalSource is TabControl)
             {
-                queueThumb.Clear();
+                ClearThumbnailQueue();
 
                 var tabControl = sender as TabControl;
                 int index = tabControl.SelectedIndex;
@@ -1298,7 +1312,7 @@ namespace IndigoMovieManager
         {
             if (sender as TabControl != null && e.OriginalSource is TabControl)
             {
-                queueThumb.Clear();
+                ClearThumbnailQueue();
 
                 var tabControl = sender as TabControl;
                 int index = tabControl.SelectedIndex;
@@ -2892,61 +2906,24 @@ namespace IndigoMovieManager
         /// <summary>
         /// CheckThumbAsync サムネイル作成用に起動時にぶん投げるタスク。常時起動。終了条件はねぇ。
         /// </summary>
-        /// <returns></returns>
         private async Task CheckThumbAsync(CancellationToken cts = default)
         {
-            var title = "サムネイル作成中";
-            NotificationManager notificationManager = new();
-
             try
             {
-                while (true)
-                {
-                    double totalProgress = 0;
-                    await Task.Delay(3000, cts);
-                    if (queueThumb.Count < 1) { continue; }
-
-                    var progress = notificationManager.ShowProgressBar(title, false, true, "ProgressArea", false, 2, "");
-
-                    int i = 0;
-                    int totalCount = queueThumb.Count;
-                    double progressCounter = 100d / totalCount;
-
-                    while (totalCount > 0)
-                    {
-                        i++;
-                        if (totalCount < i) { totalCount = i; }
-
-                        if (queueThumb.Count < 1)
-                        {
-                            progress.Dispose();
-                            break;
-                        }
-                        QueueObj queueObj = queueThumb.Dequeue();
-                        if (queueObj == null) { continue; }
-
-                        string tabName = queueObj.Tabindex switch
-                        {
-                            0 => "サムネイル作成中(Small)",
-                            1 => "サムネイル作成中(Big)",
-                            2 => "サムネイル作成中(Grid)",
-                            3 => "サムネイル作成中(List)",
-                            4 => "サムネイル作成中(Big10)",
-                            _ => "サムネイル作成中",
-                        };
-                        title = $"{tabName} ({i}/{totalCount})";
-
-                        var Message = $"{queueObj.MovieFullPath}";
-                        progress.Report((totalProgress += progressCounter, Message, title, false));
-                        await CreateThumbAsync(queueObj, false, cts).ConfigureAwait(false);
-                    }
-                    progress.Dispose();
-                }
+                await _thumbnailQueueProcessor
+                    .RunAsync(
+                        queueThumb,
+                        (queueObj, token) => CreateThumbAsync(queueObj, false, token),
+                        maxParallelism: GetThumbnailQueueMaxParallelism(),
+                        maxParallelismResolver: GetThumbnailQueueMaxParallelism,
+                        pollIntervalMs: 3000,
+                        cts: cts
+                    )
+                    .ConfigureAwait(false);
             }
             catch (Exception e)
             {
                 string s = string.Format($"{DateTime.Now:yyyy/MM/dd HH:mm:ss} :");
-                // 何かしらのエラーが発生した場合、スルーする。
                 Debug.WriteLine($"{s} {e.Message} ");
             }
         }
@@ -3047,8 +3024,8 @@ namespace IndigoMovieManager
                 if (!Path.Exists(saveThumbFileName)) { return; }
             }
 
-            // テンプファイル名のボディを作る
-            var tempFileBody = $"{fileBody}_{hash}_temp";
+            // テンプファイル名のボディを作る（タブ別に分離し、並列処理時の衝突を防ぐ）
+            var tempFileBody = $"{fileBody}_{hash}_tab{queueObj.Tabindex}_temp";
 
             // テンプフォルダ取得
             var currentPath = Directory.GetCurrentDirectory();

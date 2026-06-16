@@ -147,6 +147,18 @@ namespace IndigoMovieManager.Properties {
         
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("4")]
+        public int ThumbnailParallelism {
+            get {
+                return ((int)(this["ThumbnailParallelism"]));
+            }
+            set {
+                this["ThumbnailParallelism"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
         [global::System.Configuration.DefaultSettingValueAttribute("*.avi,*.wmv,*.mpg,*.flv,*.asf,*.mpeg,*.mkv,*.swf,*.ogm,*.mp4,*.mov,*.avs,*.divx,*" +
             ".3gp,*.3g2,*.m4v")]
         public string CheckExt {
