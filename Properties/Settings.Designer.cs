@@ -159,6 +159,42 @@ namespace IndigoMovieManager.Properties {
         
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("True")]
+        public bool EnableFfmpegFallback {
+            get {
+                return ((bool)(this["EnableFfmpegFallback"]));
+            }
+            set {
+                this["EnableFfmpegFallback"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string FfmpegExePath {
+            get {
+                return ((string)(this["FfmpegExePath"]));
+            }
+            set {
+                this["FfmpegExePath"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("5")]
+        public int FfmpegJpegQuality {
+            get {
+                return ((int)(this["FfmpegJpegQuality"]));
+            }
+            set {
+                this["FfmpegJpegQuality"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
         [global::System.Configuration.DefaultSettingValueAttribute("*.avi,*.wmv,*.mpg,*.flv,*.asf,*.mpeg,*.mkv,*.swf,*.ogm,*.mp4,*.mov,*.avs,*.divx,*" +
             ".3gp,*.3g2,*.m4v")]
         public string CheckExt {
