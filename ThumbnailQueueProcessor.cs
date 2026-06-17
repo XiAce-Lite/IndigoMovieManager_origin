@@ -1,6 +1,8 @@
 using Notification.Wpf;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Windows;
+using System.Windows.Threading;
 
 namespace IndigoMovieManager
 {
@@ -9,6 +11,8 @@ namespace IndigoMovieManager
     /// </summary>
     public sealed class ThumbnailQueueProcessor
     {
+        private const int ProgressReportIntervalMs = 150;
+
         public async Task RunAsync(
             ConcurrentQueue<QueueObj> queueThumb,
             Func<QueueObj, CancellationToken, Task> createThumbAsync,
@@ -20,6 +24,7 @@ namespace IndigoMovieManager
         {
             var title = "サムネイル作成中";
             NotificationManager notificationManager = new();
+            Dispatcher uiDispatcher = Application.Current?.Dispatcher;
             int safePollIntervalMs = pollIntervalMs < 100 ? 100 : pollIntervalMs;
 
             try
@@ -43,6 +48,7 @@ namespace IndigoMovieManager
                     object progressLock = new();
                     int completedCount = 0;
                     int totalCount = batch.Count;
+                    DateTime lastReportUtc = DateTime.MinValue;
 
                     await Parallel.ForEachAsync(
                         batch,
@@ -61,16 +67,38 @@ namespace IndigoMovieManager
                             double totalProgress = (double)done * 100d / totalCount;
                             if (totalProgress > 100d) { totalProgress = 100d; }
 
+                            bool shouldReport;
                             lock (progressLock)
                             {
-                                progress.Report((totalProgress, message, reportTitle, false));
+                                DateTime now = DateTime.UtcNow;
+                                shouldReport = done >= totalCount
+                                    || (now - lastReportUtc).TotalMilliseconds >= ProgressReportIntervalMs;
+                                if (shouldReport)
+                                {
+                                    lastReportUtc = now;
+                                }
+                            }
+
+                            if (!shouldReport)
+                            {
+                                return;
+                            }
+
+                            double progressValue = totalProgress;
+                            string progressMessage = message;
+                            string progressTitle = reportTitle;
+                            if (uiDispatcher == null || uiDispatcher.HasShutdownStarted)
+                            {
+                                progress.Report((progressValue, progressMessage, progressTitle, false));
+                            }
+                            else
+                            {
+                                _ = uiDispatcher.BeginInvoke(DispatcherPriority.Background, () =>
+                                    progress.Report((progressValue, progressMessage, progressTitle, false)));
                             }
                         });
 
-                    lock (progressLock)
-                    {
-                        progress.Dispose();
-                    }
+                    await DisposeProgressAsync(uiDispatcher, progress, progressLock);
                 }
             }
             catch (OperationCanceledException)
@@ -85,6 +113,29 @@ namespace IndigoMovieManager
                 Debug.WriteLine(msg);
                 log?.Invoke(msg);
             }
+        }
+
+        private static Task DisposeProgressAsync(
+            Dispatcher uiDispatcher,
+            IDisposable progress,
+            object progressLock)
+        {
+            if (uiDispatcher == null || uiDispatcher.HasShutdownStarted)
+            {
+                lock (progressLock)
+                {
+                    progress.Dispose();
+                }
+                return Task.CompletedTask;
+            }
+
+            return uiDispatcher.InvokeAsync(() =>
+            {
+                lock (progressLock)
+                {
+                    progress.Dispose();
+                }
+            }, DispatcherPriority.Background).Task;
         }
 
         private static int ResolveMaxParallelism(int maxParallelism, Func<int> maxParallelismResolver)

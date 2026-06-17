@@ -943,126 +943,26 @@ namespace IndigoMovieManager
                 await ReloadMovieRecordsAsync(id, resolveTabIndexOnly).ConfigureAwait(true);
             }
 
-            ApplyFilterAndSort(id);
+            await ApplyFilterAndSortAsync(id).ConfigureAwait(true);
         }
 
-        private void ApplyFilterAndSort(string id)
+        private async Task ApplyFilterAndSortAsync(string id)
         {
 #if DEBUG
-            // Stopwatchクラス生成
-            var sw = new Stopwatch();
-            TimeSpan ts;
-            sw.Start();
+            var sw = Stopwatch.StartNew();
 #endif
-            //まずは絞り込み。MainVMにはオープン時のDBからのデータと、監視で追加されたデータが入っている(最新状態)
-            //一旦フィルタリストを最新化する。ここを通ったあとの各タブのデータソースは、このフィルターされたリストとなる（はず）
-            filterList = new ObservableCollection<MovieRecords>(MainVM.MovieRecs);
+            List<MovieRecords> snapshot = MainVM.MovieRecs.ToList();
+            string searchKeyword = MainVM.DbInfo.SearchKeyword ?? "";
 
-            if (!string.IsNullOrEmpty(MainVM.DbInfo.SearchKeyword))
-            {
-                var searchText = MainVM.DbInfo.SearchKeyword.Trim();
+            MovieListFilter.FilterResult result = await Task.Run(() =>
+                MovieListFilter.Build(snapshot, searchKeyword, id)).ConfigureAwait(true);
 
-                // クォーテーションで囲まれている場合は、そのまま完全一致検索
-                if ((searchText.Length >= 2) &&
-                    ((searchText.StartsWith('"') && searchText.EndsWith('"')) ||
-                     (searchText.StartsWith('\'') && searchText.EndsWith('\''))))
-                {
-                    var exact = searchText[1..^1];
-                    filterList = filterList.Where(item =>
-                        (item.Movie_Name ?? "").Contains(exact, StringComparison.CurrentCultureIgnoreCase) ||
-                        (item.Movie_Path ?? "").Contains(exact, StringComparison.CurrentCultureIgnoreCase) ||
-                        (item.Tags ?? "").Contains(exact, StringComparison.CurrentCultureIgnoreCase) ||
-                        (item.Comment1 ?? "").Contains(exact, StringComparison.CurrentCultureIgnoreCase) ||
-                        (item.Comment2 ?? "").Contains(exact, StringComparison.CurrentCultureIgnoreCase) ||
-                        (item.Comment3 ?? "").Contains(exact, StringComparison.CurrentCultureIgnoreCase)
-                    );
-                    MainVM.DbInfo.SearchCount = filterList.Count();
-                }
-                // { ... } 形式の特別処理
-                else if (searchText.StartsWith('{') && searchText.EndsWith('}'))
-                {
-                    var inner = searchText[1..^1].Trim();
+            filterList = result.Items;
+            MainVM.DbInfo.SearchCount = result.SearchCount;
 
-                    // notag 特別処理
-                    if (inner.Equals("notag", StringComparison.CurrentCultureIgnoreCase))
-                    {
-                        filterList = filterList.Where(x => string.IsNullOrEmpty(x.Tags));
-                        MainVM.DbInfo.SearchCount = filterList.Count();
-                    }
-                    // dup 特別処理
-                    else if (inner.Equals("dup", StringComparison.CurrentCultureIgnoreCase))
-                    {
-                        // Hashが重複しているものを抽出
-                        var dupHashes = filterList
-                            .GroupBy(x => x.Hash)
-                            .Where(g => !string.IsNullOrEmpty(g.Key) && g.Count() > 1)
-                            .Select(g => g.Key)
-                            .ToHashSet();
-
-                        filterList = filterList.Where(x => dupHashes.Contains(x.Hash));
-                        MainVM.DbInfo.SearchCount = filterList.Count();
-                    }
-                }
-                else
-                {
-                    // " | " でORグループ分割
-                    var orGroups = searchText.Split([" | "], StringSplitOptions.RemoveEmptyEntries);
-
-                    filterList = filterList.Where(item =>
-                    {
-                        // 各ORグループのいずれかにマッチすればOK
-                        return orGroups.Any(group =>
-                        {
-                            // AND条件（半角スペース区切り）
-                            var andTerms = group.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-
-                            // 各AND条件をすべて満たすか
-                            return andTerms.All(term =>
-                            {
-                                // 検索対象フィールド
-                                var fields = new[]
-                                {
-                                    item.Movie_Name ?? "",
-                                    item.Movie_Path ?? "",
-                                    item.Tags ?? "",
-                                    item.Comment1 ?? "",
-                                    item.Comment2 ?? "",
-                                    item.Comment3 ?? ""
-                                };
-
-                                if (term.StartsWith('-'))
-                                {
-                                    // NOT条件（除外）
-                                    var keyword = term[1..];
-                                    return fields.All(f => !f.Contains(keyword, StringComparison.CurrentCultureIgnoreCase));
-                                }
-                                else
-                                {
-                                    // AND条件
-                                    return fields.Any(f => f.Contains(term, StringComparison.CurrentCultureIgnoreCase));
-                                }
-                            });
-                        });
-                    });
-                    MainVM.DbInfo.SearchCount = filterList.Count();
-                }
-            }
-            else
-            {
-                //検索キーワードが入ってないときは、生データの件数を表示する。
-                MainVM.DbInfo.SearchCount = MainVM.MovieRecs.Count;
-            }
-
-            if (MainVM.DbInfo.SearchCount == 0)
-            {
-                viewExtDetail.Visibility = Visibility.Collapsed;
-            }
-            else
-            {
-                viewExtDetail.Visibility = Visibility.Visible;
-            }
-
-            SetSortData(id);
+            viewExtDetail.Visibility = MainVM.DbInfo.SearchCount == 0
+                ? Visibility.Collapsed
+                : Visibility.Visible;
 
             SmallList.ItemsSource = filterList;
             BigList.ItemsSource = filterList;
@@ -1072,8 +972,7 @@ namespace IndigoMovieManager
             Refresh();
 #if DEBUG
             sw.Stop();
-            ts = sw.Elapsed;
-            Debug.WriteLine($"絞り込み経過時間 FilterAndSort：{ts.Milliseconds} ミリ秒");
+            Debug.WriteLine($"絞り込み経過時間 FilterAndSort：{sw.ElapsedMilliseconds} ミリ秒");
 #endif
         }
 
@@ -2412,7 +2311,7 @@ namespace IndigoMovieManager
             }
         }
 
-        private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
+        private async void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
         {
             if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath)) { return; }
             if (_imeFlag) { return; }
@@ -2453,7 +2352,7 @@ namespace IndigoMovieManager
                 {
                     // テキストが空の場合はメモリ上の一覧を再フィルタするだけ（DB再読込しない）
                     MainVM.DbInfo.SearchKeyword = "";
-                    FilterAndSort(MainVM.DbInfo.Sort, false);
+                    await FilterAndSortAsync(MainVM.DbInfo.Sort, false).ConfigureAwait(true);
                     SelectFirstItem();
                 }
             }
@@ -2519,12 +2418,12 @@ namespace IndigoMovieManager
         }
 
         // 検索実行処理
-        private void DoSearchBoxSearch()
+        private async void DoSearchBoxSearch()
         {
             if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath)) return;
             var text = SearchBox.Text;
             MainVM.DbInfo.SearchKeyword = text;
-            FilterAndSort(MainVM.DbInfo.Sort, false);
+            await FilterAndSortAsync(MainVM.DbInfo.Sort, false).ConfigureAwait(true);
             SelectFirstItem();
         }
 
@@ -2781,6 +2680,18 @@ namespace IndigoMovieManager
             }
         }
 
+        private void ShowProgressNotification(NotificationManager notificationManager, string title, string message)
+        {
+            if (Dispatcher.CheckAccess())
+            {
+                notificationManager.Show(title, message, NotificationType.Notification, "ProgressArea");
+                return;
+            }
+
+            Dispatcher.BeginInvoke(() =>
+                notificationManager.Show(title, message, NotificationType.Notification, "ProgressArea"));
+        }
+
         /// <summary>
         /// 起動時と手動時のフォルダチェック。
         /// DB内レコードとフォルダ内対象ファイルの差分比較し、差分があれば追加。
@@ -2812,7 +2723,7 @@ namespace IndigoMovieManager
                 if (!Path.Exists(row["dir"].ToString())) { continue; }
                 string checkFolder = row["dir"].ToString();
 
-                notificationManager.Show(title, $"{checkFolder} 監視実施中…", NotificationType.Notification, "ProgressArea");
+                ShowProgressNotification(notificationManager, title, $"{checkFolder} 監視実施中…");
 
                 bool sub = ((long)row["sub"] == 1);
 
@@ -2836,7 +2747,7 @@ namespace IndigoMovieManager
                             Message = checkFolder;
                             if (IsHit == false)
                             {
-                                notificationManager.Show(title, $"{Message}に更新あり。", NotificationType.Notification, "ProgressArea");
+                                ShowProgressNotification(notificationManager, title, $"{Message}に更新あり。");
                                 //MessageBox.Show("更新しています。","更新あり",MessageBoxButton.OK,MessageBoxImage.Information);
                                 IsHit = true;
                             }
