@@ -361,3 +361,7 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# FFmpeg (local bundle only; too large for git)
+tools/ffmpeg/ffmpeg.exe
+**/ffmpeg/ffmpeg.exe
