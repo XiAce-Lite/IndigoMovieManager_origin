@@ -1307,6 +1307,24 @@
                     ToolTip="終了" />
             </StackPanel>
         </StackPanel>
+
+        <Grid
+            x:Name="LoadingOverlay"
+            Panel.ZIndex="2000"
+            Background="#99000000"
+            Visibility="Collapsed">
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                <ProgressBar
+                    Width="220"
+                    Height="8"
+                    IsIndeterminate="True" />
+                <TextBlock
+                    Margin="0,12,0,0"
+                    HorizontalAlignment="Center"
+                    Foreground="White"
+                    Text="読み込み中..." />
+            </StackPanel>
+        </Grid>
     </Grid>
 
 </Window>

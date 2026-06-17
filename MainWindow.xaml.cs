@@ -41,9 +41,6 @@ namespace IndigoMovieManager
         private CancellationTokenSource _thumbCheckCts = new();
         private readonly ThumbnailQueueProcessor _thumbnailQueueProcessor = new();
 
-        [GeneratedRegex(@"^\r\n+")]
-        private static partial Regex MyRegex();
-
         private const string RECENT_OPEN_FILE_LABEL = "最近開いたファイル";
         private Stack<string> recentFiles = new();
 
@@ -95,8 +92,7 @@ namespace IndigoMovieManager
         {
             MainVM = new MainWindowViewModel(); // ← 追加
             
-            //前のバージョンのプロパティを引き継ぐぜ。
-            Properties.Settings.Default.Upgrade();
+            Properties.SettingsUpgrader.TryUpgrade(Properties.Settings.Default);
 
             recentFiles.Clear();
 
@@ -187,7 +183,7 @@ namespace IndigoMovieManager
         {
             try
             {
-                ClearTempJpg(); //一時ファイルの削除
+                _ = Task.Run(ClearTempJpg);
 
                 //ロケーションとサイズの復元
                 Left = Properties.Settings.Default.MainLocation.X;
@@ -204,7 +200,7 @@ namespace IndigoMovieManager
                         {
                             if (Properties.Settings.Default.AutoOpen)
                             {
-                                OpenDatafile(Properties.Settings.Default.LastDoc);
+                                _ = OpenDatafileAsync(Properties.Settings.Default.LastDoc);
                             }
                         }
                     }
@@ -456,6 +452,11 @@ namespace IndigoMovieManager
 
         private void OpenDatafile(string dbFullPath)
         {
+            _ = OpenDatafileAsync(dbFullPath);
+        }
+
+        private async Task OpenDatafileAsync(string dbFullPath)
+        {
             //強制的に-1にする。前回のタブが0だった場合の対応
             Tabs.SelectedIndex = -1;
             ClearThumbnailQueue();
@@ -465,28 +466,77 @@ namespace IndigoMovieManager
 
             MainVM.DbInfo.DBName = Path.GetFileNameWithoutExtension(dbFullPath);
             MainVM.DbInfo.DBFullPath = dbFullPath;
-            GetSystemTable(dbFullPath);
-            RefreshThumbPathCache();
-            MainVM.MovieRecs.Clear();
 
-            GetHistoryTable(dbFullPath);
-
-            int startupTabIndex = ThumbnailLayoutCache.GetTabIndexFromSkin(MainVM.DbInfo.Skin);
-
-            if (MainVM.DbInfo.Sort != null)
+            using (var session = new SQLiteSession(dbFullPath))
             {
-                FilterAndSort(MainVM.DbInfo.Sort, true, startupTabIndex);
-            }
-            if (MainVM.DbInfo.Skin != null)
-            {
-                SwitchTab(MainVM.DbInfo.Skin);
-            }
+                GetSystemTable(dbFullPath, session);
+                RefreshThumbPathCache();
+                MainVM.MovieRecs.Clear();
+                GetHistoryTable(dbFullPath, session);
 
-            //bookmarkのデータ詰める。あとはブックマーク追加時とブックマーク削除時の対応はイベントで。
-            GetBookmarkTable();
+                int startupTabIndex = ThumbnailLayoutCache.GetTabIndexFromSkin(MainVM.DbInfo.Skin);
+                string sortId = MainVM.DbInfo.Sort ?? "1";
+                await FilterAndSortAsync(sortId, true, startupTabIndex).ConfigureAwait(true);
+
+                if (MainVM.DbInfo.Skin != null)
+                {
+                    SwitchTab(MainVM.DbInfo.Skin);
+                }
+
+                GetBookmarkTable(session);
+            }
 
             CreateWatcher();
             ScheduleStartupFolderCheck();
+        }
+
+        private static void SetLoadingOverlayVisible(bool visible)
+        {
+            LoadingOverlay.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private int GetDefaultResolveTabIndex()
+        {
+            return MainVM.DbInfo.CurrentTabIndex >= 0
+                ? MainVM.DbInfo.CurrentTabIndex
+                : ThumbnailLayoutCache.GetTabIndexFromSkin(MainVM.DbInfo.Skin);
+        }
+
+        private async Task ReloadMovieRecordsAsync(string sortId, int? resolveTabIndexOnly = null)
+        {
+            if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
+            {
+                return;
+            }
+
+            SetLoadingOverlayVisible(true);
+            try
+            {
+                int tabCount = Tabs?.Items?.Count ?? 5;
+                int tabIndex = resolveTabIndexOnly ?? GetDefaultResolveTabIndex();
+                string dbPath = MainVM.DbInfo.DBFullPath;
+                ThumbnailLayoutCache cache = _thumbLayoutCache;
+                string sql = MovieRecordQueries.SelectListOrdered(GetSortWordForSQL(sortId));
+
+                var loaded = await Task.Run(() =>
+                {
+                    using var session = new SQLiteSession(dbPath);
+                    DataTable table = session.Query(sql);
+                    List<MovieRecords> records = MovieRecordMapper.MapAll(table, cache, tabCount, tabIndex);
+                    return (table, records);
+                }).ConfigureAwait(true);
+
+                movieData = loaded.table;
+                MainVM.MovieRecs.Clear();
+                foreach (MovieRecords record in loaded.records)
+                {
+                    MainVM.MovieRecs.Add(record);
+                }
+            }
+            finally
+            {
+                SetLoadingOverlayVisible(false);
+            }
         }
 
         private void RefreshThumbPathCache()
@@ -516,9 +566,9 @@ namespace IndigoMovieManager
             return "";
         }
 
-        private void GetBookmarkTable()
+        private void GetBookmarkTable(SQLiteSession session = null)
         {
-            bookmarkData = GetData(MainVM.DbInfo.DBFullPath, "select * from bookmark");
+            bookmarkData = QueryDb(MainVM.DbInfo.DBFullPath, "SELECT * FROM bookmark", session);
             if (bookmarkData != null)
             {
                 MainVM.BookmarkRecs.Clear();
@@ -561,7 +611,7 @@ namespace IndigoMovieManager
             }
         }
 
-        private void GetHistoryTable(string dbFullPath)
+        private void GetHistoryTable(string dbFullPath, SQLiteSession session = null)
         {
             // 現在のテキストを一時保存
             var currentText = SearchBox.Text;
@@ -576,7 +626,7 @@ namespace IndigoMovieManager
                             WHERE rn = 1
                             ORDER BY find_date DESC";
 
-            historyData = GetData(dbFullPath, sql);
+            historyData = QueryDb(dbFullPath, sql, session);
             if (historyData != null)
             {
                 MainVM.HistoryRecs.Clear();
@@ -600,12 +650,11 @@ namespace IndigoMovieManager
             SearchBox.Text = currentText;
         }
 
-        private void GetSystemTable(string dbPath)
+        private void GetSystemTable(string dbPath, SQLiteSession session = null)
         {
             if (!string.IsNullOrEmpty(dbPath))
             {
-                string sql = @"SELECT * FROM system";
-                systemData = GetData(dbPath, sql);
+                systemData = QueryDb(dbPath, "SELECT attr, value FROM system", session);
 
                 var skin = SelectSystemTable("skin");
                 MainVM.DbInfo.Skin = skin == "" ? "Default Small" : skin;
@@ -623,11 +672,16 @@ namespace IndigoMovieManager
             }
         }
 
-        private void GetWatchTable(string dbPath, string sql)
+        private static DataTable QueryDb(string dbPath, string sql, SQLiteSession session = null)
+        {
+            return session?.Query(sql) ?? GetData(dbPath, sql);
+        }
+
+        private void GetWatchTable(string dbPath, string sql, SQLiteSession session = null)
         {
             if (!string.IsNullOrEmpty(dbPath))
             {
-                watchData = GetData(dbPath, sql);
+                watchData = QueryDb(dbPath, sql, session);
             }
         }
 
@@ -879,34 +933,26 @@ namespace IndigoMovieManager
 
         public void FilterAndSort(string id, bool IsGetNew = false, int? resolveTabIndexOnly = null)
         {
+            FilterAndSortAsync(id, IsGetNew || movieData == null, resolveTabIndexOnly).GetAwaiter().GetResult();
+        }
+
+        private async Task FilterAndSortAsync(string id, bool isGetNew = false, int? resolveTabIndexOnly = null)
+        {
+            if (movieData == null || isGetNew)
+            {
+                await ReloadMovieRecordsAsync(id, resolveTabIndexOnly).ConfigureAwait(true);
+            }
+
+            ApplyFilterAndSort(id);
+        }
+
+        private void ApplyFilterAndSort(string id)
+        {
 #if DEBUG
             // Stopwatchクラス生成
             var sw = new Stopwatch();
             TimeSpan ts;
-#endif
-            //データが取れてない、あるいは強制的に取る場合は、まずDB見に行く。
-            if (movieData == null || IsGetNew)
-            {
-#if DEBUG
-                sw.Start();
-#endif
-                movieData = GetData(MainVM.DbInfo.DBFullPath, $"SELECT * FROM movie order by {GetSortWordForSQL(id)}");
-                if (movieData == null) { return; }
-#if DEBUG
-                sw.Stop();
-                ts = sw.Elapsed;
-                Debug.WriteLine($"レコード取得経過時間：{ts.Milliseconds} ミリ秒");
-#endif
-                int tabIndex = resolveTabIndexOnly
-                    ?? (MainVM.DbInfo.CurrentTabIndex >= 0
-                        ? MainVM.DbInfo.CurrentTabIndex
-                        : ThumbnailLayoutCache.GetTabIndexFromSkin(MainVM.DbInfo.Skin));
-                //データ詰める。
-                _ = SetRecordsToSource(tabIndex);
-            }
-
-#if DEBUG
-            sw.Restart();
+            sw.Start();
 #endif
             //まずは絞り込み。MainVMにはオープン時のDBからのデータと、監視で追加されたデータが入っている(最新状態)
             //一旦フィルタリストを最新化する。ここを通ったあとの各タブのデータソースは、このフィルターされたリストとなる（はず）
@@ -1101,82 +1147,9 @@ namespace IndigoMovieManager
         private void DataRowToViewData(DataRow row, int? resolveTabIndexOnly = null)
         {
             int tabCount = Tabs?.Items?.Count ?? _thumbLayoutCache.TabOutPaths.Length;
-            string[] thumbPath = new string[tabCount];
-            var hash = row["hash"].ToString();
-            var movieFullPath = row["movie_path"].ToString();
-            var thumbFile = ThumbnailLayoutCache.GetThumbFileName(row["movie_name"].ToString(), hash);
-
-            for (int i = 0; i < tabCount; i++)
-            {
-                bool checkExists = resolveTabIndexOnly == null || resolveTabIndexOnly == i;
-                thumbPath[i] = _thumbLayoutCache.BuildThumbPath(i, thumbFile, checkExists);
-            }
-
-            bool checkDetailExists = resolveTabIndexOnly == null;
-            string thumbPathDetail = _thumbLayoutCache.BuildThumbPath(99, thumbFile, checkDetailExists);
-            var tags = row["tag"].ToString();
-            List<string> tagArray = [];
-            if (!string.IsNullOrEmpty(tags))
-            {
-                var splitTags = tags.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
-                foreach (var tagItem in splitTags)
-                {
-                    tagArray.Add(tagItem);
-                }
-            }
-            var tag = MyRegex().Replace(tags, "");
-
-            var ext = Path.GetExtension(movieFullPath);
-            var movie_body = Path.GetFileNameWithoutExtension(movieFullPath);
-
-            #region View用のデータにDBからぶち込む
-            var item = new MovieRecords
-            {
-                Movie_Id = (long)row["movie_id"],
-                Movie_Name = $"{row["movie_name"]}{ext}",
-                Movie_Body = movie_body, // $"{row["movie_name"]}",
-                Movie_Path = row["movie_path"].ToString(),
-                Movie_Length = new TimeSpan(0, 0, (int)(long)row["movie_length"]).ToString(@"hh\:mm\:ss"),
-                Movie_Size = (long)row["movie_size"],
-                Last_Date = ((DateTime)row["last_date"]).ToString("yyyy-MM-dd HH:mm:ss"),
-                File_Date = ((DateTime)row["file_date"]).ToString("yyyy-MM-dd HH:mm:ss"),
-                Regist_Date = ((DateTime)row["regist_date"]).ToString("yyyy-MM-dd HH:mm:ss"),
-                Score = (long)row["score"],
-                View_Count = (long)row["view_count"],
-                Hash = row["hash"].ToString(),
-                Container = row["container"].ToString(),
-                Video = row["video"].ToString(),
-                Audio = row["audio"].ToString(),
-                Extra = row["extra"].ToString(),
-                Title = row["title"].ToString(),
-                Album = row["album"].ToString(),
-                Artist = row["artist"].ToString(),
-                Grouping = row["grouping"].ToString(),
-                Writer = row["writer"].ToString(),
-                Genre = row["genre"].ToString(),
-                Track = row["track"].ToString(),
-                Camera = row["camera"].ToString(),
-                Create_Time = row["create_time"].ToString(),
-                Kana = row["kana"].ToString(),
-                Roma = row["roma"].ToString(),
-                Tags = tag, //row["tag"].ToString(),
-                Tag = tagArray,
-                Comment1 = row["comment1"].ToString(),
-                Comment2 = row["comment2"].ToString(),
-                Comment3 = row["comment3"].ToString(),
-                ThumbPathSmall = thumbPath[0],
-                ThumbPathBig = thumbPath[1],
-                ThumbPathGrid = thumbPath[2],
-                ThumbPathList = thumbPath[3],
-                ThumbPathBig10 = thumbPath[4],
-                ThumbDetail = thumbPathDetail,
-                Drive = Path.GetPathRoot(row["movie_path"].ToString()),
-                Dir = Path.GetDirectoryName(row["movie_path"].ToString()),
-                IsExists = Path.Exists(movieFullPath),
-                Ext = ext
-            };
-            #endregion
-            MainVM.MovieRecs.Add(item);
+            MainVM.MovieRecs.Add(
+                MovieRecordMapper.FromDataRow(row, _thumbLayoutCache, tabCount, resolveTabIndexOnly)
+            );
         }
 
         private Task SetRecordsToSource(int resolveTabIndexOnly = 0)
@@ -2922,7 +2895,7 @@ namespace IndigoMovieManager
             //と言うかですね。これは外部からのリネームでも、アプリでのリネームでも同じで。クリックすりゃ反映する（そりゃそうだ）
             if (FolderCheckflg)
             {
-                FilterAndSort(MainVM.DbInfo.Sort, true);    //チェックフォルダ時。監視対象があった場合の処理やな。
+                await FilterAndSortAsync(MainVM.DbInfo.Sort, true).ConfigureAwait(true);
 
                 foreach (var item in addFiles)
                 {
