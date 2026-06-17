@@ -490,7 +490,7 @@ namespace IndigoMovieManager
             ScheduleStartupFolderCheck();
         }
 
-        private static void SetLoadingOverlayVisible(bool visible)
+        private void SetLoadingOverlayVisible(bool visible)
         {
             LoadingOverlay.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
         }
@@ -2417,9 +2417,6 @@ namespace IndigoMovieManager
             if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath)) { return; }
             if (_imeFlag) { return; }
 
-            // サムネイル作成タスクを停止し再起動
-            RestartThumbnailTask();
-
             if (e.Source is ComboBox combo)
             {
                 var text = combo.Text;
@@ -2454,8 +2451,9 @@ namespace IndigoMovieManager
                 */
                 if (string.IsNullOrEmpty(text))
                 {
-                    // テキストが空の場合は全件表示
-                    FilterAndSort(MainVM.DbInfo.Sort, true);
+                    // テキストが空の場合はメモリ上の一覧を再フィルタするだけ（DB再読込しない）
+                    MainVM.DbInfo.SearchKeyword = "";
+                    FilterAndSort(MainVM.DbInfo.Sort, false);
                     SelectFirstItem();
                 }
             }
@@ -2526,7 +2524,7 @@ namespace IndigoMovieManager
             if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath)) return;
             var text = SearchBox.Text;
             MainVM.DbInfo.SearchKeyword = text;
-            FilterAndSort(MainVM.DbInfo.Sort, true);
+            FilterAndSort(MainVM.DbInfo.Sort, false);
             SelectFirstItem();
         }
 
