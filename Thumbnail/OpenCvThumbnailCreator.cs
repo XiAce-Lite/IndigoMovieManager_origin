@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.IO;
 using OpenCvSharp;
 using OpenCvSharp.Extensions;
 using static IndigoMovieManager.Tools;

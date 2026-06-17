@@ -1,4 +1,5 @@
 using OpenCvSharp;
+using System.IO;
 
 namespace IndigoMovieManager.Thumbnail
 {

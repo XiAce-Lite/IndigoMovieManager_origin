@@ -1,6 +1,6 @@
 using System.Globalization;
+using System.IO;
 using System.Text;
-using IndigoMovieManager.Properties;
 using static IndigoMovieManager.Tools;
 
 namespace IndigoMovieManager.Thumbnail
@@ -110,7 +110,7 @@ namespace IndigoMovieManager.Thumbnail
         }
 
         private static double ResolveFrameIntervalSec(
-            IReadOnlyList<int> secList,
+            List<int> secList,
             double durationSec,
             int panelCount
         )
@@ -190,7 +190,7 @@ namespace IndigoMovieManager.Thumbnail
                 return parsed;
             }
 
-            int configured = Settings.Default.FfmpegJpegQuality;
+            int configured = Properties.Settings.Default.FfmpegJpegQuality;
             if (configured >= 2 && configured <= 31)
             {
                 return configured;

@@ -1,4 +1,4 @@
-using IndigoMovieManager.Properties;
+using System.IO;
 
 namespace IndigoMovieManager.Thumbnail
 {
@@ -15,7 +15,7 @@ namespace IndigoMovieManager.Thumbnail
 
         public static bool IsFallbackEnabled()
         {
-            if (!Settings.Default.EnableFfmpegFallback)
+            if (!Properties.Settings.Default.EnableFfmpegFallback)
             {
                 return false;
             }
@@ -30,7 +30,7 @@ namespace IndigoMovieManager.Thumbnail
             string configured = Environment.GetEnvironmentVariable(ExePathEnvName)?.Trim();
             if (string.IsNullOrWhiteSpace(configured))
             {
-                configured = Settings.Default.FfmpegExePath?.Trim();
+                configured = Properties.Settings.Default.FfmpegExePath?.Trim();
             }
 
             if (!string.IsNullOrWhiteSpace(configured))

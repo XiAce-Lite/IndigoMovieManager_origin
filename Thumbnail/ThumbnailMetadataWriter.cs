@@ -1,3 +1,4 @@
+using System.IO;
 using static IndigoMovieManager.Tools;
 
 namespace IndigoMovieManager.Thumbnail
