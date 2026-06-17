@@ -45,7 +45,7 @@ namespace IndigoMovieManager.UserControls
             }
         }
 
-        private void FileNameLink_Click(object sender, RoutedEventArgs e)
+        private async void FileNameLink_Click(object sender, RoutedEventArgs e)
         {
             // DataContext からファイル名を取得
             if (DataContext is MovieRecords record)
@@ -54,39 +54,20 @@ namespace IndigoMovieManager.UserControls
                 var mainWindow = Application.Current.Windows.OfType<MainWindow>().FirstOrDefault();
                 if (mainWindow != null)
                 {
-                    // ダブルクォーテーションで括ってSearchBoxとViewModelにセット
                     var quoted = $"\"{record.Movie_Body}\"";
-                    mainWindow.SearchBox.Text = quoted;
-                    mainWindow.MainVM.DbInfo.SearchKeyword = quoted;
-
-                    // 検索処理を実行
-                    mainWindow.FilterAndSort(mainWindow.MainVM.DbInfo.Sort, true);
-                    mainWindow.SelectFirstItem();
-
-                    // SearchBoxにフォーカスを当てる
-                    mainWindow.SearchBox.Focus();
+                    await mainWindow.SearchByKeywordAsync(quoted).ConfigureAwait(true);
                 }
             }
         }
 
-        private void Ext_Click(object sender, RoutedEventArgs e)
+        private async void Ext_Click(object sender, RoutedEventArgs e)
         {
             MainWindow ownerWindow = (MainWindow)Window.GetWindow(this);
             var item = (Hyperlink)sender;
             if (item != null)
             {
                 MovieRecords mv = item.DataContext as MovieRecords;
-                ownerWindow.SearchBox.Text = mv.Ext;
-
-                // 検索キーワードもViewModelに反映
-                ownerWindow.MainVM.DbInfo.SearchKeyword = mv.Ext;
-
-                // 検索処理を実行
-                ownerWindow.FilterAndSort(ownerWindow.MainVM.DbInfo.Sort, true);
-                ownerWindow.SelectFirstItem();
-
-                // SearchBoxにフォーカスを当てる
-                ownerWindow.SearchBox.Focus();
+                await ownerWindow.SearchByKeywordAsync(mv.Ext).ConfigureAwait(true);
             }
         }
     }

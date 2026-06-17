@@ -649,12 +649,18 @@
                                                     Header="サイズ"
                                                     IsReadOnly="True" />
                                                 <DataGridTextColumn
-                                                    Width="80"
-                                                    MinWidth="80"
+                                                    Width="96"
+                                                    MinWidth="96"
                                                     Binding="{Binding Movie_Length}"
                                                     CanUserSort="True"
                                                     Header="長さ"
-                                                    IsReadOnly="True" />
+                                                    IsReadOnly="True">
+                                                    <DataGridTextColumn.ElementStyle>
+                                                        <Style TargetType="{x:Type TextBlock}">
+                                                            <Setter Property="Padding" Value="0,0,8,0" />
+                                                        </Style>
+                                                    </DataGridTextColumn.ElementStyle>
+                                                </DataGridTextColumn>
                                                 <DataGridTextColumn
                                                     Width="70"
                                                     MinWidth="70"
@@ -696,27 +702,45 @@
                                                     </DataGridTextColumn.ElementStyle>
                                                 </DataGridTextColumn>
                                                 <DataGridTextColumn
-                                                    Width="150"
-                                                    MinWidth="150"
+                                                    Width="184"
+                                                    MinWidth="184"
                                                     Binding="{Binding File_Date}"
                                                     CanUserReorder="False"
                                                     CanUserSort="True"
                                                     Header="ファイル日付"
-                                                    IsReadOnly="True" />
+                                                    IsReadOnly="True">
+                                                    <DataGridTextColumn.ElementStyle>
+                                                        <Style TargetType="{x:Type TextBlock}">
+                                                            <Setter Property="Padding" Value="0,0,8,0" />
+                                                        </Style>
+                                                    </DataGridTextColumn.ElementStyle>
+                                                </DataGridTextColumn>
                                                 <DataGridTextColumn
-                                                    Width="150"
-                                                    MinWidth="150"
+                                                    Width="184"
+                                                    MinWidth="184"
                                                     Binding="{Binding Regist_Date}"
                                                     CanUserSort="True"
                                                     Header="登録日"
-                                                    IsReadOnly="True" />
+                                                    IsReadOnly="True">
+                                                    <DataGridTextColumn.ElementStyle>
+                                                        <Style TargetType="{x:Type TextBlock}">
+                                                            <Setter Property="Padding" Value="0,0,8,0" />
+                                                        </Style>
+                                                    </DataGridTextColumn.ElementStyle>
+                                                </DataGridTextColumn>
                                                 <DataGridTextColumn
-                                                    Width="150"
-                                                    MinWidth="150"
+                                                    Width="184"
+                                                    MinWidth="184"
                                                     Binding="{Binding Last_Date, UpdateSourceTrigger=PropertyChanged}"
                                                     CanUserSort="True"
                                                     Header="最終アクセス日"
-                                                    IsReadOnly="True" />
+                                                    IsReadOnly="True">
+                                                    <DataGridTextColumn.ElementStyle>
+                                                        <Style TargetType="{x:Type TextBlock}">
+                                                            <Setter Property="Padding" Value="0,0,8,0" />
+                                                        </Style>
+                                                    </DataGridTextColumn.ElementStyle>
+                                                </DataGridTextColumn>
                                             </DataGrid.Columns>
                                         </DataGrid>
                                     </TabItem>

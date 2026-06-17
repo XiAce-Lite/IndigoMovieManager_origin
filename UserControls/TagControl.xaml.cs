@@ -19,7 +19,7 @@ namespace IndigoMovieManager.UserControls
             InitializeComponent();
         }
 
-        private void Hyperlink_Click(object sender, RoutedEventArgs e)
+        private async void Hyperlink_Click(object sender, RoutedEventArgs e)
         {
             MainWindow ownerWindow = (MainWindow)Window.GetWindow(this);
             var item = (Hyperlink)sender;
@@ -37,16 +37,8 @@ namespace IndigoMovieManager.UserControls
                     keyword = item.DataContext.ToString();
                 }
 
-                // 検索キーワードをSearchBoxとViewModelにセット
-                ownerWindow.SearchBox.Text = keyword;
-                ownerWindow.MainVM.DbInfo.SearchKeyword = keyword;
-
-                // 検索処理を実行
-                ownerWindow.FilterAndSort(ownerWindow.MainVM.DbInfo.Sort, true);
-                ownerWindow.SelectFirstItem();
-
-                // SearchBoxにフォーカスを当てる
-                ownerWindow.SearchBox.Focus();
+                // 検索キーワードをSearchBoxとViewModelにセットして検索
+                await ownerWindow.SearchByKeywordAsync(keyword).ConfigureAwait(true);
             }
         }
 
