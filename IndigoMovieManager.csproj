@@ -9,7 +9,7 @@
     <Title>IndigoMovieManager</Title>
     <Platforms>AnyCPU;x64</Platforms>
     <PlatformTarget>AnyCPU</PlatformTarget>
-    <FileVersion>1.0.0.6</FileVersion>
+    <FileVersion>1.0.0.7</FileVersion>
     <AssemblyVersion></AssemblyVersion>
   </PropertyGroup>
 
@@ -72,12 +72,22 @@
     <Content Include="Images\errorList.jpg">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="tools\ffmpeg\ffmpeg.exe" Condition="Exists('tools\ffmpeg\ffmpeg.exe')">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Link>ffmpeg\ffmpeg.exe</Link>
-    </Content>
 
   </ItemGroup>
+
+  <!-- ffmpeg.exe は .gitignore 対象のため Content+Condition だと VS 読み込み時に除外されやすい。ビルド時コピーにする。 -->
+  <Target Name="CopyFfmpegToOutput" AfterTargets="Build">
+    <PropertyGroup>
+      <_FfmpegSourcePath>$(MSBuildProjectDirectory)\tools\ffmpeg\ffmpeg.exe</_FfmpegSourcePath>
+      <_FfmpegDestinationPath>$(OutputPath)ffmpeg\ffmpeg.exe</_FfmpegDestinationPath>
+    </PropertyGroup>
+    <MakeDir Directories="$(OutputPath)ffmpeg" Condition="Exists('$(_FfmpegSourcePath)')" />
+    <Copy
+      SourceFiles="$(_FfmpegSourcePath)"
+      DestinationFiles="$(_FfmpegDestinationPath)"
+      SkipUnchangedFiles="true"
+      Condition="Exists('$(_FfmpegSourcePath)')" />
+  </Target>
 
   <ItemGroup>
     <Compile Update="Properties\Settings.Designer.cs">

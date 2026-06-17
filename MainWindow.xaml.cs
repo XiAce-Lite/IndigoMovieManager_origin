@@ -77,6 +77,16 @@ namespace IndigoMovieManager
         private bool _imeFlag = false;
 
         private static readonly List<FileSystemWatcher> fileWatchers = [];
+        private readonly ThumbnailLayoutCache _thumbLayoutCache = new();
+
+        private static readonly string[] ThumbPathPropertyNames =
+        [
+            nameof(MovieRecords.ThumbPathSmall),
+            nameof(MovieRecords.ThumbPathBig),
+            nameof(MovieRecords.ThumbPathGrid),
+            nameof(MovieRecords.ThumbPathList),
+            nameof(MovieRecords.ThumbPathBig10),
+        ];
 
         //private bool _searchBoxItemSelectedByMouse = false;
         private bool _searchBoxItemSelectedByUser = false;
@@ -88,23 +98,6 @@ namespace IndigoMovieManager
             //前のバージョンのプロパティを引き継ぐぜ。
             Properties.Settings.Default.Upgrade();
 
-            //イニシャライズの前に、systemテーブルを読み込んで、前回スキン(タブ)を取得する。
-            if (Properties.Settings.Default.AutoOpen)
-            {
-                if (Properties.Settings.Default.LastDoc != null)
-                {
-                    if (Path.Exists(Properties.Settings.Default.LastDoc))
-                    {
-                        //前回のデータベースフルパス
-                        MainVM.DbInfo.DBFullPath = Properties.Settings.Default.LastDoc;
-                        MainVM.DbInfo.DBName = Path.GetFileNameWithoutExtension(Properties.Settings.Default.LastDoc);
-
-                        //Tabとソートを取得するだけの為に、MovieRecordsを取得する前にやってる。
-                        //初回だけはMainWindow_ContentRenderedの処理と重複するかな。
-                        GetSystemTable(Properties.Settings.Default.LastDoc);
-                    }
-                }
-            }
             recentFiles.Clear();
 
             InitializeComponent();
@@ -473,13 +466,16 @@ namespace IndigoMovieManager
             MainVM.DbInfo.DBName = Path.GetFileNameWithoutExtension(dbFullPath);
             MainVM.DbInfo.DBFullPath = dbFullPath;
             GetSystemTable(dbFullPath);
+            RefreshThumbPathCache();
             MainVM.MovieRecs.Clear();
 
             GetHistoryTable(dbFullPath);
 
+            int startupTabIndex = ThumbnailLayoutCache.GetTabIndexFromSkin(MainVM.DbInfo.Skin);
+
             if (MainVM.DbInfo.Sort != null)
             {
-                FilterAndSort(MainVM.DbInfo.Sort, true);    //ここは両方。オープン時なので。
+                FilterAndSort(MainVM.DbInfo.Sort, true, startupTabIndex);
             }
             if (MainVM.DbInfo.Skin != null)
             {
@@ -489,8 +485,22 @@ namespace IndigoMovieManager
             //bookmarkのデータ詰める。あとはブックマーク追加時とブックマーク削除時の対応はイベントで。
             GetBookmarkTable();
 
-            _ = CheckFolderAsync(CheckMode.Auto);   //一回きりの追加ファイルがないかのチェック。
-            CreateWatcher();                        //FileSystemWatcherの作成。
+            CreateWatcher();
+            ScheduleStartupFolderCheck();
+        }
+
+        private void RefreshThumbPathCache()
+        {
+            int tabCount = Tabs?.Items?.Count ?? 5;
+            _thumbLayoutCache.Refresh(MainVM.DbInfo.DBName, MainVM.DbInfo.ThumbFolder, tabCount);
+        }
+
+        private void ScheduleStartupFolderCheck()
+        {
+            _ = Dispatcher.InvokeAsync(async () =>
+            {
+                await CheckFolderAsync(CheckMode.Auto);
+            }, DispatcherPriority.ApplicationIdle);
         }
 
         public string SelectSystemTable(string attr)
@@ -867,7 +877,7 @@ namespace IndigoMovieManager
             }
         }
 
-        public void FilterAndSort(string id, bool IsGetNew = false)
+        public void FilterAndSort(string id, bool IsGetNew = false, int? resolveTabIndexOnly = null)
         {
 #if DEBUG
             // Stopwatchクラス生成
@@ -887,8 +897,12 @@ namespace IndigoMovieManager
                 ts = sw.Elapsed;
                 Debug.WriteLine($"レコード取得経過時間：{ts.Milliseconds} ミリ秒");
 #endif
+                int tabIndex = resolveTabIndexOnly
+                    ?? (MainVM.DbInfo.CurrentTabIndex >= 0
+                        ? MainVM.DbInfo.CurrentTabIndex
+                        : ThumbnailLayoutCache.GetTabIndexFromSkin(MainVM.DbInfo.Skin));
                 //データ詰める。
-                _ = SetRecordsToSource();
+                _ = SetRecordsToSource(tabIndex);
             }
 
 #if DEBUG
@@ -1084,47 +1098,22 @@ namespace IndigoMovieManager
             }
         }
 
-        private void DataRowToViewData(DataRow row)
+        private void DataRowToViewData(DataRow row, int? resolveTabIndexOnly = null)
         {
-            string[] thumbErrorPath = [@"errorSmall.jpg", @"errorBig.jpg", @"errorGrid.jpg", @"errorList.jpg", @"errorBig.jpg"];
-            string[] thumbPath = new string[Tabs.Items.Count];
-            var Hash = row["hash"].ToString();
+            int tabCount = Tabs?.Items?.Count ?? _thumbLayoutCache.TabOutPaths.Length;
+            string[] thumbPath = new string[tabCount];
+            var hash = row["hash"].ToString();
             var movieFullPath = row["movie_path"].ToString();
-            var thumbFile = $"{row["movie_name"]}.#{Hash}.jpg";
+            var thumbFile = ThumbnailLayoutCache.GetThumbFileName(row["movie_name"].ToString(), hash);
 
-            for (int i = 0; i < Tabs.Items.Count; i++)
+            for (int i = 0; i < tabCount; i++)
             {
-                TabInfo tbi = new(i, MainVM.DbInfo.DBName, MainVM.DbInfo.ThumbFolder);
-
-                var tempPath = Path.Combine(tbi.OutPath, thumbFile);
-                if (Path.Exists(tempPath))
-                {
-                    thumbPath[i] = tempPath;
-                }
-                else
-                {
-                    thumbPath[i] = Path.Combine(Directory.GetCurrentDirectory(), "Images", thumbErrorPath[i]);
-                }
+                bool checkExists = resolveTabIndexOnly == null || resolveTabIndexOnly == i;
+                thumbPath[i] = _thumbLayoutCache.BuildThumbPath(i, thumbFile, checkExists);
             }
 
-            //エクステンションの詳細用サムネ特別処理
-            //(5つ目のタブ扱いにする手もあるけど、そうするとタブ増やすときに面倒かなと)
-            //だもんでCase 99の所に入れておいた。で、ブックマークの場合のフルパスもここを使う。
-            //オブジェクトは、MovieとBookmarkと違うので問題ねぇはず。
-            TabInfo tbiExtensionDetail = new(99, MainVM.DbInfo.DBName, MainVM.DbInfo.ThumbFolder);
-            var tempPathExtensionDetail = Path.Combine(tbiExtensionDetail.OutPath, thumbFile);
-            string thumbPathDetail;
-            if (Path.Exists(tempPathExtensionDetail))
-            {
-                thumbPathDetail = tempPathExtensionDetail;
-            }
-            else
-            {
-                //エラー時のサムネはGridと同じタイプを流用
-                thumbPathDetail = Path.Combine(Directory.GetCurrentDirectory(), "Images", thumbErrorPath[2]);
-            }
-
-
+            bool checkDetailExists = resolveTabIndexOnly == null;
+            string thumbPathDetail = _thumbLayoutCache.BuildThumbPath(99, thumbFile, checkDetailExists);
             var tags = row["tag"].ToString();
             List<string> tagArray = [];
             if (!string.IsNullOrEmpty(tags))
@@ -1190,7 +1179,7 @@ namespace IndigoMovieManager
             MainVM.MovieRecs.Add(item);
         }
 
-        private Task SetRecordsToSource()
+        private Task SetRecordsToSource(int resolveTabIndexOnly = 0)
         {
             if (movieData != null)
             {
@@ -1199,10 +1188,50 @@ namespace IndigoMovieManager
                 var list = movieData.AsEnumerable().ToArray();
                 foreach (var row in list)
                 {
-                    DataRowToViewData(row);
+                    DataRowToViewData(row, resolveTabIndexOnly);
                 }
             }
             return Task.CompletedTask;
+        }
+
+        private void ResolveThumbPathsForTab(int tabIndex)
+        {
+            if (tabIndex < 0 || tabIndex >= _thumbLayoutCache.TabOutPaths.Length)
+            {
+                return;
+            }
+
+            foreach (var item in MainVM.MovieRecs)
+            {
+                string thumbFile = ThumbnailLayoutCache.GetThumbFileName(
+                    Path.GetFileNameWithoutExtension(item.Movie_Name),
+                    item.Hash
+                );
+                string resolvedPath = _thumbLayoutCache.BuildThumbPath(tabIndex, thumbFile, checkExists: true);
+                SetThumbPathForTab(item, tabIndex, resolvedPath);
+            }
+        }
+
+        private static void SetThumbPathForTab(MovieRecords item, int tabIndex, string path)
+        {
+            switch (tabIndex)
+            {
+                case 0:
+                    item.ThumbPathSmall = path;
+                    break;
+                case 1:
+                    item.ThumbPathBig = path;
+                    break;
+                case 2:
+                    item.ThumbPathGrid = path;
+                    break;
+                case 3:
+                    item.ThumbPathList = path;
+                    break;
+                case 4:
+                    item.ThumbPathBig10 = path;
+                    break;
+            }
         }
         /*
         private async void Tabs_SelectionChangedAsync(object sender, SelectionChangedEventArgs e)
@@ -1309,7 +1338,7 @@ namespace IndigoMovieManager
         }
         */
 
-        private async void Tabs_SelectionChangedAsync(object sender, SelectionChangedEventArgs e)
+        private void Tabs_SelectionChangedAsync(object sender, SelectionChangedEventArgs e)
         {
             if (sender as TabControl != null && e.OriginalSource is TabControl)
             {
@@ -1323,15 +1352,6 @@ namespace IndigoMovieManager
 
                 if (!filterList.Any()) return;
 
-                // サムネイルプロパティ名配列
-                string[] thumbProps = [
-                    nameof(MovieRecords.ThumbPathSmall),
-                    nameof(MovieRecords.ThumbPathBig),
-                    nameof(MovieRecords.ThumbPathGrid),
-                    nameof(MovieRecords.ThumbPathList),
-                    nameof(MovieRecords.ThumbPathBig10)
-                ];
-
                 // 対応するリストコントロール
                 object[] listControls = [
                     SmallList,
@@ -1344,13 +1364,15 @@ namespace IndigoMovieManager
                 // ItemsSourceを設定
                 if (index >= 0 && index < listControls.Length)
                 {
+                    ResolveThumbPathsForTab(index);
+
                     if (listControls[index] is ItemsControl itemsControl)
                     {
                         itemsControl.ItemsSource = filterList;
                     }
 
                     // サムネイルパスのプロパティを取得
-                    var thumbProp = typeof(MovieRecords).GetProperty(thumbProps[index]);
+                    var thumbProp = typeof(MovieRecords).GetProperty(ThumbPathPropertyNames[index]);
 
                     // 検索結果(filterList)から"error"を含むものだけ抽出
                     var query = filterList
@@ -1361,8 +1383,6 @@ namespace IndigoMovieManager
 
                     if (query.Length > 0)
                     {
-                        await Task.Delay(1000);
-
                         foreach (var item in query)
                         {
                             QueueObj tempObj = new()
@@ -1379,6 +1399,13 @@ namespace IndigoMovieManager
                 // 詳細サムネイル（ThumbDetail）が error の場合も追加
                 MovieRecords mv = GetSelectedItemByTabIndex();
                 if (mv == null) return;
+
+                string detailThumbFile = ThumbnailLayoutCache.GetThumbFileName(
+                    Path.GetFileNameWithoutExtension(mv.Movie_Name),
+                    mv.Hash
+                );
+                mv.ThumbDetail = _thumbLayoutCache.BuildThumbPath(99, detailThumbFile, checkExists: true);
+
                 if (mv.ThumbDetail.Contains("error", StringComparison.CurrentCultureIgnoreCase))
                 {
                     QueueObj tempObj = new()

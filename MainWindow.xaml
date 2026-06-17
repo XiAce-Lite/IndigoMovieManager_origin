@@ -18,10 +18,6 @@
     Height="Auto"
     mc:Ignorable="d">
 
-    <Window.DataContext>
-        <ModelView:MainWindowViewModel />
-    </Window.DataContext>
-
     <Window.Resources>
         <c:FileSizeConverter x:Key="FileSizeConverter" />
         <c:NoLockImageConverter x:Key="noLockImageConverter" />
