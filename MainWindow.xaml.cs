@@ -90,6 +90,7 @@ namespace IndigoMovieManager
         //private bool _searchBoxItemSelectedByMouse = false;
         private bool _searchBoxItemSelectedByUser = false;
         private bool _isDeletingSearchHistory = false;
+        private bool _isApplyingSearchKeyword = false;
 
         public MainWindow()
         {
@@ -1098,7 +1099,7 @@ namespace IndigoMovieManager
 #if DEBUG
             var sw = Stopwatch.StartNew();
 #endif
-            List<MovieRecords> snapshot = MainVM.MovieRecs.ToList();
+            List<MovieRecords> snapshot = [.. MainVM.MovieRecs];
             string searchKeyword = MainVM.DbInfo.SearchKeyword ?? "";
 
             MovieListFilter.FilterResult result = await Task.Run(() =>
@@ -1799,7 +1800,7 @@ namespace IndigoMovieManager
             //ListViewのSelectedIndexを再設定してデータ入れても更新されなかったんだよねぇ。
         }
 
-        private void DeleteMovieRecord_Click(object sender, RoutedEventArgs e)
+        private async void DeleteMovieRecord_Click(object sender, RoutedEventArgs e)
         {
             string keyName = "";
             if (sender is not MenuItem menuItem)
@@ -1902,7 +1903,8 @@ namespace IndigoMovieManager
                 }
 
             }
-            FilterAndSort(MainVM.DbInfo.Sort, true);    //登録からの削除。これは読み直しで良いっぽい。
+
+            await FilterAndSortAsync(MainVM.DbInfo.Sort, true).ConfigureAwait(true);
         }
 
         private void BtnReCreateThumbnail_Click(object sender, RoutedEventArgs e)
@@ -1929,12 +1931,12 @@ namespace IndigoMovieManager
             }
 
             MenuToggleButton.IsChecked = false;
-            List<QueueObj> thumbQueue = MainVM.MovieRecs.Select(item => new QueueObj
+            List<QueueObj> thumbQueue = [.. MainVM.MovieRecs.Select(item => new QueueObj
             {
                 MovieId = item.Movie_Id,
                 MovieFullPath = item.Movie_Path,
                 Tabindex = Tabs.SelectedIndex
-            }).ToList();
+            })];
             EnqueueThumbnailWork(thumbQueue, Tabs.SelectedIndex, beginNewJob: true);
         }
 
@@ -2168,12 +2170,12 @@ namespace IndigoMovieManager
                                     return;
                                 }
 
-                                List<QueueObj> thumbQueue = MainVM.MovieRecs.Select(rec => new QueueObj
+                                List<QueueObj> thumbQueue = [.. MainVM.MovieRecs.Select(rec => new QueueObj
                                 {
                                     MovieId = rec.Movie_Id,
                                     MovieFullPath = rec.Movie_Path,
                                     Tabindex = Tabs.SelectedIndex
-                                }).ToList();
+                                })];
                                 EnqueueThumbnailWork(thumbQueue, Tabs.SelectedIndex, beginNewJob: true);
                                 break;
                             default:
@@ -2356,6 +2358,7 @@ namespace IndigoMovieManager
         {
             if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath)) { return; }
             if (_isDeletingSearchHistory) { return; }
+            if (_isApplyingSearchKeyword) { return; }
 
             // ドロップダウンが開いている間に選択が変わった場合のみフラグを立てる
             if (SearchBox.IsDropDownOpen)
@@ -2388,6 +2391,7 @@ namespace IndigoMovieManager
         private async void SearchBox_LostFocus(object sender, RoutedEventArgs e)
         {
             if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath)) { return; }
+            if (_isApplyingSearchKeyword) { return; }
 
             if (Tabs.SelectedItem == null) { return; }
 
@@ -2414,6 +2418,7 @@ namespace IndigoMovieManager
             if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath)) { return; }
             if (_imeFlag) { return; }
             if (_isDeletingSearchHistory) { return; }
+            if (_isApplyingSearchKeyword) { return; }
 
             if (e.Source is ComboBox combo)
             {
@@ -2535,16 +2540,45 @@ namespace IndigoMovieManager
             }
 
             string text = keyword ?? "";
-            SearchBox.Text = text;
-            MainVM.DbInfo.SearchKeyword = text;
-            await FilterAndSortAsync(MainVM.DbInfo.Sort, false).ConfigureAwait(true);
-            SelectFirstItem();
-            SearchBox.Focus();
+            _isApplyingSearchKeyword = true;
+            try
+            {
+                // 履歴リストを先に更新してから ComboBox へ反映しないと、
+                // SelectedValue 不一致で Text が空になり全件表示へ戻ることがある。
+                if (!string.IsNullOrEmpty(text))
+                {
+                    PromoteSearchHistory(text);
+                }
+
+                MainVM.DbInfo.SearchKeyword = text;
+                SearchBox.Text = text;
+                await FilterAndSortAsync(MainVM.DbInfo.Sort, false).ConfigureAwait(true);
+                SelectFirstItem();
+                SearchBox.Focus();
+            }
+            finally
+            {
+                _isApplyingSearchKeyword = false;
+            }
+
+            if (!string.IsNullOrEmpty(text)
+                && !string.Equals(SearchBox.Text, text, StringComparison.Ordinal))
+            {
+                _isApplyingSearchKeyword = true;
+                try
+                {
+                    MainVM.DbInfo.SearchKeyword = text;
+                    SearchBox.Text = text;
+                }
+                finally
+                {
+                    _isApplyingSearchKeyword = false;
+                }
+            }
 
             // 特殊検索（例: {notag}）も通常検索と同様に履歴へ反映する。
             if (!string.IsNullOrEmpty(text))
             {
-                PromoteSearchHistory(text);
                 string dbPath = MainVM.DbInfo.DBFullPath;
                 _ = Task.Run(() => InsertHistoryTable(dbPath, text));
             }
