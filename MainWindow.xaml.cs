@@ -3311,12 +3311,12 @@ namespace IndigoMovieManager
             List<MovieRecords> selectedItems = GetSelectedItemsByTabIndex();
             if (selectedItems == null || selectedItems.Count == 0) { return; }
 
-            List<QueueObj> thumbQueue = selectedItems.Select(mv => new QueueObj
+            List<QueueObj> thumbQueue = [.. selectedItems.Select(mv => new QueueObj
             {
                 MovieId = mv.Movie_Id,
                 MovieFullPath = mv.Movie_Path,
                 Tabindex = Tabs.SelectedIndex
-            }).ToList();
+            })];
             EnqueueThumbnailWork(thumbQueue, Tabs.SelectedIndex, beginNewJob: true);
         }
 
