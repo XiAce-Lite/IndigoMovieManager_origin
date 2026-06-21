@@ -155,6 +155,16 @@
                     </Style>
                 </MenuItem.Style>
             </MenuItem>
+            <MenuItem
+                Click="RefreshFileInfo_Click"
+                Header="ファイル情報再取得(_F)"
+                Icon="{materialDesign:PackIcon Kind=InformationOutline}">
+                <MenuItem.Style>
+                    <Style TargetType="MenuItem">
+                        <Setter Property="Padding" Value="1" />
+                    </Style>
+                </MenuItem.Style>
+            </MenuItem>
             <Separator />
             <MenuItem
                 x:Name="DeleteMovie"

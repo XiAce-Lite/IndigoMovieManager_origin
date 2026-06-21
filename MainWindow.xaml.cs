@@ -15,6 +15,7 @@ using System.Drawing.Imaging;
 using System.IO;
 using System.Reflection;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -91,6 +92,7 @@ namespace IndigoMovieManager
         private bool _searchBoxItemSelectedByUser = false;
         private bool _isDeletingSearchHistory = false;
         private bool _isApplyingSearchKeyword = false;
+        private int _fileInfoRefreshRunning = 0;
 
         public MainWindow()
         {
@@ -1948,6 +1950,169 @@ namespace IndigoMovieManager
             EnqueueThumbnailWork(thumbQueue, Tabs.SelectedIndex, beginNewJob: true);
         }
 
+        private void BeginRefreshAllFileInfoFromMenu()
+        {
+            if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
+            {
+                MessageBox.Show("管理ファイルが選択されていません。", Assembly.GetExecutingAssembly().GetName().Name, MessageBoxButton.OK, MessageBoxImage.Exclamation);
+                return;
+            }
+
+            if (!SinkuMetadataFetcher.IsAvailable)
+            {
+                return;
+            }
+
+            var dialogWindow = new MessageBoxEx(this)
+            {
+                DlogTitle = "ファイル情報の再取得",
+                DlogMessage = "全ファイルの情報を再取得します。よろしいですか？",
+                PackIconKind = MaterialDesignThemes.Wpf.PackIconKind.EventQuestion
+            };
+
+            dialogWindow.ShowDialog();
+            if (dialogWindow.CloseStatus() == MessageBoxResult.Cancel)
+            {
+                return;
+            }
+
+            MenuToggleButton.IsChecked = false;
+            _ = RefreshAllFileInfoAsync();
+        }
+
+        private async void RefreshFileInfo_Click(object sender, RoutedEventArgs e)
+        {
+            if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
+            {
+                return;
+            }
+
+            if (!SinkuMetadataFetcher.IsAvailable)
+            {
+                return;
+            }
+
+            List<MovieRecords> targets = GetSelectedItemsByTabIndex();
+            if (targets == null || targets.Count == 0)
+            {
+                return;
+            }
+
+            string dbPath = MainVM.DbInfo.DBFullPath;
+            await Task.Run(() =>
+            {
+                foreach (MovieRecords rec in targets)
+                {
+                    RefreshFileInfoCore(dbPath, rec);
+                }
+            }).ConfigureAwait(true);
+        }
+
+        private async Task RefreshAllFileInfoAsync()
+        {
+            if (Interlocked.CompareExchange(ref _fileInfoRefreshRunning, 1, 0) != 0)
+            {
+                return;
+            }
+
+            if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath) || !SinkuMetadataFetcher.IsAvailable)
+            {
+                Interlocked.Exchange(ref _fileInfoRefreshRunning, 0);
+                return;
+            }
+
+            List<MovieRecords> targets = [.. MainVM.MovieRecs];
+            if (targets.Count == 0)
+            {
+                Interlocked.Exchange(ref _fileInfoRefreshRunning, 0);
+                return;
+            }
+
+            string dbPath = MainVM.DbInfo.DBFullPath;
+            FileInfoProgressSession session = null;
+
+            try
+            {
+                session = await Dispatcher.InvokeAsync(() => new FileInfoProgressSession(targets.Count));
+                CancellationToken cancelToken = session.Cancel;
+                int done = 0;
+
+                await Task.Run(() =>
+                {
+                    foreach (MovieRecords rec in targets)
+                    {
+                        cancelToken.ThrowIfCancellationRequested();
+                        RefreshFileInfoCore(dbPath, rec);
+                        done++;
+                        int reportDone = done;
+                        string reportPath = rec.Movie_Path;
+                        _ = Dispatcher.InvokeAsync(
+                            () => session.Report(reportDone, reportPath),
+                            DispatcherPriority.Background);
+                    }
+                }, cancelToken).ConfigureAwait(true);
+
+                await Dispatcher.InvokeAsync(() => session.Report(targets.Count, "完了"));
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            finally
+            {
+                if (session != null)
+                {
+                    await Dispatcher.InvokeAsync(() => session.Dispose());
+                }
+
+                Interlocked.Exchange(ref _fileInfoRefreshRunning, 0);
+            }
+        }
+
+        private void RefreshFileInfoCore(string dbPath, MovieRecords rec)
+        {
+            if (rec == null || string.IsNullOrWhiteSpace(rec.Movie_Path))
+            {
+                return;
+            }
+
+            if (!SinkuMetadataFetcher.TryFetch(rec.Movie_Path, out SinkuMetadata metadata))
+            {
+                return;
+            }
+
+            long existingSec = GetMovieLengthSeconds(rec);
+            UpdateMovieFileInfo(dbPath, rec.Movie_Id, metadata, existingSec);
+            RunOnUi(() => ApplyFileInfoToRecord(rec, metadata, existingSec));
+        }
+
+        private static long GetMovieLengthSeconds(MovieRecords rec)
+        {
+            if (rec == null || string.IsNullOrEmpty(rec.Movie_Length))
+            {
+                return 0;
+            }
+
+            if (TimeSpan.TryParse(rec.Movie_Length, out TimeSpan parsed))
+            {
+                return (long)parsed.TotalSeconds;
+            }
+
+            return 0;
+        }
+
+        private static void ApplyFileInfoToRecord(MovieRecords rec, SinkuMetadata metadata, long existingMovieLengthSec)
+        {
+            rec.Container = metadata.Container ?? "";
+            rec.Video = metadata.Video ?? "";
+            rec.Audio = metadata.Audio ?? "";
+            rec.Extra = metadata.Extra ?? "";
+
+            if (existingMovieLengthSec < 1 && metadata.MovieLengthSec > 0)
+            {
+                rec.Movie_Length = new TimeSpan(0, 0, (int)metadata.MovieLengthSec).ToString(@"hh\:mm\:ss");
+            }
+        }
+
         private void BtnExit_Click(object sender, RoutedEventArgs e)
         {
             Close();
@@ -2185,6 +2350,10 @@ namespace IndigoMovieManager
                                     Tabindex = Tabs.SelectedIndex
                                 })];
                                 EnqueueThumbnailWork(thumbQueue, Tabs.SelectedIndex, beginNewJob: true);
+                                break;
+
+                            case "全ファイル情報再取得":
+                                BeginRefreshAllFileInfoFromMenu();
                                 break;
                             default:
                                 break;

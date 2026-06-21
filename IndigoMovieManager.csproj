@@ -9,8 +9,8 @@
     <Title>IndigoMovieManager</Title>
     <Platforms>AnyCPU;x64</Platforms>
     <PlatformTarget>AnyCPU</PlatformTarget>
-    <FileVersion>1.0.0.14</FileVersion>
-    <AssemblyVersion>1.0.0.14</AssemblyVersion>
+    <FileVersion>1.0.0.16</FileVersion>
+    <AssemblyVersion>1.0.0.16</AssemblyVersion>
     <SupportedOSPlatformVersion>7.0</SupportedOSPlatformVersion>
   </PropertyGroup>
 
@@ -45,7 +45,7 @@
     <PackageReference Include="System.ObjectModel" Version="4.3.0" />
     <PackageReference Include="VirtualizingWrapPanel" Version="2.3.2" />
     <!-- SQLite ネイティブバイナリのバンドルを追加 -->
-    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.0.6" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.10" />
   </ItemGroup>
 
   <ItemGroup>
@@ -73,16 +73,8 @@
       <_FfprobeDestinationPath>$(OutputPath)ffmpeg\ffprobe.exe</_FfprobeDestinationPath>
     </PropertyGroup>
     <MakeDir Directories="$(OutputPath)ffmpeg" Condition="Exists('$(_FfmpegSourcePath)') Or Exists('$(_FfprobeSourcePath)')" />
-    <Copy
-      SourceFiles="$(_FfmpegSourcePath)"
-      DestinationFiles="$(_FfmpegDestinationPath)"
-      SkipUnchangedFiles="true"
-      Condition="Exists('$(_FfmpegSourcePath)')" />
-    <Copy
-      SourceFiles="$(_FfprobeSourcePath)"
-      DestinationFiles="$(_FfprobeDestinationPath)"
-      SkipUnchangedFiles="true"
-      Condition="Exists('$(_FfprobeSourcePath)')" />
+    <Copy SourceFiles="$(_FfmpegSourcePath)" DestinationFiles="$(_FfmpegDestinationPath)" SkipUnchangedFiles="true" Condition="Exists('$(_FfmpegSourcePath)')" />
+    <Copy SourceFiles="$(_FfprobeSourcePath)" DestinationFiles="$(_FfprobeDestinationPath)" SkipUnchangedFiles="true" Condition="Exists('$(_FfprobeSourcePath)')" />
   </Target>
 
   <!-- sinku.exe / Sinku.dll は .gitignore 対象のため Content+Condition だと VS 読み込み時に除外されやすい。ビルド時コピーにする。 -->
@@ -90,26 +82,10 @@
     <PropertyGroup>
       <_SinkuSourceDir>$(MSBuildProjectDirectory)\tools\sinku\</_SinkuSourceDir>
     </PropertyGroup>
-    <Copy
-      SourceFiles="$(_SinkuSourceDir)sinku.exe"
-      DestinationFiles="$(OutputPath)sinku.exe"
-      SkipUnchangedFiles="true"
-      Condition="Exists('$(_SinkuSourceDir)sinku.exe')" />
-    <Copy
-      SourceFiles="$(_SinkuSourceDir)Sinku.dll"
-      DestinationFiles="$(OutputPath)Sinku.dll"
-      SkipUnchangedFiles="true"
-      Condition="Exists('$(_SinkuSourceDir)Sinku.dll')" />
-    <Copy
-      SourceFiles="$(_SinkuSourceDir)codecs.ini"
-      DestinationFiles="$(OutputPath)codecs.ini"
-      SkipUnchangedFiles="true"
-      Condition="Exists('$(_SinkuSourceDir)codecs.ini')" />
-    <Copy
-      SourceFiles="$(_SinkuSourceDir)format.ini"
-      DestinationFiles="$(OutputPath)format.ini"
-      SkipUnchangedFiles="true"
-      Condition="Exists('$(_SinkuSourceDir)format.ini')" />
+    <Copy SourceFiles="$(_SinkuSourceDir)sinku.exe" DestinationFiles="$(OutputPath)sinku.exe" SkipUnchangedFiles="true" Condition="Exists('$(_SinkuSourceDir)sinku.exe')" />
+    <Copy SourceFiles="$(_SinkuSourceDir)Sinku.dll" DestinationFiles="$(OutputPath)Sinku.dll" SkipUnchangedFiles="true" Condition="Exists('$(_SinkuSourceDir)Sinku.dll')" />
+    <Copy SourceFiles="$(_SinkuSourceDir)codecs.ini" DestinationFiles="$(OutputPath)codecs.ini" SkipUnchangedFiles="true" Condition="Exists('$(_SinkuSourceDir)codecs.ini')" />
+    <Copy SourceFiles="$(_SinkuSourceDir)format.ini" DestinationFiles="$(OutputPath)format.ini" SkipUnchangedFiles="true" Condition="Exists('$(_SinkuSourceDir)format.ini')" />
   </Target>
 
   <ItemGroup>

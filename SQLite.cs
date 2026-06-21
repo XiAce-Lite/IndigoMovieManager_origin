@@ -4,7 +4,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Windows;
-using System.Xml.Linq;
 
 namespace IndigoMovieManager
 {
@@ -259,6 +258,61 @@ namespace IndigoMovieManager
             }
         }
 
+        public static void UpdateMovieFileInfo(
+            string dbFullPath,
+            long movieId,
+            SinkuMetadata metadata,
+            long existingMovieLengthSec)
+        {
+            if (metadata == null)
+            {
+                return;
+            }
+
+            try
+            {
+                long movieLengthSec = existingMovieLengthSec;
+                if (existingMovieLengthSec < 1 && metadata.MovieLengthSec > 0)
+                {
+                    movieLengthSec = metadata.MovieLengthSec;
+                }
+
+                using SQLiteConnection connection = new($"Data Source={dbFullPath}");
+                connection.Open();
+
+                using var transaction = connection.BeginTransaction();
+                using (SQLiteCommand cmd = connection.CreateCommand())
+                {
+                    if (existingMovieLengthSec < 1 && metadata.MovieLengthSec > 0)
+                    {
+                        cmd.CommandText =
+                            "update movie set container = @container, video = @video, audio = @audio, " +
+                            "extra = @extra, movie_length = @movie_length where movie_id = @id";
+                        cmd.Parameters.Add(new SQLiteParameter("@movie_length", movieLengthSec));
+                    }
+                    else
+                    {
+                        cmd.CommandText =
+                            "update movie set container = @container, video = @video, audio = @audio, " +
+                            "extra = @extra where movie_id = @id";
+                    }
+
+                    cmd.Parameters.Add(new SQLiteParameter("@id", movieId));
+                    cmd.Parameters.Add(new SQLiteParameter("@container", metadata.Container ?? ""));
+                    cmd.Parameters.Add(new SQLiteParameter("@video", metadata.Video ?? ""));
+                    cmd.Parameters.Add(new SQLiteParameter("@audio", metadata.Audio ?? ""));
+                    cmd.Parameters.Add(new SQLiteParameter("@extra", metadata.Extra ?? ""));
+                    cmd.ExecuteNonQuery();
+                }
+                transaction.Commit();
+            }
+            catch (Exception e)
+            {
+                var title = $"{Assembly.GetExecutingAssembly().GetName().Name} - {MethodBase.GetCurrentMethod().Name}";
+                MessageBox.Show(e.Message, title, MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
         public static void UpsertSystemTable(string dbFullPath, string attr, string value)
         {
             DataTable dt = GetData(dbFullPath, $"select * from system where attr = '{attr}'");
@@ -415,48 +469,17 @@ namespace IndigoMovieManager
                 string video = "";
                 string extra = "";
                 string audio = "";
-                string movie_length = "";
                 long movieLengthLong = mvi.MovieLength;
 
-                //結局、断念してsinku.dllから取得。sinku.exeにパラメータ渡して、実態はsinku.dll。
-                //フォーマットやコーデックのマッチングに、codecs.ini, format.ini は必要。
-                //実行条件としては、sinku.exe の存在有無。これがないと転けるが、あれば出力時のエラー表記なので。
-                if (Path.Exists("sinku.exe"))
+                if (SinkuMetadataFetcher.TryFetch(mvi.MoviePath, out SinkuMetadata metadata))
                 {
-                    var moviePath = $"\"{mvi.MoviePath}\"";
-                    var arg = $"{moviePath}";
-
-                    using Process ps1 = new();
-                    //設定ファイルのプログラムも既定のプログラムも空だった場合にはここのはず。
-                    ps1.StartInfo.Arguments = arg;
-                    ps1.StartInfo.FileName = "sinku.exe";
-                    ps1.StartInfo.CreateNoWindow = true;
-                    ps1.StartInfo.RedirectStandardOutput = true;
-
-                    ps1.Start();
-                    ps1.WaitForExit();
-
-                    string output = ps1.StandardOutput.ReadToEnd();
-                    if (!string.IsNullOrEmpty(output))
+                    container = metadata.Container;
+                    video = metadata.Video;
+                    audio = metadata.Audio;
+                    extra = metadata.Extra;
+                    if (movieLengthLong < 1 && metadata.MovieLengthSec > 0)
                     {
-                        XDocument doc = XDocument.Parse(output);
-
-                        //パクリ元：https://www.sejuku.net/blog/86867
-                        IEnumerable<XElement> infos = from item in doc.Elements("fields") select item;
-
-                        //多分構造的に一周しかしない。
-                        foreach (XElement info in infos)
-                        {
-                            container = info.Element("container").Value;
-                            video = info.Element("video").Value;
-                            audio = info.Element("audio").Value;
-                            extra = info.Element("extra").Value;
-                            movie_length = info.Element("movie_length").Value;
-                        }
-                    }
-                    if (movieLengthLong < 1)
-                    {
-                        movieLengthLong = Convert.ToInt64(movie_length);
+                        movieLengthLong = metadata.MovieLengthSec;
                     }
                 }
 

@@ -41,7 +41,8 @@ namespace IndigoMovieManager.ModelViews
                     [
                         new TreeSource { Text = "監視フォルダ編集", IconKind = MaterialDesignThemes.Wpf.PackIconKind.Binoculars },
                         new TreeSource { Text = "監視フォルダ更新チェック", IconKind = MaterialDesignThemes.Wpf.PackIconKind.Reload },
-                        new TreeSource { Text = "全ファイルサムネイル再作成", IconKind = MaterialDesignThemes.Wpf.PackIconKind.Image }
+                        new TreeSource { Text = "全ファイルサムネイル再作成", IconKind = MaterialDesignThemes.Wpf.PackIconKind.Image },
+                        new TreeSource { Text = "全ファイル情報再取得", IconKind = MaterialDesignThemes.Wpf.PackIconKind.FileDocumentOutline }
                     ]
                 }
             ];

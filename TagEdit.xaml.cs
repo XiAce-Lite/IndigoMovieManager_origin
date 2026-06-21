@@ -19,11 +19,19 @@ namespace IndigoMovieManager
         private void TagEdit_ContentRendered(object sender, EventArgs e)
         {
             _ = TagEditBox.Focus();
-            if (!string.IsNullOrEmpty(TagEditBox.Text))
+
+            if (string.IsNullOrEmpty(TagEditBox.Text))
             {
-                TagEditBox.Text += Environment.NewLine;
-                TagEditBox.Select(TagEditBox.Text.Length, 0);
+                return;
             }
+
+            string trimmed = TagEditBox.Text.TrimEnd('\r', '\n');
+            if (!string.Equals(TagEditBox.Text, trimmed, StringComparison.Ordinal))
+            {
+                TagEditBox.Text = trimmed;
+            }
+
+            TagEditBox.CaretIndex = TagEditBox.Text.Length;
         }
 
         public MessageBoxResult CloseStatus() { return _closeStatus; }
