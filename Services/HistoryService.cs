@@ -40,5 +40,38 @@ namespace IndigoMovieManager.Services
                 });
             }
         }
+
+        public static void PromoteSearchHistory(ObservableCollection<History> historyRecs, string keyword)
+        {
+            if (string.IsNullOrEmpty(keyword))
+            {
+                return;
+            }
+
+            History existing = null;
+            foreach (History item in historyRecs)
+            {
+                if (string.Equals(item.Find_Text, keyword, StringComparison.Ordinal))
+                {
+                    existing = item;
+                    break;
+                }
+            }
+
+            string nowText = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+            if (existing != null)
+            {
+                historyRecs.Remove(existing);
+                existing.Find_Date = nowText;
+                historyRecs.Insert(0, existing);
+                return;
+            }
+
+            historyRecs.Insert(0, new History
+            {
+                Find_Text = keyword,
+                Find_Date = nowText,
+            });
+        }
     }
 }
