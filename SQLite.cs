@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Windows;
+using IndigoMovieManager.Data;
 
 namespace IndigoMovieManager
 {
@@ -13,32 +14,7 @@ namespace IndigoMovieManager
 
         public static DataTable GetData(string dbFullPath, string sql)
         {
-            try
-            {
-                DataTable dt = new();
-                using (SQLiteConnection connection = new($"Data Source={dbFullPath}"))
-                {
-                    connection.Open();
-
-                    using SQLiteCommand cmd = connection.CreateCommand();
-                    cmd.CommandText = sql;
-
-                    // DataAdapterの生成
-                    SQLiteDataAdapter da = new(cmd);
-
-                    // データベースからデータを取得
-                    da.Fill(dt);
-                }
-                return dt;
-
-            }
-            catch (Exception e)
-            {
-                // 例外の内容を表示します。
-                var title = $"{Assembly.GetExecutingAssembly().GetName().Name} - {MethodBase.GetCurrentMethod().Name}";
-                MessageBox.Show(e.Message, title, MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-            return null;
+            return SqliteDataAccess.Query(dbFullPath, sql);
         }
 
         public static void CreateDatabase(string dbFullPath)
@@ -233,6 +209,18 @@ namespace IndigoMovieManager
 
         public static void UpdateMovieSingleColumn(string dbFullPath, long movieId, string columnName, object value)
         {
+            if (!MovieColumnExtensions.TryParseColumnName(columnName, out MovieColumn column))
+            {
+                UpdateMovieSingleColumnUnsafe(dbFullPath, movieId, columnName, value);
+                return;
+            }
+
+            UpdateMovieSingleColumn(dbFullPath, movieId, column, value);
+        }
+
+        public static void UpdateMovieSingleColumn(string dbFullPath, long movieId, MovieColumn column, object value)
+        {
+            string columnName = column.ToColumnName();
             try
             {
                 using SQLiteConnection connection = new($"Data Source={dbFullPath}");
@@ -248,13 +236,32 @@ namespace IndigoMovieManager
                 }
                 transaction.Commit();
             }
-
-            // 例外が発生した場合
             catch (Exception e)
             {
-                // 例外の内容を表示します。
-                var title = $"{Assembly.GetExecutingAssembly().GetName().Name} - {MethodBase.GetCurrentMethod().Name}";
-                MessageBox.Show(e.Message, title, MessageBoxButton.OK, MessageBoxImage.Error);
+                SqliteDataAccess.ReportError(e);
+            }
+        }
+
+        private static void UpdateMovieSingleColumnUnsafe(string dbFullPath, long movieId, string columnName, object value)
+        {
+            try
+            {
+                using SQLiteConnection connection = new($"Data Source={dbFullPath}");
+                connection.Open();
+
+                using var transaction = connection.BeginTransaction();
+                using (SQLiteCommand cmd = connection.CreateCommand())
+                {
+                    cmd.CommandText = $"update movie set {columnName} = @value where movie_id = @id";
+                    cmd.Parameters.Add(new SQLiteParameter("@id", movieId));
+                    cmd.Parameters.Add(new SQLiteParameter("@value", value));
+                    cmd.ExecuteNonQuery();
+                }
+                transaction.Commit();
+            }
+            catch (Exception e)
+            {
+                SqliteDataAccess.ReportError(e);
             }
         }
 

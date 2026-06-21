@@ -1,4 +1,4 @@
-﻿using IndigoMovieManager.ModelView;
+﻿using IndigoMovieManager.ModelViews;
 using Microsoft.Win32;
 using System.ComponentModel;
 using System.Data;

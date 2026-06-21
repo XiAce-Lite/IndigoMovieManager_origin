@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Input;
+using IndigoMovieManager.Services;
 
 namespace IndigoMovieManager.UserControls
 {
@@ -22,8 +23,8 @@ namespace IndigoMovieManager.UserControls
         {
             if (e.LeftButton == MouseButtonState.Pressed)
             {
-                MainWindow ownerWindow = (MainWindow)Window.GetWindow(this);
-                ownerWindow.PlayMovie_Click(sender, e);
+                IMainWindowActions actions = MainWindowActionsHelper.GetActions(this);
+                actions?.PlayMovie_Click(sender, e);
             }
         }
 
@@ -47,27 +48,26 @@ namespace IndigoMovieManager.UserControls
 
         private async void FileNameLink_Click(object sender, RoutedEventArgs e)
         {
-            // DataContext からファイル名を取得
             if (DataContext is MovieRecords record)
             {
-                // MainWindow のインスタンスを取得
-                var mainWindow = Application.Current.Windows.OfType<MainWindow>().FirstOrDefault();
-                if (mainWindow != null)
+                IMainWindowActions actions = MainWindowActionsHelper.GetActions(this)
+                    ?? Application.Current.Windows.OfType<MainWindow>().FirstOrDefault();
+                if (actions != null)
                 {
                     var quoted = $"\"{record.Movie_Body}\"";
-                    await mainWindow.SearchByKeywordAsync(quoted).ConfigureAwait(true);
+                    await actions.SearchByKeywordAsync(quoted).ConfigureAwait(true);
                 }
             }
         }
 
         private async void Ext_Click(object sender, RoutedEventArgs e)
         {
-            MainWindow ownerWindow = (MainWindow)Window.GetWindow(this);
+            IMainWindowActions actions = MainWindowActionsHelper.GetActions(this);
             var item = (Hyperlink)sender;
-            if (item != null)
+            if (actions != null && item != null)
             {
                 MovieRecords mv = item.DataContext as MovieRecords;
-                await ownerWindow.SearchByKeywordAsync(mv.Ext).ConfigureAwait(true);
+                await actions.SearchByKeywordAsync(mv.Ext).ConfigureAwait(true);
             }
         }
     }

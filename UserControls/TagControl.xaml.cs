@@ -1,9 +1,10 @@
 ﻿using IndigoMovieManager.ModelViews;
+using IndigoMovieManager.Data;
+using IndigoMovieManager.Services;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Media;
-using static IndigoMovieManager.SQLite;
 using static IndigoMovieManager.Tools;
 
 namespace IndigoMovieManager.UserControls
@@ -21,28 +22,29 @@ namespace IndigoMovieManager.UserControls
 
         private async void Hyperlink_Click(object sender, RoutedEventArgs e)
         {
-            MainWindow ownerWindow = (MainWindow)Window.GetWindow(this);
+            IMainWindowActions actions = MainWindowActionsHelper.GetActions(this);
+            if (actions == null)
+            {
+                return;
+            }
+
             var item = (Hyperlink)sender;
             if (item != null)
             {
                 string keyword;
                 if (ctrlFlg)
                 {
-                    // 既存のテキストにスペース区切りで追加
-                    keyword = ownerWindow.SearchBox.Text + " " + item.DataContext.ToString();
+                    keyword = actions.SearchBox.Text + " " + item.DataContext.ToString();
                 }
                 else
                 {
-                    // 単独クリック時はそのタグのみ
                     keyword = item.DataContext.ToString();
                 }
 
-                // 検索キーワードをSearchBoxとViewModelにセットして検索
-                await ownerWindow.SearchByKeywordAsync(keyword).ConfigureAwait(true);
+                await actions.SearchByKeywordAsync(keyword).ConfigureAwait(true);
             }
         }
 
-        // ビジュアルツリーを上にたどって親を探す
         private static T FindParent<T>(DependencyObject child) where T : DependencyObject
         {
             DependencyObject parent = VisualTreeHelper.GetParent(child);
@@ -55,12 +57,10 @@ namespace IndigoMovieManager.UserControls
 
         private void RemoveTag_Click(object sender, RoutedEventArgs e)
         {
-            // まずDataGridRow/ListViewItem/ListBoxItemを探す
             var container = FindParent<DataGridRow>(this)
                          ?? (DependencyObject)FindParent<ListViewItem>(this)
                          ?? FindParent<ListBoxItem>(this);
 
-            // そこからItemsControl（DataGrid/ListView/ListBox）を探す
             ItemsControl parent = null;
             if (container is DataGridRow dgr)
                 parent = ItemsControl.ItemsControlFromItemContainer(dgr);
@@ -69,13 +69,10 @@ namespace IndigoMovieManager.UserControls
             else if (container is ListBoxItem lbi)
                 parent = ItemsControl.ItemsControlFromItemContainer(lbi);
 
-            // 本来の行データ（MovieRecords）を取得
             object itemData = null;
-            // DataGridRow/ListViewItem/ListBoxItemのDataContextがMovieRecords
             if (container is FrameworkElement fe && fe.DataContext is MovieRecords rec)
                 itemData = rec;
 
-            // 選択状態をitemDataのみに
             if (parent != null && itemData != null)
             {
                 if (parent is DataGrid dg)
@@ -98,40 +95,28 @@ namespace IndigoMovieManager.UserControls
                 }
             }
 
-            // 既存のタグ削除処理
-            MainWindow ownerWindow = (MainWindow)Window.GetWindow(this);
+            IMainWindowActions actions = MainWindowActionsHelper.GetActions(this);
             var item = (Hyperlink)sender;
-            if (item != null)
+            if (actions != null && item != null)
             {
-                if (ownerWindow.Tabs.SelectedItem == null) return;
+                if (actions.Tabs.SelectedItem == null) return;
                 if (itemData is not MovieRecords mv) return;
 
                 if (mv.Tag.Contains(item.DataContext))
                 {
                     mv.Tag.Remove(item.DataContext.ToString());
                     mv.Tags = ConvertTagsWithNewLine(mv.Tag);
-                    int index = ownerWindow.Tabs.SelectedIndex;
+                    int index = actions.Tabs.SelectedIndex;
 
-                    //タグをDBに入れる仕掛け。
-                    var dt = (MainWindowViewModel)ownerWindow.DataContext;
-                    UpdateMovieSingleColumn(dt.DbInfo.DBFullPath, mv.Movie_Id, "tag", mv.Tags);
+                    actions.UpdateMovieColumn(mv.Movie_Id, MovieColumn.Tag, mv.Tags);
 
                     try
                     {
-                        switch (index)
-                        {
-                            case 0: ownerWindow.SmallList.Items.Refresh(); break;
-                            case 1: ownerWindow.BigList.Items.Refresh(); break;
-                            case 2: ownerWindow.GridList.Items.Refresh(); break;
-                            case 3: ownerWindow.ListDataGrid.Items.Refresh(); break;
-                            case 4: ownerWindow.BigList10.Items.Refresh(); break;
-                            default: break;
-                        }
-                        ownerWindow.viewExtDetail.Refresh();
+                        actions.RefreshActiveList(index);
+                        actions.RefreshExtDetail();
                     }
                     catch (Exception)
                     {
-                        //サムネイル作成中にタグを消すと例外起こるので握りつぶす。
                     }
                 }
             }

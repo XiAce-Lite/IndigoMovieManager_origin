@@ -1,6 +1,6 @@
 ﻿using System.Collections.ObjectModel;
 
-namespace IndigoMovieManager.ModelView
+namespace IndigoMovieManager.ModelViews
 {
     public class WatchWindowViewModel
     {

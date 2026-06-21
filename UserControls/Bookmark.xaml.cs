@@ -2,6 +2,7 @@
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Input;
+using IndigoMovieManager.Services;
 
 namespace IndigoMovieManager.UserControls
 {
@@ -19,33 +20,26 @@ namespace IndigoMovieManager.UserControls
         {
             if (e.LeftButton == MouseButtonState.Pressed)
             {
-                //以外と親側に丸投げ（処理は追加したが）でいけるようで。
-                MainWindow ownerWindow = (MainWindow)Window.GetWindow(this);
-
-                var item = (Label)sender;
-                if (item != null)
-                {
-                    ownerWindow.PlayMovie_Click(sender, e);
-                }
+                IMainWindowActions actions = MainWindowActionsHelper.GetActions(this);
+                actions?.PlayMovie_Click(sender, e);
             }
         }
 
         private void FileNameLink_Click(object sender, RoutedEventArgs e)
         {
-            MainWindow ownerWindow = (MainWindow)Window.GetWindow(this);
+            IMainWindowActions actions = MainWindowActionsHelper.GetActions(this);
             var item = (Hyperlink)sender;
-            if (item != null)
+            if (actions != null && item != null)
             {
                 MovieRecords mv = item.DataContext as MovieRecords;
-                ownerWindow.SearchBox.Text = mv.Movie_Body;
+                actions.SearchBox.Text = mv.Movie_Body;
             }
         }
 
         private void DeleteBookmark_Click(object sender, RoutedEventArgs e)
         {
-            MainWindow ownerWindow = (MainWindow)Window.GetWindow(this);
-            var item = (Button)sender;
-            if (item != null)
+            IMainWindowActions actions = MainWindowActionsHelper.GetActions(this);
+            if (actions is MainWindow ownerWindow)
             {
                 ownerWindow.DeleteBookmark(sender, e);
             }

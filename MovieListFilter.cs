@@ -89,47 +89,13 @@ namespace IndigoMovieManager
                 }
             }
 
-            filterList = ApplySort(filterList, sortId);
+            filterList = SortDefinitions.Apply(sortId, filterList);
             List<MovieRecords> items = filterList.ToList();
 
             return new FilterResult
             {
                 Items = items,
                 SearchCount = searchCount
-            };
-        }
-
-        private static IEnumerable<MovieRecords> ApplySort(IEnumerable<MovieRecords> filterList, string id)
-        {
-            return id switch
-            {
-                "0" => from x in filterList orderby x.Last_Date descending select x,
-                "1" => from x in filterList orderby x.Last_Date select x,
-                "2" => from x in filterList orderby x.File_Date descending select x,
-                "3" => from x in filterList orderby x.File_Date select x,
-                "6" => from x in filterList orderby x.Score descending select x,
-                "7" => from x in filterList orderby x.Score select x,
-                "8" => from x in filterList orderby x.View_Count descending select x,
-                "9" => from x in filterList orderby x.View_Count select x,
-                "10" => from x in filterList orderby x.Kana select x,
-                "11" => from x in filterList orderby x.Kana descending select x,
-                "12" => from x in filterList orderby x.Movie_Name select x,
-                "13" => from x in filterList orderby x.Movie_Name descending select x,
-                "14" => from x in filterList orderby x.Movie_Path select x,
-                "15" => from x in filterList orderby x.Movie_Path descending select x,
-                "16" => from x in filterList orderby x.Movie_Size descending select x,
-                "17" => from x in filterList orderby x.Movie_Size select x,
-                "18" => from x in filterList orderby x.Regist_Date descending select x,
-                "19" => from x in filterList orderby x.Regist_Date select x,
-                "20" => from x in filterList orderby x.Movie_Length descending select x,
-                "21" => from x in filterList orderby x.Movie_Length select x,
-                "22" => from x in filterList orderby x.Comment1 select x,
-                "23" => from x in filterList orderby x.Comment1 descending select x,
-                "24" => from x in filterList orderby x.Comment2 select x,
-                "25" => from x in filterList orderby x.Comment2 descending select x,
-                "26" => from x in filterList orderby x.Comment3 select x,
-                "27" => from x in filterList orderby x.Comment3 descending select x,
-                _ => filterList,
             };
         }
     }
