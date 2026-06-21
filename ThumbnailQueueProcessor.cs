@@ -14,6 +14,18 @@ namespace IndigoMovieManager
     private const int ProgressReportIntervalMs = 150;
     private const int ProgressShowDelayMs = 700;
 
+    private static Action s_cancelPendingProgressShow;
+    private static Action s_dismissActiveProgress;
+
+    /// <summary>
+    /// タブ切替時に UI スレッドから即座に進捗ポップアップを閉じる。
+    /// </summary>
+    public static void RequestDismissProgress()
+    {
+      s_cancelPendingProgressShow?.Invoke();
+      s_dismissActiveProgress?.Invoke();
+    }
+
     public async Task RunAsync(
       ConcurrentQueue<QueueObj> queueThumb,
       Func<QueueObj, CancellationToken, Task> createThumbAsync,
@@ -26,14 +38,13 @@ namespace IndigoMovieManager
       CancellationToken cts = default)
     {
       Dispatcher uiDispatcher = Application.Current?.Dispatcher;
-      NotificationManager notificationManager = await CreateNotificationManagerAsync(uiDispatcher)
-        .ConfigureAwait(false);
       int safePollIntervalMs = pollIntervalMs < 50 ? 50 : pollIntervalMs;
       object progressLock = new();
-      IDisposable activeProgress = null;
+      ThumbnailProgressSession activeProgress = null;
       int activeProgressJobId = -1;
       DateTime lastReportUtc = DateTime.MinValue;
       CancellationTokenSource progressShowCts = null;
+      int lastJobSwitchToken = jobCoordinator.JobSwitchToken;
 
       void CancelPendingProgressShow()
       {
@@ -47,15 +58,88 @@ namespace IndigoMovieManager
         progressShowCts = null;
       }
 
+      void ReplaceProgressShowCts(CancellationTokenSource next)
+      {
+        CancelPendingProgressShow();
+        if (next != null)
+        {
+          progressShowCts = next;
+        }
+      }
+
+      void DismissActiveProgressNow()
+      {
+        CancelPendingProgressShow();
+
+        ThumbnailProgressSession progressToClose;
+        lock (progressLock)
+        {
+          progressToClose = activeProgress;
+          activeProgress = null;
+          activeProgressJobId = -1;
+          lastReportUtc = DateTime.MinValue;
+        }
+
+        if (progressToClose == null)
+        {
+          return;
+        }
+
+        if (uiDispatcher == null || uiDispatcher.HasShutdownStarted)
+        {
+          progressToClose.Dispose();
+          return;
+        }
+
+        if (uiDispatcher.CheckAccess())
+        {
+          progressToClose.Dispose();
+          return;
+        }
+
+        uiDispatcher.Invoke(() => progressToClose.Dispose(), DispatcherPriority.Send);
+      }
+
+      s_cancelPendingProgressShow = CancelPendingProgressShow;
+      s_dismissActiveProgress = DismissActiveProgressNow;
+
       try
       {
         while (true)
         {
           await Task.Delay(safePollIntervalMs, cts).ConfigureAwait(false);
+
+          int switchToken = jobCoordinator.JobSwitchToken;
+          if (switchToken != lastJobSwitchToken)
+          {
+            lastJobSwitchToken = switchToken;
+            await DismissActiveProgressSilentlyAsync(
+              uiDispatcher,
+              progressLock,
+              () => activeProgress,
+              session => activeProgress = session,
+              () => activeProgressJobId,
+              jobId => activeProgressJobId = jobId,
+              utc => lastReportUtc = utc,
+              ReplaceProgressShowCts).ConfigureAwait(false);
+          }
+
           if (queueThumb.IsEmpty)
           {
-            ThumbnailJobCoordinator.Snapshot idleSnapshot = jobCoordinator.GetSnapshot();
-            if (activeProgress != null && idleSnapshot.IsComplete)
+            ThumbnailJobCoordinator.Snapshot idleSnapshot;
+            int trackedJobId;
+            lock (progressLock)
+            {
+              trackedJobId = activeProgressJobId;
+            }
+
+            idleSnapshot = trackedJobId > 0
+              ? jobCoordinator.GetSnapshot(trackedJobId)
+              : jobCoordinator.GetSnapshot();
+
+            if (activeProgress != null
+              && idleSnapshot.JobId == trackedJobId
+              && (idleSnapshot.IsComplete || idleSnapshot.Abandoned))
             {
               CancelPendingProgressShow();
               await DisposeProgressAsync(uiDispatcher, activeProgress, progressLock).ConfigureAwait(false);
@@ -73,37 +157,51 @@ namespace IndigoMovieManager
             continue;
           }
 
-          ThumbnailJobCoordinator.Snapshot batchSnapshot = jobCoordinator.GetSnapshot();
-          if (batchSnapshot.Total > 0
-            && activeProgress == null
-            && batch.Any(item => item != null && item.JobId == batchSnapshot.JobId))
+          List<QueueObj> currentBatch = [];
+          foreach (QueueObj item in batch)
           {
-            CancelPendingProgressShow();
-            progressShowCts = CancellationTokenSource.CreateLinkedTokenSource(cts);
-            CancellationToken showToken = progressShowCts.Token;
-            int jobIdToShow = batchSnapshot.JobId;
-            int primaryTabIndex = batchSnapshot.PrimaryTabIndex;
+            if (jobCoordinator.ShouldProcess(item))
+            {
+              currentBatch.Add(item);
+            }
+            else
+            {
+              jobCoordinator.TrySkipItem(item);
+            }
+          }
 
-            _ = ShowProgressAfterDelayAsync(
+          if (currentBatch.Count < 1)
+          {
+            await SwitchProgressToCurrentJobAsync(
               uiDispatcher,
-              notificationManager,
               jobCoordinator,
               progressLock,
               () => activeProgress,
-              value => activeProgress = value,
+              session => activeProgress = session,
               () => activeProgressJobId,
-              value => activeProgressJobId = value,
-              () => lastReportUtc,
-              value => lastReportUtc = value,
-              jobIdToShow,
-              primaryTabIndex,
-              showToken);
+              jobId => activeProgressJobId = jobId,
+              utc => lastReportUtc = utc,
+              ReplaceProgressShowCts).ConfigureAwait(false);
+            continue;
           }
+
+          int currentJobId = jobCoordinator.CurrentJobId;
+
+          await SwitchProgressToCurrentJobAsync(
+            uiDispatcher,
+            jobCoordinator,
+            progressLock,
+            () => activeProgress,
+            session => activeProgress = session,
+            () => activeProgressJobId,
+            jobId => activeProgressJobId = jobId,
+            utc => lastReportUtc = utc,
+            ReplaceProgressShowCts).ConfigureAwait(false);
 
           int safeMaxParallelism = ResolveMaxParallelism(maxParallelism, maxParallelismResolver);
 
           await Parallel.ForEachAsync(
-            batch,
+            currentBatch,
             new ParallelOptions
             {
               MaxDegreeOfParallelism = safeMaxParallelism,
@@ -111,7 +209,24 @@ namespace IndigoMovieManager
             },
             async (item, token) =>
             {
+              if (!jobCoordinator.ShouldProcess(item))
+              {
+                jobCoordinator.TrySkipItem(item);
+                return;
+              }
+
               jobCoordinator.MarkInFlight(item);
+
+              await MaybeShowProgressAfterMarkInFlightAsync(
+                uiDispatcher,
+                jobCoordinator,
+                progressLock,
+                () => activeProgress,
+                session => activeProgress = session,
+                () => activeProgressJobId,
+                jobId => activeProgressJobId = jobId,
+                utc => lastReportUtc = utc,
+                item).ConfigureAwait(false);
 
               try
               {
@@ -121,7 +236,7 @@ namespace IndigoMovieManager
               {
                 ThumbnailJobCoordinator.Snapshot snapshot = jobCoordinator.TryComplete(item);
 
-                IDisposable progressToReport;
+                ThumbnailProgressSession progressToReport;
                 int progressJobId;
                 lock (progressLock)
                 {
@@ -131,60 +246,134 @@ namespace IndigoMovieManager
 
                 if (progressToReport != null && item.JobId == progressJobId)
                 {
-                  string reportTitle = $"{GetTabProgressTitle(snapshot.PrimaryTabIndex)} ({snapshot.Completed}/{snapshot.Total})";
-                  string message = $"{item.MovieFullPath}";
-                  double totalProgress = snapshot.Total > 0
-                    ? (double)snapshot.Completed * 100d / snapshot.Total
-                    : 0d;
-                  if (totalProgress > 100d)
+                  if (snapshot.Abandoned)
                   {
-                    totalProgress = 100d;
+                    if (snapshot.IsComplete)
+                    {
+                      CancelPendingProgressShow();
+                      await DisposeProgressAsync(uiDispatcher, progressToReport, progressLock).ConfigureAwait(false);
+                      lock (progressLock)
+                      {
+                        if (activeProgress == progressToReport)
+                        {
+                          activeProgress = null;
+                          activeProgressJobId = -1;
+                          lastReportUtc = DateTime.MinValue;
+                        }
+                      }
+                    }
                   }
-
-                  bool shouldReport;
-                  lock (progressLock)
+                  else
                   {
-                    DateTime now = DateTime.UtcNow;
-                    shouldReport = snapshot.IsComplete
-                      || (now - lastReportUtc).TotalMilliseconds >= ProgressReportIntervalMs;
+                    bool shouldReport;
+                    lock (progressLock)
+                    {
+                      DateTime now = DateTime.UtcNow;
+                      shouldReport = snapshot.IsComplete
+                        || (now - lastReportUtc).TotalMilliseconds >= ProgressReportIntervalMs;
+                      if (shouldReport)
+                      {
+                        lastReportUtc = now;
+                      }
+                    }
+
                     if (shouldReport)
                     {
-                      lastReportUtc = now;
+                      try
+                      {
+                        await ReportProgressOnUiAsync(
+                          uiDispatcher,
+                          progressToReport,
+                          jobCoordinator,
+                          progressJobId,
+                          snapshot.Completed,
+                          snapshot.Total,
+                          item.MovieFullPath).ConfigureAwait(false);
+                      }
+                      catch (Exception ex)
+                      {
+                        Debug.WriteLine($"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : [thumb-progress] {ex.Message}");
+                      }
+                    }
+
+                    if (snapshot.IsComplete)
+                    {
+                      CancelPendingProgressShow();
+                      await DisposeProgressAsync(uiDispatcher, progressToReport, progressLock).ConfigureAwait(false);
+                      lock (progressLock)
+                      {
+                        if (activeProgress == progressToReport)
+                        {
+                          activeProgress = null;
+                          activeProgressJobId = -1;
+                          lastReportUtc = DateTime.MinValue;
+                        }
+                      }
                     }
                   }
-
-                  if (shouldReport)
+                }
+                else if (progressToReport != null
+                  && item.JobId != progressJobId
+                  && snapshot.IsComplete
+                  && snapshot.Abandoned)
+                {
+                  CancelPendingProgressShow();
+                  await DisposeProgressAsync(uiDispatcher, progressToReport, progressLock).ConfigureAwait(false);
+                  lock (progressLock)
                   {
-                    try
+                    if (activeProgress == progressToReport)
                     {
-                      await ReportProgressOnUiAsync(
-                        uiDispatcher,
-                        progressToReport,
-                        totalProgress,
-                        message,
-                        reportTitle).ConfigureAwait(false);
-                    }
-                    catch (Exception ex)
-                    {
-                      Debug.WriteLine($"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : [thumb-progress] {ex.Message}");
+                      activeProgress = null;
+                      activeProgressJobId = -1;
+                      lastReportUtc = DateTime.MinValue;
                     }
                   }
                 }
               }
             }).ConfigureAwait(false);
 
-          ThumbnailJobCoordinator.Snapshot afterBatch = jobCoordinator.GetSnapshot();
-          if (activeProgress != null
+          ThumbnailJobCoordinator.Snapshot afterBatch;
+          ThumbnailProgressSession progressToClose;
+          int closingJobId;
+          lock (progressLock)
+          {
+            progressToClose = activeProgress;
+            closingJobId = activeProgressJobId;
+          }
+
+          afterBatch = closingJobId > 0
+            ? jobCoordinator.GetSnapshot(closingJobId)
+            : jobCoordinator.GetSnapshot();
+
+          if (progressToClose != null
             && afterBatch.IsComplete
-            && afterBatch.JobId == activeProgressJobId
-            && !HasQueuedWorkForJob(queueThumb, queueSync, activeProgressJobId))
+            && afterBatch.JobId == closingJobId
+            && !afterBatch.Abandoned
+            && !HasQueuedWorkForJob(queueThumb, queueSync, closingJobId))
           {
             CancelPendingProgressShow();
-            await DisposeProgressAsync(uiDispatcher, activeProgress, progressLock).ConfigureAwait(false);
-            activeProgress = null;
-            activeProgressJobId = -1;
-            lastReportUtc = DateTime.MinValue;
+            await DisposeProgressAsync(uiDispatcher, progressToClose, progressLock).ConfigureAwait(false);
+            lock (progressLock)
+            {
+              if (activeProgress == progressToClose)
+              {
+                activeProgress = null;
+                activeProgressJobId = -1;
+                lastReportUtc = DateTime.MinValue;
+              }
+            }
           }
+
+          await SwitchProgressToCurrentJobAsync(
+            uiDispatcher,
+            jobCoordinator,
+            progressLock,
+            () => activeProgress,
+            session => activeProgress = session,
+            () => activeProgressJobId,
+            jobId => activeProgressJobId = jobId,
+            utc => lastReportUtc = utc,
+            ReplaceProgressShowCts).ConfigureAwait(false);
         }
       }
       catch (OperationCanceledException)
@@ -202,99 +391,281 @@ namespace IndigoMovieManager
       }
       finally
       {
+        s_cancelPendingProgressShow = null;
+        s_dismissActiveProgress = null;
         CancelPendingProgressShow();
-        if (activeProgress != null)
+        ThumbnailProgressSession progressToDispose;
+        lock (progressLock)
         {
-          await DisposeProgressAsync(uiDispatcher, activeProgress, progressLock).ConfigureAwait(false);
+          progressToDispose = activeProgress;
+          activeProgress = null;
+        }
+
+        if (progressToDispose != null)
+        {
+          await DisposeProgressAsync(uiDispatcher, progressToDispose, progressLock).ConfigureAwait(false);
         }
       }
     }
 
-    private static async Task ShowProgressAfterDelayAsync(
+    private static bool IsProgressShowAllowedNow(
+      ThumbnailJobCoordinator jobCoordinator,
+      int jobIdToShow,
+      int jobSwitchToken)
+    {
+      if (jobCoordinator.JobSwitchToken != jobSwitchToken)
+      {
+        return false;
+      }
+
+      ThumbnailJobCoordinator.Snapshot snapshot = jobCoordinator.GetSnapshot(jobIdToShow);
+      return snapshot.JobId == jobIdToShow
+        && snapshot.Total > 0
+        && snapshot.InFlight > 0
+        && !snapshot.IsComplete
+        && !snapshot.Abandoned
+        && jobIdToShow == jobCoordinator.CurrentJobId;
+    }
+
+    private static async Task MaybeShowProgressAfterMarkInFlightAsync(
       Dispatcher uiDispatcher,
-      NotificationManager notificationManager,
       ThumbnailJobCoordinator jobCoordinator,
       object progressLock,
-      Func<IDisposable> getActiveProgress,
-      Action<IDisposable> setActiveProgress,
+      Func<ThumbnailProgressSession> getActiveProgress,
+      Action<ThumbnailProgressSession> setActiveProgress,
       Func<int> getActiveProgressJobId,
       Action<int> setActiveProgressJobId,
-      Func<DateTime> getLastReportUtc,
+      Action<DateTime> setLastReportUtc,
+      QueueObj item)
+    {
+      if (item == null || item.JobId == ThumbnailJobCoordinator.SilentJobId)
+      {
+        return;
+      }
+
+      int jobId = item.JobId;
+      ThumbnailJobCoordinator.Snapshot snapshot = jobCoordinator.GetSnapshot(jobId);
+      int jobSwitchToken = jobCoordinator.JobSwitchToken;
+      int delayMs = snapshot.Total > 1 ? 0 : ProgressShowDelayMs;
+
+      lock (progressLock)
+      {
+        if (getActiveProgress() != null || getActiveProgressJobId() != -1)
+        {
+          return;
+        }
+      }
+
+      if (!IsProgressShowAllowedNow(jobCoordinator, jobId, jobSwitchToken))
+      {
+        return;
+      }
+
+      if (delayMs > 0)
+      {
+        await Task.Delay(delayMs).ConfigureAwait(false);
+      }
+
+      if (!IsProgressShowAllowedNow(jobCoordinator, jobId, jobSwitchToken))
+      {
+        return;
+      }
+
+      ThumbnailProgressSession session = await TryActivateProgressOnUiAsync(
+        uiDispatcher,
+        jobCoordinator,
+        progressLock,
+        getActiveProgress,
+        setActiveProgress,
+        getActiveProgressJobId,
+        setActiveProgressJobId,
+        setLastReportUtc,
+        jobId,
+        snapshot.PrimaryTabIndex,
+        jobSwitchToken).ConfigureAwait(false);
+
+      if (session == null)
+      {
+        return;
+      }
+
+      if (!IsProgressShowAllowedNow(jobCoordinator, jobId, jobSwitchToken))
+      {
+        await AbandonActivatedSessionAsync(
+          uiDispatcher,
+          progressLock,
+          getActiveProgress,
+          setActiveProgress,
+          getActiveProgressJobId,
+          setActiveProgressJobId,
+          setLastReportUtc,
+          session).ConfigureAwait(false);
+        return;
+      }
+
+      snapshot = jobCoordinator.GetSnapshot(jobId);
+      try
+      {
+        await ReportProgressOnUiAsync(
+          uiDispatcher,
+          session,
+          jobCoordinator,
+          jobId,
+          snapshot.Completed,
+          snapshot.Total,
+          item.MovieFullPath ?? string.Empty).ConfigureAwait(false);
+      }
+      catch (Exception ex)
+      {
+        Debug.WriteLine($"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : [thumb-progress] {ex.Message}");
+      }
+    }
+
+    private static async Task AbandonActivatedSessionAsync(
+      Dispatcher uiDispatcher,
+      object progressLock,
+      Func<ThumbnailProgressSession> getActiveProgress,
+      Action<ThumbnailProgressSession> setActiveProgress,
+      Func<int> getActiveProgressJobId,
+      Action<int> setActiveProgressJobId,
+      Action<DateTime> setLastReportUtc,
+      ThumbnailProgressSession session)
+    {
+      lock (progressLock)
+      {
+        if (getActiveProgress() == session)
+        {
+          setActiveProgress(null);
+          setActiveProgressJobId(-1);
+          setLastReportUtc(DateTime.MinValue);
+        }
+      }
+
+      await DisposeProgressAsync(uiDispatcher, session, progressLock).ConfigureAwait(false);
+    }
+
+    private static Task<ThumbnailProgressSession> TryActivateProgressOnUiAsync(
+      Dispatcher uiDispatcher,
+      ThumbnailJobCoordinator jobCoordinator,
+      object progressLock,
+      Func<ThumbnailProgressSession> getActiveProgress,
+      Action<ThumbnailProgressSession> setActiveProgress,
+      Func<int> getActiveProgressJobId,
+      Action<int> setActiveProgressJobId,
       Action<DateTime> setLastReportUtc,
       int jobIdToShow,
       int primaryTabIndex,
-      CancellationToken showToken)
+      int jobSwitchToken)
     {
-      try
+      ThumbnailProgressSession Activate()
       {
-        await Task.Delay(ProgressShowDelayMs, showToken).ConfigureAwait(false);
-
-        ThumbnailJobCoordinator.Snapshot snapshot = jobCoordinator.GetSnapshot();
-        if (snapshot.JobId != jobIdToShow || snapshot.IsComplete)
+        if (!IsProgressShowAllowedNow(jobCoordinator, jobIdToShow, jobSwitchToken))
         {
-          return;
+          return null;
         }
 
         lock (progressLock)
         {
           if (getActiveProgress() != null || getActiveProgressJobId() != -1)
           {
-            return;
+            return null;
           }
-        }
 
-        snapshot = jobCoordinator.GetSnapshot();
-        if (snapshot.JobId != jobIdToShow || snapshot.IsComplete)
-        {
-          return;
-        }
-
-        IDisposable progress = await ShowProgressOnUiAsync(
-          uiDispatcher,
-          notificationManager,
-          primaryTabIndex).ConfigureAwait(false);
-
-        lock (progressLock)
-        {
-          if (getActiveProgress() != null)
+          if (!IsProgressShowAllowedNow(jobCoordinator, jobIdToShow, jobSwitchToken))
           {
-            progress.Dispose();
-            return;
+            return null;
           }
 
-          snapshot = jobCoordinator.GetSnapshot();
-          if (snapshot.JobId != jobIdToShow || snapshot.IsComplete)
-          {
-            progress.Dispose();
-            return;
-          }
-
-          setActiveProgress(progress);
+          ThumbnailProgressSession session = new(primaryTabIndex, jobSwitchToken);
+          setActiveProgress(session);
           setActiveProgressJobId(jobIdToShow);
           setLastReportUtc(DateTime.MinValue);
-        }
-
-        string initialTitle = $"{GetTabProgressTitle(primaryTabIndex)} ({snapshot.Completed}/{snapshot.Total})";
-        double initialProgress = snapshot.Total > 0
-          ? (double)snapshot.Completed * 100d / snapshot.Total
-          : 0d;
-
-        try
-        {
-          await ReportProgressOnUiAsync(
-            uiDispatcher,
-            progress,
-            initialProgress,
-            string.Empty,
-            initialTitle).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-          Debug.WriteLine($"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : [thumb-progress] {ex.Message}");
+          return session;
         }
       }
-      catch (OperationCanceledException)
+
+      if (uiDispatcher == null || uiDispatcher.HasShutdownStarted)
       {
+        return Task.FromResult(Activate());
+      }
+
+      if (uiDispatcher.CheckAccess())
+      {
+        return Task.FromResult(Activate());
+      }
+
+      return uiDispatcher.InvokeAsync(Activate, DispatcherPriority.Send).Task;
+    }
+
+    private static async Task SwitchProgressToCurrentJobAsync(
+      Dispatcher uiDispatcher,
+      ThumbnailJobCoordinator jobCoordinator,
+      object progressLock,
+      Func<ThumbnailProgressSession> getActiveProgress,
+      Action<ThumbnailProgressSession> setActiveProgress,
+      Func<int> getActiveProgressJobId,
+      Action<int> setActiveProgressJobId,
+      Action<DateTime> setLastReportUtc,
+      Action<CancellationTokenSource> assignProgressShowCts)
+    {
+      int currentJobId = jobCoordinator.CurrentJobId;
+      ThumbnailProgressSession progressToClose;
+      int trackedJobId;
+
+      lock (progressLock)
+      {
+        progressToClose = getActiveProgress();
+        trackedJobId = getActiveProgressJobId();
+      }
+
+      if (progressToClose == null || trackedJobId <= 0 || trackedJobId == currentJobId)
+      {
+        return;
+      }
+
+      await DismissActiveProgressSilentlyAsync(
+        uiDispatcher,
+        progressLock,
+        getActiveProgress,
+        setActiveProgress,
+        getActiveProgressJobId,
+        setActiveProgressJobId,
+        setLastReportUtc,
+        assignProgressShowCts).ConfigureAwait(false);
+    }
+
+    private static async Task DismissActiveProgressSilentlyAsync(
+      Dispatcher uiDispatcher,
+      object progressLock,
+      Func<ThumbnailProgressSession> getActiveProgress,
+      Action<ThumbnailProgressSession> setActiveProgress,
+      Func<int> getActiveProgressJobId,
+      Action<int> setActiveProgressJobId,
+      Action<DateTime> setLastReportUtc,
+      Action<CancellationTokenSource> assignProgressShowCts)
+    {
+      assignProgressShowCts(null);
+
+      ThumbnailProgressSession progressToClose;
+      lock (progressLock)
+      {
+        progressToClose = getActiveProgress();
+      }
+
+      if (progressToClose == null)
+      {
+        return;
+      }
+
+      await DisposeProgressAsync(uiDispatcher, progressToClose, progressLock).ConfigureAwait(false);
+      lock (progressLock)
+      {
+        if (getActiveProgress() == progressToClose)
+        {
+          setActiveProgress(null);
+          setActiveProgressJobId(-1);
+          setLastReportUtc(DateTime.MinValue);
+        }
       }
     }
 
@@ -317,67 +688,23 @@ namespace IndigoMovieManager
       return false;
     }
 
-    private static Task<NotificationManager> CreateNotificationManagerAsync(Dispatcher uiDispatcher)
-    {
-      if (uiDispatcher == null || uiDispatcher.HasShutdownStarted)
-      {
-        return Task.FromResult(new NotificationManager());
-      }
-
-      if (uiDispatcher.CheckAccess())
-      {
-        return Task.FromResult(new NotificationManager());
-      }
-
-      return uiDispatcher.InvokeAsync(() => new NotificationManager()).Task;
-    }
-
-    private static Task<IDisposable> ShowProgressOnUiAsync(
-      Dispatcher uiDispatcher,
-      NotificationManager notificationManager,
-      int primaryTabIndex)
-    {
-      if (uiDispatcher == null || uiDispatcher.HasShutdownStarted)
-      {
-        return Task.FromResult(CreateProgressBar(notificationManager, primaryTabIndex));
-      }
-
-      if (uiDispatcher.CheckAccess())
-      {
-        return Task.FromResult(CreateProgressBar(notificationManager, primaryTabIndex));
-      }
-
-      return uiDispatcher.InvokeAsync(() => CreateProgressBar(notificationManager, primaryTabIndex)).Task;
-    }
-
-    private static IDisposable CreateProgressBar(NotificationManager notificationManager, int primaryTabIndex)
-    {
-      return notificationManager.ShowProgressBar(
-        GetTabProgressTitle(primaryTabIndex),
-        true,
-        false,
-        "ProgressArea",
-        false,
-        2,
-        "");
-    }
-
     private static Task ReportProgressOnUiAsync(
       Dispatcher uiDispatcher,
-      IDisposable progress,
-      double totalProgress,
-      string message,
-      string reportTitle)
+      ThumbnailProgressSession session,
+      ThumbnailJobCoordinator coordinator,
+      int jobId,
+      int completed,
+      int total,
+      string detail)
     {
-      if (progress == null)
+      if (session == null || coordinator == null)
       {
         return Task.CompletedTask;
       }
 
       void Report()
       {
-        dynamic progressReporter = progress;
-        progressReporter.Report((totalProgress, message, reportTitle, false));
+        session.TryReport(coordinator, jobId, completed, total, detail);
       }
 
       if (uiDispatcher == null || uiDispatcher.HasShutdownStarted)
@@ -392,7 +719,7 @@ namespace IndigoMovieManager
         return Task.CompletedTask;
       }
 
-      return uiDispatcher.InvokeAsync(Report, DispatcherPriority.Background).Task;
+      return uiDispatcher.InvokeAsync(Report, DispatcherPriority.Send).Task;
     }
 
     private static List<QueueObj> DequeueBatch(ConcurrentQueue<QueueObj> queueThumb, object queueSync)
@@ -416,10 +743,10 @@ namespace IndigoMovieManager
 
     private static Task DisposeProgressAsync(
       Dispatcher uiDispatcher,
-      IDisposable progress,
+      ThumbnailProgressSession session,
       object progressLock)
     {
-      if (progress == null)
+      if (session == null)
       {
         return Task.CompletedTask;
       }
@@ -428,7 +755,7 @@ namespace IndigoMovieManager
       {
         lock (progressLock)
         {
-          progress.Dispose();
+          session.Dispose();
         }
 
         return Task.CompletedTask;
@@ -438,7 +765,7 @@ namespace IndigoMovieManager
       {
         lock (progressLock)
         {
-          progress.Dispose();
+          session.Dispose();
         }
 
         return Task.CompletedTask;
@@ -448,7 +775,7 @@ namespace IndigoMovieManager
       {
         lock (progressLock)
         {
-          progress.Dispose();
+          session.Dispose();
         }
       }, DispatcherPriority.Background).Task;
     }
@@ -485,19 +812,6 @@ namespace IndigoMovieManager
       }
 
       return parallelism;
-    }
-
-    private static string GetTabProgressTitle(int tabIndex)
-    {
-      return tabIndex switch
-      {
-        0 => "サムネイル作成中(Small)",
-        1 => "サムネイル作成中(Big)",
-        2 => "サムネイル作成中(Grid)",
-        3 => "サムネイル作成中(List)",
-        4 => "サムネイル作成中(Big10)",
-        _ => "サムネイル作成中",
-      };
     }
   }
 }

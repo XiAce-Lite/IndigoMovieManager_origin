@@ -53,15 +53,7 @@ namespace IndigoMovieManager.Thumbnail
                 }
             }
 
-            string baseDir = AppContext.BaseDirectory;
-            string[] bundledCandidates =
-            [
-                Path.Combine(baseDir, "ffmpeg", "ffmpeg.exe"),
-                Path.Combine(baseDir, "tools", "ffmpeg", "ffmpeg.exe"),
-                Path.Combine(baseDir, "ffmpeg.exe"),
-            ];
-
-            foreach (string candidate in bundledCandidates)
+            foreach (string candidate in GetBundledToolCandidates("ffmpeg.exe"))
             {
                 if (File.Exists(candidate))
                 {
@@ -71,6 +63,44 @@ namespace IndigoMovieManager.Thumbnail
             }
 
             return false;
+        }
+
+        public static bool TryResolveFfprobe(out string ffprobeExePath)
+        {
+            ffprobeExePath = "";
+
+            if (TryResolve(out string ffmpegExePath))
+            {
+                string sibling = Path.Combine(Path.GetDirectoryName(ffmpegExePath) ?? "", "ffprobe.exe");
+                if (File.Exists(sibling))
+                {
+                    ffprobeExePath = sibling;
+                    return true;
+                }
+            }
+
+            foreach (string candidate in GetBundledToolCandidates("ffprobe.exe"))
+            {
+                if (File.Exists(candidate))
+                {
+                    ffprobeExePath = candidate;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static IEnumerable<string> GetBundledToolCandidates(string fileName)
+        {
+            string baseDir = AppContext.BaseDirectory;
+            return
+            [
+                Path.Combine(baseDir, "ffmpeg", fileName),
+                Path.Combine(baseDir, "tools", "ffmpeg", fileName),
+                Path.Combine(baseDir, "tools", fileName),
+                Path.Combine(baseDir, fileName),
+            ];
         }
     }
 }

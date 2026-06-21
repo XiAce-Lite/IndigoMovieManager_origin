@@ -29,7 +29,7 @@ namespace IndigoMovieManager.Thumbnail
 
             try
             {
-                using VideoCapture capture = new(ctx.MovieFullPath);
+                using VideoCapture capture = OpenVideoCapture(ctx.MovieFullPath);
                 capture.Grab();
 
                 if (!capture.IsOpened())
@@ -137,6 +137,18 @@ namespace IndigoMovieManager.Thumbnail
             {
                 return ThumbnailCreateResult.Failed(ex.Message);
             }
+        }
+
+        private static VideoCapture OpenVideoCapture(string movieFullPath)
+        {
+            VideoCapture ffmpegCapture = new(movieFullPath, VideoCaptureAPIs.FFMPEG);
+            if (ffmpegCapture.IsOpened())
+            {
+                return ffmpegCapture;
+            }
+
+            ffmpegCapture.Dispose();
+            return new VideoCapture(movieFullPath);
         }
 
         private static void DeleteOldTempFiles(ThumbnailJobContext ctx)

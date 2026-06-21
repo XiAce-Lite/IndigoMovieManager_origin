@@ -341,14 +341,22 @@ namespace IndigoMovieManager
                 return work;
             }
 
-            var thumbProp = typeof(MovieRecords).GetProperty(ThumbPathPropertyNames[tabIndex]);
-
             foreach (MovieRecords item in filterList)
             {
-                string thumbPath = thumbProp?.GetValue(item)?.ToString();
-                if (thumbPath != null
-                    && thumbPath.Contains("error", StringComparison.CurrentCultureIgnoreCase)
-                    && !thumbnailJob.IsTracked(item.Movie_Id, tabIndex))
+                if (string.IsNullOrWhiteSpace(item.Movie_Path) || !Path.Exists(item.Movie_Path))
+                {
+                    continue;
+                }
+
+                string fileBody = Path.GetFileNameWithoutExtension(item.Movie_Name ?? item.Movie_Path ?? string.Empty);
+                string hash = !string.IsNullOrWhiteSpace(item.Hash) ? item.Hash : GetHashCRC32(item.Movie_Path);
+                string expectedPath = _thumbLayoutCache.GetExpectedThumbPath(tabIndex, fileBody, hash);
+                if (File.Exists(expectedPath))
+                {
+                    continue;
+                }
+
+                if (!thumbnailJob.IsTracked(item.Movie_Id, tabIndex))
                 {
                     work.Add(new QueueObj
                     {
@@ -364,17 +372,20 @@ namespace IndigoMovieManager
 
         private void StartTabSwitchThumbnailJob(int tabIndex)
         {
+            ThumbnailQueueProcessor.RequestDismissProgress();
             ClearThumbnailQueue();
 
             List<QueueObj> work = BuildTabSwitchThumbnailWork(tabIndex);
-            if (work.Count == 0)
-            {
-                return;
-            }
 
             lock (thumbnailQueueSync)
             {
                 int jobId = thumbnailJob.BeginJob(tabIndex);
+                if (work.Count == 0)
+                {
+                    ThumbnailQueueProcessor.RequestDismissProgress();
+                    return;
+                }
+
                 List<QueueObj> accepted = thumbnailJob.RegisterWork(jobId, work);
                 foreach (QueueObj item in accepted)
                 {
@@ -1066,13 +1077,10 @@ namespace IndigoMovieManager
                         UpdateBookmarkRename(MainVM.DbInfo.DBFullPath, checkFileName, item.Movie_Name);
                     }
                 }
-                await Dispatcher.BeginInvoke(new Action(() =>
-                {
-                    GetBookmarkTable();
-                    BookmarkList.Items.Refresh();
-                    FilterAndSort(MainVM.DbInfo.Sort, true);
-                    Refresh();
-                }));
+                GetBookmarkTable();
+                BookmarkList.Items.Refresh();
+                await FilterAndSortAsync(MainVM.DbInfo.Sort, true).ConfigureAwait(true);
+                Refresh();
             }
             catch (Exception)
             {
@@ -2045,7 +2053,7 @@ namespace IndigoMovieManager
         //
         //
         //
-        private void ReloadButton_Click(object sender, RoutedEventArgs e)
+        private async void ReloadButton_Click(object sender, RoutedEventArgs e)
         {
             // フォルダの最新状態をDBに反映
             //await CheckFolderAsync(CheckMode.Auto);
@@ -2053,7 +2061,7 @@ namespace IndigoMovieManager
             // ブックマーク・リスト等の再取得
             GetBookmarkTable();
             BookmarkList.Items.Refresh();
-            FilterAndSort(MainVM.DbInfo.Sort, true);
+            await FilterAndSortAsync(MainVM.DbInfo.Sort, true).ConfigureAwait(true);
             Refresh();
         }
 
@@ -3185,6 +3193,7 @@ namespace IndigoMovieManager
 
             if (!ThumbnailJobPreparer.TryBuildThumbInfo(ctx, durationSec, out ThumbInfo thumbInfo))
             {
+                ApplyThumbnailFailurePlaceholder(queueObj, saveThumbFileName);
                 return;
             }
 
@@ -3197,13 +3206,16 @@ namespace IndigoMovieManager
                     .TryCreateAsync(ctx, thumbInfo, cts)
                     .ConfigureAwait(false);
 
-                bool needFallback =
-                    !openCvResult.Success
-                    || ThumbnailDuplicateDetector.HasDuplicatePanels(openCvResult.PanelPaths);
-
-                if (!needFallback)
+                if (openCvResult.Success)
                 {
-                    created = openCvResult.Success;
+                    if (ThumbnailDuplicateDetector.HasDuplicatePanels(openCvResult.PanelPaths))
+                    {
+                        Debug.WriteLine(
+                            $"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : [thumb] duplicate panels accepted (opencv)"
+                        );
+                    }
+
+                    created = true;
                 }
                 else
                 {
@@ -3211,13 +3223,6 @@ namespace IndigoMovieManager
                     {
                         Debug.WriteLine(
                             $"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : [thumb] opencv: {openCvResult.FailureReason}"
-                        );
-                    }
-
-                    if (ThumbnailDuplicateDetector.HasDuplicatePanels(openCvResult.PanelPaths))
-                    {
-                        Debug.WriteLine(
-                            $"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : [thumb] duplicate panels detected → ffmpeg fallback"
                         );
                     }
 
@@ -3257,6 +3262,20 @@ namespace IndigoMovieManager
             {
                 ApplyThumbPathsOnUi(queueObj, saveThumbFileName);
             }
+            else
+            {
+                ApplyThumbnailFailurePlaceholder(queueObj, saveThumbFileName);
+            }
+        }
+
+        private void ApplyThumbnailFailurePlaceholder(QueueObj queueObj, string saveThumbFileName)
+        {
+            if (!ThumbnailFailurePlaceholder.TryWrite(_thumbLayoutCache, queueObj.Tabindex, saveThumbFileName))
+            {
+                return;
+            }
+
+            ApplyThumbPathsOnUi(queueObj, saveThumbFileName);
         }
 
         private void ApplyThumbPathsOnUi(QueueObj queueObj, string saveThumbFileName)

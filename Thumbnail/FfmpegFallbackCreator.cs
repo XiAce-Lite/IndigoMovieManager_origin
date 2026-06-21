@@ -1,3 +1,5 @@
+using System.Drawing;
+using System.Drawing.Imaging;
 using System.Globalization;
 using System.IO;
 using System.Text;
@@ -33,6 +35,47 @@ namespace IndigoMovieManager.Thumbnail
                 return ThumbnailCreateResult.Failed("thumb sec list is empty");
             }
 
+            ThumbnailCreateResult tiledResult = await TryCreateTiledAsync(
+                ctx,
+                thumbInfo,
+                durationSec,
+                ffmpegExePath,
+                cts).ConfigureAwait(false);
+
+            if (tiledResult.Success)
+            {
+                return tiledResult;
+            }
+
+            ThumbnailCreateResult singleFrameResult = await TryCreateSingleFrameFallbackAsync(
+                ctx,
+                thumbInfo,
+                durationSec,
+                ffmpegExePath,
+                cts).ConfigureAwait(false);
+
+            if (singleFrameResult.Success)
+            {
+                return singleFrameResult;
+            }
+
+            string reason = tiledResult.FailureReason ?? "ffmpeg failed";
+            if (!string.IsNullOrWhiteSpace(singleFrameResult.FailureReason))
+            {
+                reason = $"{reason}; single-frame: {singleFrameResult.FailureReason}";
+            }
+
+            return ThumbnailCreateResult.Failed(reason);
+        }
+
+        private static async Task<ThumbnailCreateResult> TryCreateTiledAsync(
+            ThumbnailJobContext ctx,
+            ThumbInfo thumbInfo,
+            double durationSec,
+            string ffmpegExePath,
+            CancellationToken cts
+        )
+        {
             int panelCount = thumbInfo.ThumbSec.Count;
             int cols = ctx.TabInfo.Columns;
             int rows = ctx.TabInfo.Rows;
@@ -43,14 +86,17 @@ namespace IndigoMovieManager.Thumbnail
 
             (int targetWidth, int targetHeight) = ResolveTargetSize(ctx);
             double startSec = Math.Max(0, thumbInfo.ThumbSec[0]);
-            double intervalSec = ResolveFrameIntervalSec(thumbInfo.ThumbSec, durationSec, panelCount);
+            double samplingDuration = ThumbnailSamplingPolicy.GetEffectiveSamplingDuration(
+                durationSec,
+                ctx.IsManual);
+            double intervalSec = ResolveFrameIntervalSec(thumbInfo.ThumbSec, samplingDuration, panelCount);
             string vf = BuildTileFilter(
                 intervalSec,
                 targetWidth,
                 targetHeight,
                 cols,
                 rows,
-                durationSec,
+                samplingDuration,
                 panelCount
             );
 
@@ -97,6 +143,150 @@ namespace IndigoMovieManager.Thumbnail
 
             ThumbnailMetadataWriter.AppendMetadata(ctx.SaveThumbFileName, thumbInfo);
             return ThumbnailCreateResult.Succeeded([ctx.SaveThumbFileName]);
+        }
+
+        /// <summary>
+        /// タイル合成に失敗したファイル向け。1 フレームだけ抽出し、同一画像を並べてサムネを構成する。
+        /// </summary>
+        private static async Task<ThumbnailCreateResult> TryCreateSingleFrameFallbackAsync(
+            ThumbnailJobContext ctx,
+            ThumbInfo thumbInfo,
+            double durationSec,
+            string ffmpegExePath,
+            CancellationToken cts
+        )
+        {
+            int panelCount = thumbInfo.ThumbSec.Count;
+            int cols = ctx.TabInfo.Columns;
+            int rows = ctx.TabInfo.Rows;
+            (int targetWidth, int targetHeight) = ResolveTargetSize(ctx);
+            int jpegQuality = ResolveJpegQuality();
+            string tempFile = Path.Combine(ctx.TempPath, $"tn_{ctx.TempFileBody}_ffsingle.jpg");
+            string lastError = "single-frame extract failed";
+
+            foreach (double seekSec in BuildSingleFrameSeekPoints(durationSec, thumbInfo))
+            {
+                if (File.Exists(tempFile))
+                {
+                    File.Delete(tempFile);
+                }
+
+                string seekText = seekSec.ToString("0.###", CultureInfo.InvariantCulture);
+                List<string> args =
+                [
+                    "-y",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-an",
+                    "-sn",
+                    "-dn",
+                    "-ss",
+                    seekText,
+                    "-i",
+                    ctx.MovieFullPath,
+                    "-frames:v",
+                    "1",
+                    "-pix_fmt",
+                    "yuv420p",
+                    "-q:v",
+                    jpegQuality.ToString(CultureInfo.InvariantCulture),
+                    "-vf",
+                    BuildAspectFitScaleAndPadFilter(targetWidth, targetHeight),
+                    tempFile,
+                ];
+
+                (bool ok, string stderr) = await FfmpegProcessRunner
+                    .RunAsync(ffmpegExePath, args, TimeSpan.FromSeconds(90), cts)
+                    .ConfigureAwait(false);
+
+                if (!ok || !File.Exists(tempFile))
+                {
+                    lastError = string.IsNullOrWhiteSpace(stderr) ? lastError : stderr;
+                    continue;
+                }
+
+                try
+                {
+                    List<string> panelPaths = [];
+                    for (int i = 0; i < panelCount; i++)
+                    {
+                        panelPaths.Add(tempFile);
+                    }
+
+                    using Bitmap bmp = ConcatImages(panelPaths, cols, rows);
+                    if (bmp == null)
+                    {
+                        lastError = "single-frame concat failed";
+                        continue;
+                    }
+
+                    if (File.Exists(ctx.SaveThumbFileName))
+                    {
+                        File.Delete(ctx.SaveThumbFileName);
+                    }
+
+                    bmp.Save(ctx.SaveThumbFileName, ImageFormat.Jpeg);
+                    ThumbnailMetadataWriter.AppendMetadata(ctx.SaveThumbFileName, thumbInfo);
+                    return ThumbnailCreateResult.Succeeded([ctx.SaveThumbFileName]);
+                }
+                catch (Exception ex)
+                {
+                    lastError = ex.Message;
+                }
+                finally
+                {
+                    if (File.Exists(tempFile))
+                    {
+                        File.Delete(tempFile);
+                    }
+                }
+            }
+
+            return ThumbnailCreateResult.Failed(lastError);
+        }
+
+        private static IEnumerable<double> BuildSingleFrameSeekPoints(double durationSec, ThumbInfo thumbInfo)
+        {
+            LinkedList<double> points = [];
+            double maxSeekSec = ThumbnailSamplingPolicy.GetEffectiveSamplingDuration(durationSec, isManual: false);
+            if (maxSeekSec <= 0d)
+            {
+                maxSeekSec = ThumbnailSamplingPolicy.VirtualDurationWindowSec;
+            }
+
+            void Add(double sec)
+            {
+                if (sec < 0)
+                {
+                    return;
+                }
+
+                if (sec > maxSeekSec)
+                {
+                    return;
+                }
+
+                if (!points.Any(existing => Math.Abs(existing - sec) < 0.001d))
+                {
+                    points.AddLast(sec);
+                }
+            }
+
+            if (thumbInfo.ThumbSec.Count > 0)
+            {
+                Add(thumbInfo.ThumbSec[0]);
+            }
+
+            Add(1d);
+            Add(0d);
+
+            if (durationSec > 2 && maxSeekSec >= durationSec * 0.5d)
+            {
+                Add(durationSec * 0.5d);
+            }
+
+            return points;
         }
 
         private static (int width, int height) ResolveTargetSize(ThumbnailJobContext ctx)
@@ -172,7 +362,7 @@ namespace IndigoMovieManager.Thumbnail
             );
 
             string scaleWidthExpr =
-                $"if(lte(abs(dar-{targetAspectText}),0.01),{width},if(gte(dar,{targetAspectText}),{width},-2))";
+                $"if(lte(abs(dar-{targetAspectText}),0.01),{width},if(gte(dar-{targetAspectText}),{width},-2))";
             string scaleHeightExpr =
                 $"if(lte(abs(dar-{targetAspectText}),0.01),{height},if(gte(dar,{targetAspectText}),-2,{height}))";
 

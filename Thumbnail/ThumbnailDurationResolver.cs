@@ -1,5 +1,7 @@
-using OpenCvSharp;
+using System.Diagnostics;
+using System.Globalization;
 using System.IO;
+using OpenCvSharp;
 
 namespace IndigoMovieManager.Thumbnail
 {
@@ -15,35 +17,52 @@ namespace IndigoMovieManager.Thumbnail
 
             try
             {
-                using VideoCapture capture = new(movieFullPath);
+                using VideoCapture capture = OpenVideoCapture(movieFullPath);
                 capture.Grab();
 
-                if (!capture.IsOpened())
+                if (capture.IsOpened())
                 {
-                    durationSec = TryResolveFromShell(movieFullPath);
-                    return durationSec > 0;
+                    double frameCount = capture.Get(VideoCaptureProperties.FrameCount);
+                    double fps = capture.Get(VideoCaptureProperties.Fps);
+                    if (fps > 0 && frameCount > 0)
+                    {
+                        durationSec = Math.Truncate(frameCount / fps);
+                    }
                 }
-
-                double frameCount = capture.Get(VideoCaptureProperties.FrameCount);
-                double fps = capture.Get(VideoCaptureProperties.Fps);
-                if (fps > 0 && frameCount > 0)
-                {
-                    durationSec = Math.Truncate(frameCount / fps);
-                }
-
-                double durationFromShell = TryResolveFromShell(movieFullPath);
-                if (durationFromShell > 0 && durationSec != durationFromShell)
-                {
-                    durationSec = durationFromShell;
-                }
-
-                return durationSec > 0 || durationFromShell > 0;
             }
             catch
             {
-                durationSec = TryResolveFromShell(movieFullPath);
-                return durationSec > 0;
+                // OpenCV 取得失敗時は後段へ
             }
+
+            double durationFromShell = TryResolveFromShell(movieFullPath);
+            if (durationFromShell > 0)
+            {
+                durationSec = durationFromShell;
+            }
+
+            if (durationSec <= 0 && FfmpegPathResolver.TryResolveFfprobe(out string ffprobePath))
+            {
+                double durationFromFfprobe = TryResolveFromFfprobe(ffprobePath, movieFullPath);
+                if (durationFromFfprobe > 0)
+                {
+                    durationSec = durationFromFfprobe;
+                }
+            }
+
+            return durationSec > 0;
+        }
+
+        private static VideoCapture OpenVideoCapture(string movieFullPath)
+        {
+            VideoCapture ffmpegCapture = new(movieFullPath, VideoCaptureAPIs.FFMPEG);
+            if (ffmpegCapture.IsOpened())
+            {
+                return ffmpegCapture;
+            }
+
+            ffmpegCapture.Dispose();
+            return new VideoCapture(movieFullPath);
         }
 
         private static double TryResolveFromShell(string movieFullPath)
@@ -66,6 +85,58 @@ namespace IndigoMovieManager.Thumbnail
             catch
             {
                 // Shell32 取得失敗時は 0 のまま
+            }
+
+            return 0;
+        }
+
+        private static double TryResolveFromFfprobe(string ffprobeExePath, string movieFullPath)
+        {
+            if (string.IsNullOrWhiteSpace(ffprobeExePath) || !File.Exists(ffprobeExePath))
+            {
+                return 0;
+            }
+
+            try
+            {
+                ProcessStartInfo psi = new()
+                {
+                    FileName = ffprobeExePath,
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true,
+                };
+                psi.ArgumentList.Add("-v");
+                psi.ArgumentList.Add("error");
+                psi.ArgumentList.Add("-show_entries");
+                psi.ArgumentList.Add("format=duration");
+                psi.ArgumentList.Add("-of");
+                psi.ArgumentList.Add("default=noprint_wrappers=1:nokey=1");
+                psi.ArgumentList.Add(movieFullPath);
+
+                using Process process = Process.Start(psi);
+                if (process == null)
+                {
+                    return 0;
+                }
+
+                string output = process.StandardOutput.ReadToEnd();
+                process.WaitForExit();
+                if (process.ExitCode != 0)
+                {
+                    return 0;
+                }
+
+                if (double.TryParse(output.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out double duration)
+                    && duration > 0)
+                {
+                    return Math.Truncate(duration);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : [thumb] ffprobe: {ex.Message}");
             }
 
             return 0;

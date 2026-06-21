@@ -59,6 +59,22 @@ namespace IndigoMovieManager.Thumbnail
             return Path.Combine(ImagesBasePath, ErrorFileNames[errorIndex]);
         }
 
+        public string GetExpectedThumbPath(int tabIndex, string movieNameWithoutExt, string hash)
+        {
+            string thumbFileName = GetThumbFileName(movieNameWithoutExt, hash);
+            if (tabIndex == 99)
+            {
+                return Path.Combine(DetailOutPath, thumbFileName);
+            }
+
+            if (tabIndex < 0 || tabIndex >= TabOutPaths.Length)
+            {
+                return Path.Combine(TabOutPaths[0], thumbFileName);
+            }
+
+            return Path.Combine(TabOutPaths[tabIndex], thumbFileName);
+        }
+
         public static int GetTabIndexFromSkin(string skin)
         {
             if (string.IsNullOrWhiteSpace(skin))

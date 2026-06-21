@@ -4,6 +4,8 @@ namespace IndigoMovieManager.Thumbnail
 {
     internal static class ThumbnailJobPreparer
     {
+        private const int UnknownDurationIntervalSec = 10;
+
         public static bool TryBuildThumbInfo(
             ThumbnailJobContext ctx,
             double durationSec,
@@ -13,7 +15,6 @@ namespace IndigoMovieManager.Thumbnail
             thumbInfo = null;
             if (ctx == null) { return false; }
 
-            int divideSec = (int)(durationSec / ((ctx.TabInfo.Columns * ctx.TabInfo.Rows) + 1));
             thumbInfo = new ThumbInfo
             {
                 ThumbWidth = ctx.TabInfo.Width,
@@ -33,11 +34,33 @@ namespace IndigoMovieManager.Thumbnail
                     thumbInfo.ThumbSec[(int)ctx.QueueObj.ThumbPanelPos] = (int)ctx.QueueObj.ThumbTimePos;
                 }
             }
-            else
+            else if (durationSec > 0)
             {
+                ThumbnailSamplingPolicy.LogVirtualDurationIfNeeded(
+                    ctx.MovieFullPath,
+                    durationSec,
+                    ctx.IsManual);
+
+                double samplingDuration = ThumbnailSamplingPolicy.GetEffectiveSamplingDuration(
+                    durationSec,
+                    ctx.IsManual);
+
+                int divideSec = (int)(samplingDuration / (thumbInfo.ThumbCounts + 1));
+                if (divideSec < 1)
+                {
+                    divideSec = 1;
+                }
+
                 for (int i = 1; i < thumbInfo.ThumbCounts + 1; i++)
                 {
                     thumbInfo.Add(i * divideSec);
+                }
+            }
+            else
+            {
+                for (int i = 0; i < thumbInfo.ThumbCounts; i++)
+                {
+                    thumbInfo.Add(i * UnknownDurationIntervalSec);
                 }
             }
 

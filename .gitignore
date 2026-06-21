@@ -365,3 +365,11 @@ FodyWeavers.xsd
 # FFmpeg (local bundle only; too large for git)
 tools/ffmpeg/ffmpeg.exe
 **/ffmpeg/ffmpeg.exe
+tools/ffmpeg/ffplay.exe
+tools/ffmpeg/ffprobe.exe
+
+# Sinku (local bundle only; too large / licensed for git)
+tools/sinku/sinku.exe
+tools/sinku/Sinku.dll
+**/sinku/sinku.exe
+**/sinku/Sinku.dll

@@ -14,16 +14,26 @@ namespace IndigoMovieManager
       public int Total { get; init; }
       public int Completed { get; init; }
       public int InFlight { get; init; }
+      public bool Abandoned { get; init; }
 
-      public bool IsComplete => Total > 0 && Completed >= Total && InFlight <= 0;
+      public bool IsComplete =>
+        (Abandoned && InFlight <= 0)
+        || (Total > 0 && Completed >= Total && InFlight <= 0);
+    }
+
+    private sealed class JobState
+    {
+      public int PrimaryTabIndex { get; init; }
+      public int Total { get; set; }
+      public int Completed { get; set; }
+      public int InFlight { get; set; }
+      public bool Abandoned { get; set; }
     }
 
     private readonly object _lock = new();
     private int _jobId;
-    private int _primaryTabIndex;
-    private int _total;
-    private int _completed;
-    private int _inFlight;
+    private int _jobSwitchToken;
+    private readonly Dictionary<int, JobState> _jobs = [];
     private readonly HashSet<(long MovieId, int TabIndex)> _tracked = [];
 
     public int CurrentJobId
@@ -43,7 +53,18 @@ namespace IndigoMovieManager
       {
         lock (_lock)
         {
-          return _primaryTabIndex;
+          return _jobs.TryGetValue(_jobId, out JobState state) ? state.PrimaryTabIndex : 0;
+        }
+      }
+    }
+
+    public int JobSwitchToken
+    {
+      get
+      {
+        lock (_lock)
+        {
+          return _jobSwitchToken;
         }
       }
     }
@@ -52,11 +73,17 @@ namespace IndigoMovieManager
     {
       lock (_lock)
       {
+        if (_jobId > 0 && _jobs.TryGetValue(_jobId, out JobState previous))
+        {
+          previous.Abandoned = true;
+        }
+
         _jobId++;
-        _primaryTabIndex = primaryTabIndex;
-        _total = 0;
-        _completed = 0;
-        _inFlight = 0;
+        _jobSwitchToken++;
+        _jobs[_jobId] = new JobState
+        {
+          PrimaryTabIndex = primaryTabIndex,
+        };
         return _jobId;
       }
     }
@@ -82,9 +109,10 @@ namespace IndigoMovieManager
             continue;
           }
 
-          if (item.JobId == _jobId)
+          if (_jobs.TryGetValue(item.JobId, out JobState state))
           {
-            _total = Math.Max(0, _total - 1);
+            state.Total = Math.Max(state.Completed, state.Total - 1);
+            TryRemoveFinishedJob(item.JobId, state);
           }
         }
       }
@@ -137,9 +165,9 @@ namespace IndigoMovieManager
           }
 
           item.JobId = jobId;
-          if (jobId == _jobId)
+          if (_jobs.TryGetValue(jobId, out JobState state))
           {
-            _total++;
+            state.Total++;
           }
 
           accepted.Add(item);
@@ -149,37 +177,90 @@ namespace IndigoMovieManager
       return accepted;
     }
 
-    public void MarkInFlight(QueueObj item)
+    public bool ShouldProcess(QueueObj item)
     {
       if (item == null)
+      {
+        return false;
+      }
+
+      if (item.JobId == SilentJobId)
+      {
+        return true;
+      }
+
+      lock (_lock)
+      {
+        return item.JobId == _jobId
+          && _jobs.TryGetValue(item.JobId, out JobState state)
+          && !state.Abandoned;
+      }
+    }
+
+    /// <summary>
+    /// タブ切替などで不要になったキュー内アイテムを破棄する（進捗の Completed は増やさない）。
+    /// </summary>
+    public void TrySkipItem(QueueObj item)
+    {
+      if (item == null || item.JobId == SilentJobId)
       {
         return;
       }
 
       lock (_lock)
       {
-        if (item.JobId == _jobId)
+        if (!_tracked.Remove((item.MovieId, item.Tabindex)))
         {
-          _inFlight++;
+          return;
+        }
+
+        if (_jobs.TryGetValue(item.JobId, out JobState state))
+        {
+          state.Total = Math.Max(state.Completed, state.Total - 1);
+          TryRemoveFinishedJob(item.JobId, state);
         }
       }
     }
 
+    public void MarkInFlight(QueueObj item)
+    {
+      if (item == null || item.JobId == SilentJobId)
+      {
+        return;
+      }
+
+      lock (_lock)
+      {
+        if (_jobs.TryGetValue(item.JobId, out JobState state))
+        {
+          state.InFlight++;
+        }
+      }
+    }
+
+    /// <summary>
+    /// 完了処理を行い、完了したアイテムのジョブ単位スナップショットを返す。
+    /// </summary>
     public Snapshot TryComplete(QueueObj item)
     {
       lock (_lock)
       {
+        int reportJobId = _jobId;
+
         if (item != null)
         {
+          reportJobId = item.JobId;
           _tracked.Remove((item.MovieId, item.Tabindex));
-          if (item.JobId == _jobId)
+
+          if (item.JobId != SilentJobId && _jobs.TryGetValue(item.JobId, out JobState state))
           {
-            _inFlight = Math.Max(0, _inFlight - 1);
-            _completed++;
+            state.InFlight = Math.Max(0, state.InFlight - 1);
+            state.Completed++;
+            TryRemoveFinishedJob(item.JobId, state);
           }
         }
 
-        return CreateSnapshot();
+        return CreateSnapshot(reportJobId);
       }
     }
 
@@ -195,14 +276,34 @@ namespace IndigoMovieManager
     {
       lock (_lock)
       {
-        return CreateSnapshot();
+        return CreateSnapshot(_jobId);
       }
     }
 
-    private Snapshot CreateSnapshot()
+    public Snapshot GetSnapshot(int jobId)
     {
-      int total = _total;
-      int completed = _completed;
+      lock (_lock)
+      {
+        return CreateSnapshot(jobId);
+      }
+    }
+
+    private Snapshot CreateSnapshot(int jobId)
+    {
+      if (jobId == SilentJobId || !_jobs.TryGetValue(jobId, out JobState state))
+      {
+        return new Snapshot
+        {
+          JobId = jobId,
+          PrimaryTabIndex = 0,
+          Total = 0,
+          Completed = 0,
+          InFlight = 0,
+        };
+      }
+
+      int total = state.Total;
+      int completed = state.Completed;
       if (total < completed)
       {
         total = completed;
@@ -210,12 +311,30 @@ namespace IndigoMovieManager
 
       return new Snapshot
       {
-        JobId = _jobId,
-        PrimaryTabIndex = _primaryTabIndex,
+        JobId = jobId,
+        PrimaryTabIndex = state.PrimaryTabIndex,
         Total = total,
         Completed = completed,
-        InFlight = _inFlight,
+        InFlight = state.InFlight,
+        Abandoned = state.Abandoned,
       };
+    }
+
+    private void TryRemoveFinishedJob(int jobId, JobState state)
+    {
+      if (jobId == _jobId)
+      {
+        return;
+      }
+
+      bool finished = state.Abandoned
+        ? state.InFlight <= 0
+        : state.Total > 0 && state.Completed >= state.Total && state.InFlight <= 0;
+
+      if (finished)
+      {
+        _jobs.Remove(jobId);
+      }
     }
   }
 }
