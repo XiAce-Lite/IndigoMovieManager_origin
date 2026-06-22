@@ -2,6 +2,7 @@ using System.Data;
 using System.Data.SQLite;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using IndigoMovieManager.Services;
 
 namespace IndigoMovieManager.Data
 {

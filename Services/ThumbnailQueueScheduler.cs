@@ -90,6 +90,28 @@ namespace IndigoMovieManager.Services
             }
         }
 
+        public bool TryEnqueueManualWork(QueueObj item)
+        {
+            if (item == null)
+            {
+                return false;
+            }
+
+            lock (_sync)
+            {
+                if (!_jobCoordinator.TryRegisterManualWork(item))
+                {
+                    return false;
+                }
+
+                _queue.Enqueue(item);
+                return true;
+            }
+        }
+
+        public void CancelTrackedForMovie(long movieId) =>
+            _jobCoordinator.CancelTrackedForMovie(movieId);
+
         public List<QueueObj> BuildTabSwitchWork(
             int tabIndex,
             IEnumerable<MovieRecords> filterList,

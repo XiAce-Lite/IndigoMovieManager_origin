@@ -1,6 +1,7 @@
 ﻿using Force.Crc32;
 using OpenCvSharp;
 using OpenCvSharp.Extensions;
+using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Reflection;
@@ -208,7 +209,7 @@ namespace IndigoMovieManager
                         }
                         catch (Exception e)
                         {
-                            MessageBox.Show(e.Message, Assembly.GetExecutingAssembly().GetName().Name, MessageBoxButton.OK, MessageBoxImage.Error);
+                            Debug.WriteLine($"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : [thumb] GetThumbInfo: {e.Message}");
                             return;
                         }
                     }
@@ -238,12 +239,22 @@ namespace IndigoMovieManager
 
             // 既存テンプファイルの削除
             var oldTempFiles = Directory.GetFiles(tempPath, $"*.jpg", SearchOption.AllDirectories);
+            DateTime recentThreshold = DateTime.UtcNow.AddMinutes(-10);
             foreach (var oldFile in oldTempFiles)
             {
-                if (File.Exists(oldFile))
+                if (!File.Exists(oldFile))
                 {
-                    File.Delete(oldFile);
+                    continue;
                 }
+
+                string name = Path.GetFileName(oldFile);
+                if (name.StartsWith("tn_", StringComparison.OrdinalIgnoreCase)
+                    && File.GetLastWriteTimeUtc(oldFile) > recentThreshold)
+                {
+                    continue;
+                }
+
+                File.Delete(oldFile);
             }
         }
 

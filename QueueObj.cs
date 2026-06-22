@@ -8,8 +8,10 @@
         private string _movieFullPath;
         private int? _thumbPanelPos = null;
         private int? _thumbTimePos = null;
+        private bool _isManual;
 
         public int JobId { get { return _jobId; } set { _jobId = value; } }
+        public bool IsManual { get { return _isManual; } set { _isManual = value; } }
         public int TabIndex { get { return _tabIndex; } set { _tabIndex = value; } }
         public int Tabindex { get { return TabIndex; } set { TabIndex = value; } }
         public long MovieId { get { return _movieId; } set { _movieId = value; } }

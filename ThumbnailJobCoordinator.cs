@@ -35,6 +35,7 @@ namespace IndigoMovieManager
     private int _jobSwitchToken;
     private readonly Dictionary<int, JobState> _jobs = [];
     private readonly HashSet<(long MovieId, int TabIndex)> _tracked = [];
+    private readonly HashSet<(long MovieId, int TabIndex)> _inFlight = [];
 
     public int CurrentJobId
     {
@@ -141,6 +142,60 @@ namespace IndigoMovieManager
       }
     }
 
+    /// <summary>
+    /// 手動サムネ用。in-flight 中でなければ tracked を更新してキュー投入可能にする。
+    /// </summary>
+    public bool TryRegisterManualWork(QueueObj item)
+    {
+      if (item == null)
+      {
+        return false;
+      }
+
+      lock (_lock)
+      {
+        var key = (item.MovieId, item.Tabindex);
+        if (_inFlight.Contains(key))
+        {
+          return false;
+        }
+
+        _tracked.Remove(key);
+        if (!_tracked.Add(key))
+        {
+          return false;
+        }
+
+        item.JobId = SilentJobId;
+        return true;
+      }
+    }
+
+    public void CancelTrackedForMovie(long movieId)
+    {
+      lock (_lock)
+      {
+        List<(long MovieId, int TabIndex)> keys = [.. _tracked.Where(k => k.MovieId == movieId)];
+        foreach ((long id, int tabIndex) in keys)
+        {
+          if (_inFlight.Contains((id, tabIndex)))
+          {
+            continue;
+          }
+
+          _tracked.Remove((id, tabIndex));
+        }
+      }
+    }
+
+    public bool IsInFlight(long movieId, int tabIndex)
+    {
+      lock (_lock)
+      {
+        return _inFlight.Contains((movieId, tabIndex));
+      }
+    }
+
     public List<QueueObj> RegisterWork(int jobId, IReadOnlyList<QueueObj> items)
     {
       List<QueueObj> accepted = [];
@@ -224,13 +279,20 @@ namespace IndigoMovieManager
 
     public void MarkInFlight(QueueObj item)
     {
-      if (item == null || item.JobId == SilentJobId)
+      if (item == null)
       {
         return;
       }
 
       lock (_lock)
       {
+        _inFlight.Add((item.MovieId, item.Tabindex));
+
+        if (item.JobId == SilentJobId)
+        {
+          return;
+        }
+
         if (_jobs.TryGetValue(item.JobId, out JobState state))
         {
           state.InFlight++;
@@ -251,6 +313,7 @@ namespace IndigoMovieManager
         {
           reportJobId = item.JobId;
           _tracked.Remove((item.MovieId, item.Tabindex));
+          _inFlight.Remove((item.MovieId, item.Tabindex));
 
           if (item.JobId != SilentJobId && _jobs.TryGetValue(item.JobId, out JobState state))
           {

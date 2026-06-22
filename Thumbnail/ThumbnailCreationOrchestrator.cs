@@ -10,13 +10,14 @@ namespace IndigoMovieManager.Thumbnail
         public string DbFullPath { get; init; }
         public string DbName { get; init; }
         public string ThumbFolder { get; init; }
-        public IEnumerable<MovieRecords> MovieRecords { get; init; }
         public ThumbnailLayoutCache LayoutCache { get; init; }
         public Action<Action> RunOnUi { get; init; }
         public Action<QueueObj, string> ApplyThumbPathsOnUi { get; init; }
         public Action<QueueObj, string> ApplyFailurePlaceholder { get; init; }
         public bool IsResizeThumb { get; init; }
         public Action<string, long, object> UpdateMovieColumn { get; init; }
+        public Func<bool> IsSessionActive { get; init; }
+        public Func<long, MovieRecords> FindMovieRecord { get; init; }
     }
 
     internal static class ThumbnailCreationOrchestrator
@@ -27,6 +28,11 @@ namespace IndigoMovieManager.Thumbnail
             bool isManual = false,
             CancellationToken cts = default)
         {
+            if (host == null || queueObj == null || !IsSessionActive(host))
+            {
+                return;
+            }
+
             TabInfo tbi = new(queueObj.Tabindex, host.DbName, host.ThumbFolder);
             string movieFullPath = queueObj.MovieFullPath;
             string hash = GetHashCRC32(movieFullPath);
@@ -34,6 +40,15 @@ namespace IndigoMovieManager.Thumbnail
             string saveThumbFileName = Path.Combine(tbi.OutPath, $"{fileBody}.#{hash}.jpg");
 
             if (isManual && !Path.Exists(saveThumbFileName))
+            {
+                return;
+            }
+
+            using IDisposable writeLock = await ThumbnailWriteLock
+                .AcquireAsync(saveThumbFileName, cts)
+                .ConfigureAwait(false);
+
+            if (!IsSessionActive(host))
             {
                 return;
             }
@@ -68,7 +83,7 @@ namespace IndigoMovieManager.Thumbnail
                     File.Copy(noFileJpeg, saveThumbFileName, true);
                 }
 
-                host.ApplyThumbPathsOnUi(queueObj, saveThumbFileName);
+                ApplyIfAllowed(host, queueObj, saveThumbFileName, isFailurePlaceholder: false);
                 return;
             }
 
@@ -90,8 +105,8 @@ namespace IndigoMovieManager.Thumbnail
                 durationSec = 0;
             }
 
-            MovieRecords movieItem = host.MovieRecords.FirstOrDefault(x => x.Movie_Id == queueObj.MovieId);
-            if (movieItem != null && durationSec > 0)
+            MovieRecords movieItem = host.FindMovieRecord?.Invoke(queueObj.MovieId);
+            if (movieItem != null && durationSec > 0 && IsSessionActive(host))
             {
                 string tSpan = new TimeSpan(0, 0, (int)(long)durationSec).ToString(@"hh\:mm\:ss");
                 if (movieItem.Movie_Length != tSpan)
@@ -100,9 +115,10 @@ namespace IndigoMovieManager.Thumbnail
                     long movieId = queueObj.MovieId;
                     host.RunOnUi(() =>
                     {
-                        if (movieItem.Movie_Length != tSpan)
+                        MovieRecords current = host.FindMovieRecord?.Invoke(movieId);
+                        if (current != null && current.Movie_Length != tSpan)
                         {
-                            movieItem.Movie_Length = tSpan;
+                            current.Movie_Length = tSpan;
                         }
                     });
                     host.UpdateMovieColumn(dbPath, movieId, durationSec);
@@ -111,7 +127,7 @@ namespace IndigoMovieManager.Thumbnail
 
             if (!ThumbnailJobPreparer.TryBuildThumbInfo(ctx, durationSec, out ThumbInfo thumbInfo))
             {
-                host.ApplyFailurePlaceholder(queueObj, saveThumbFileName);
+                ApplyIfAllowed(host, queueObj, saveThumbFileName, isFailurePlaceholder: true);
                 return;
             }
 
@@ -172,13 +188,42 @@ namespace IndigoMovieManager.Thumbnail
                 }
             }
 
+            if (!IsSessionActive(host) || host.FindMovieRecord?.Invoke(queueObj.MovieId) == null)
+            {
+                return;
+            }
+
             if (created)
             {
-                host.ApplyThumbPathsOnUi(queueObj, saveThumbFileName);
+                ApplyIfAllowed(host, queueObj, saveThumbFileName, isFailurePlaceholder: false);
             }
             else
             {
+                ApplyIfAllowed(host, queueObj, saveThumbFileName, isFailurePlaceholder: true);
+            }
+        }
+
+        private static bool IsSessionActive(ThumbnailCreationHost host) =>
+            host.IsSessionActive?.Invoke() != false;
+
+        private static void ApplyIfAllowed(
+            ThumbnailCreationHost host,
+            QueueObj queueObj,
+            string saveThumbFileName,
+            bool isFailurePlaceholder)
+        {
+            if (!IsSessionActive(host) || host.FindMovieRecord?.Invoke(queueObj.MovieId) == null)
+            {
+                return;
+            }
+
+            if (isFailurePlaceholder)
+            {
                 host.ApplyFailurePlaceholder(queueObj, saveThumbFileName);
+            }
+            else
+            {
+                host.ApplyThumbPathsOnUi(queueObj, saveThumbFileName);
             }
         }
 

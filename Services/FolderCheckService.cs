@@ -48,5 +48,28 @@ namespace IndigoMovieManager.Services
         {
             return movieRecords.Any(x => string.Equals(x.Movie_Path, fullPath, StringComparison.Ordinal));
         }
+
+        public static bool IsFileRegisteredInDb(string dbFullPath, string fullPath)
+        {
+            if (string.IsNullOrWhiteSpace(dbFullPath) || string.IsNullOrWhiteSpace(fullPath))
+            {
+                return false;
+            }
+
+            try
+            {
+                using System.Data.SQLite.SQLiteConnection connection = new($"Data Source={dbFullPath}");
+                connection.Open();
+                using System.Data.SQLite.SQLiteCommand cmd = connection.CreateCommand();
+                cmd.CommandText = "SELECT COUNT(1) FROM movie WHERE movie_path = @path";
+                cmd.Parameters.AddWithValue("@path", fullPath);
+                object result = cmd.ExecuteScalar();
+                return result != null && Convert.ToInt64(result) > 0;
+            }
+            catch
+            {
+                return false;
+            }
+        }
     }
 }

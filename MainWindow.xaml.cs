@@ -74,6 +74,7 @@ namespace IndigoMovieManager
         private bool _imeFlag = false;
 
         private readonly ThumbnailLayoutCache _thumbLayoutCache = new();
+        private readonly MainWindowSessionState _sessionState = new();
 
         //private bool _searchBoxItemSelectedByMouse = false;
         private bool _searchBoxItemSelectedByUser = false;
@@ -143,7 +144,7 @@ namespace IndigoMovieManager
         {
             try
             {
-                _ = Task.Run(ClearTempJpg);
+                _ = InitializeAfterRenderAsync();
 
                 //ロケーションとサイズの復元
                 Left = Properties.Settings.Default.MainLocation.X;
@@ -166,15 +167,21 @@ namespace IndigoMovieManager
                     }
                 }
 
-                // サムネイル監視タスクを一度だけ起動
-                if (_thumbCheckTask == null || _thumbCheckTask.IsCompleted)
-                {
-                    _thumbCheckTask = CheckThumbAsync(_thumbCheckCts.Token);
-                }
+                // サムネイル監視タスクは temp 掃除後に起動（InitializeAfterRenderAsync）
             }
             catch (Exception)
             {
                 throw;
+            }
+        }
+
+        private async Task InitializeAfterRenderAsync()
+        {
+            await Task.Run(ClearTempJpg).ConfigureAwait(true);
+
+            if (_thumbCheckTask == null || _thumbCheckTask.IsCompleted)
+            {
+                _thumbCheckTask = CheckThumbAsync(_thumbCheckCts.Token);
             }
         }
 
@@ -234,6 +241,12 @@ namespace IndigoMovieManager
         private void EnqueueSilentThumbnailWork(QueueObj item) =>
             _thumbnailScheduler.EnqueueSilentWork(item);
 
+        private bool TryEnqueueManualThumbnailWork(QueueObj item) =>
+            _thumbnailScheduler.TryEnqueueManualWork(item);
+
+        private void CancelThumbnailWorkForMovie(long movieId) =>
+            _thumbnailScheduler.CancelTrackedForMovie(movieId);
+
         private void StartTabSwitchThumbnailJob(int tabIndex) =>
             _thumbnailScheduler.StartTabSwitchJob(tabIndex, filterList, _thumbLayoutCache);
 
@@ -252,7 +265,10 @@ namespace IndigoMovieManager
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void FileChanged(object sender, FileSystemEventArgs e)
+        private void FileChanged(object sender, FileSystemEventArgs e) =>
+            _ = HandleFileChangedAsync(e);
+
+        private async Task HandleFileChangedAsync(FileSystemEventArgs e)
         {
             try
             {
@@ -260,61 +276,87 @@ namespace IndigoMovieManager
                 string checkExt = Properties.Settings.Default.CheckExt.Replace("*", "");
                 string[] checkExts = checkExt.Split(",");
 
-                if (checkExts.Contains(ext))
+                if (!checkExts.Contains(ext) || e.ChangeType != WatcherChangeTypes.Created)
                 {
-                    if (e.ChangeType == WatcherChangeTypes.Created)
+                    return;
+                }
+
+                const int maxRetry = 10;
+                int retry = 0;
+                bool fileReady = false;
+                while (retry < maxRetry)
+                {
+                    try
                     {
-                        // ファイルが使用中の場合のリトライ処理
-                        const int maxRetry = 10;
-                        int retry = 0;
-                        bool fileReady = false;
-                        while (retry < maxRetry)
-                        {
-                            try
-                            {
-                                using var stream = File.Open(e.FullPath, FileMode.Open, FileAccess.Read, FileShare.Read);
-                                fileReady = true;
-                                break;
-                            }
-                            catch (IOException)
-                            {
-                                Thread.Sleep(1000);
-                                retry++;
-                            }
-                        }
-                        if (!fileReady)
-                        {
-#if DEBUG
-                            Debug.WriteLine($"ファイル {e.FullPath} にアクセスできません。");
-#endif
-                            return;
-                        }
-
-                        MovieInfo mvi = new(e.FullPath);
-                        _ = InsertMovieTable(MainVM.DbInfo.DBFullPath, mvi);
-                        DataTable dt = GetData(MainVM.DbInfo.DBFullPath, "select * from movie order by movie_id desc");
-                        if (dt.Rows.Count > 0)
-                        {
-                            DataRowToViewData(dt.Rows[0]);
-                        }
-
-                        QueueObj newFileForThumb = new()
-                        {
-                            MovieId = mvi.MovieId,
-                            MovieFullPath = mvi.MoviePath,
-                            Tabindex = MainVM.DbInfo.CurrentTabIndex
-                        };
-                        EnqueueThumbnailWork(newFileForThumb, MainVM.DbInfo.CurrentTabIndex, beginNewJob: true);
+                        using var stream = File.Open(e.FullPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                        fileReady = true;
+                        break;
+                    }
+                    catch (IOException)
+                    {
+                        await Task.Delay(1000).ConfigureAwait(false);
+                        retry++;
                     }
                 }
+
+                if (!fileReady)
+                {
+#if DEBUG
+                    Debug.WriteLine($"ファイル {e.FullPath} にアクセスできません。");
+#endif
+                    return;
+                }
+
+                string dbPath = await Dispatcher.InvokeAsync(() => MainVM.DbInfo.DBFullPath);
+                if (string.IsNullOrWhiteSpace(dbPath))
+                {
+                    return;
+                }
+
+                bool alreadyRegistered = await Dispatcher.InvokeAsync(() =>
+                    FolderCheckService.IsFileRegistered(MainVM.MovieRecs, e.FullPath)
+                    || FolderCheckService.IsFileRegisteredInDb(dbPath, e.FullPath));
+
+                if (alreadyRegistered)
+                {
+                    return;
+                }
+
+                MovieInfo mvi = new(e.FullPath);
+                await InsertMovieTable(dbPath, mvi).ConfigureAwait(false);
+
+                int tabIndex = await Dispatcher.InvokeAsync(() =>
+                {
+                    DataTable dt = GetData(dbPath, "select * from movie order by movie_id desc");
+                    if (dt.Rows.Count > 0)
+                    {
+                        DataRowToViewData(dt.Rows[0]);
+                    }
+
+                    return MainVM.DbInfo.CurrentTabIndex;
+                });
+
+                QueueObj newFileForThumb = new()
+                {
+                    MovieId = mvi.MovieId,
+                    MovieFullPath = mvi.MoviePath,
+                    Tabindex = tabIndex
+                };
+                EnqueueThumbnailWork(newFileForThumb, tabIndex, beginNewJob: true);
             }
             catch (Exception ex)
             {
 #if DEBUG
                 Debug.WriteLine($"FileChangedで例外発生: {ex.Message}");
 #endif
-                MessageBox.Show(this, $"ファイル変更の処理中にエラーが発生しました。\n{ex.Message}", "エラー", MessageBoxButton.OK, MessageBoxImage.Error);
-                Application.Current.Shutdown(); // アプリケーションを終了
+                await UiDispatcherHelper.RunOnUiAsync(
+                    Dispatcher,
+                    () => MessageBox.Show(
+                        this,
+                        $"ファイル変更の処理中にエラーが発生しました。\n{ex.Message}",
+                        "エラー",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Error));
             }
         }
 
@@ -338,10 +380,7 @@ namespace IndigoMovieManager
                 s += $"【{e.ChangeType}】{e.OldName} → {e.FullPath}";
                 Debug.WriteLine(s);
 #endif
-                //本家では、Renameは即反映してる様子。
-                //このタイミングでは、新旧のファイル名がフルパスで取得可能。
-                //旧ファイル名でDB検索、対象がヒットしたら、新ファイル名に変更。
-                RenameThumb(eFullPath, oldFullPath);
+                _ = Dispatcher.InvokeAsync(() => RenameThumb(eFullPath, oldFullPath));
             }
         }
 
@@ -384,6 +423,7 @@ namespace IndigoMovieManager
             _fileWatcherManager.Clear();
             MainVM.DbInfo.SearchKeyword = "";
             _movieRecordsLoaded = false;
+            _sessionState.SetActiveDb(dbFullPath);
 
             MainVM.DbInfo.DBName = Path.GetFileNameWithoutExtension(dbFullPath);
             MainVM.DbInfo.DBFullPath = dbFullPath;
@@ -433,6 +473,7 @@ namespace IndigoMovieManager
             SetLoadingOverlayVisible(true);
             try
             {
+                _sessionState.BumpFilterGeneration();
                 int tabCount = Tabs?.Items?.Count ?? 5;
                 int tabIndex = resolveTabIndexOnly ?? GetDefaultResolveTabIndex();
                 MovieListCoordinator.ReloadResult loaded = await _movieListCoordinator.ReloadAsync(
@@ -608,11 +649,17 @@ namespace IndigoMovieManager
 #if DEBUG
             var sw = Stopwatch.StartNew();
 #endif
+            int capturedGeneration = _sessionState.FilterGeneration;
             List<MovieRecords> snapshot = [.. MainVM.MovieRecs];
             string searchKeyword = MainVM.DbInfo.SearchKeyword ?? "";
 
             MovieListCoordinator.FilterApplyResult result = await Task.Run(() =>
                 MovieListCoordinator.ApplyFilter(snapshot, searchKeyword, id)).ConfigureAwait(true);
+
+            if (capturedGeneration != _sessionState.FilterGeneration)
+            {
+                return;
+            }
 
             filterList = result.Items;
             MainVM.DbInfo.SearchCount = result.SearchCount;
@@ -1091,6 +1138,8 @@ namespace IndigoMovieManager
 
             foreach (var rec in mv)
             {
+                CancelThumbnailWorkForMovie(rec.Movie_Id);
+
                 if (dialogWindow.checkBox.IsChecked == true)
                 {
                     ThumbnailDeletionHelper.DeleteThumbnailsForRecord(
@@ -2186,7 +2235,7 @@ namespace IndigoMovieManager
                 await _thumbnailQueueProcessor
                     .RunAsync(
                         _thumbnailScheduler.Queue,
-                        (queueObj, token) => CreateThumbAsync(queueObj, false, token),
+                        (queueObj, token) => CreateThumbAsync(queueObj, queueObj.IsManual, token),
                         _thumbnailScheduler.JobCoordinator,
                         _thumbnailScheduler.SyncRoot,
                         maxParallelism: GetThumbnailQueueMaxParallelism(),
@@ -2209,20 +2258,41 @@ namespace IndigoMovieManager
             BookmarkList.Items.Refresh();
         }
 
-        private ThumbnailCreationHost CreateThumbnailHost() => new()
+        private ThumbnailCreationHost CreateThumbnailHost()
         {
-            DbFullPath = MainVM.DbInfo.DBFullPath,
-            DbName = MainVM.DbInfo.DBName,
-            ThumbFolder = MainVM.DbInfo.ThumbFolder,
-            MovieRecords = MainVM.MovieRecs,
-            LayoutCache = _thumbLayoutCache,
-            RunOnUi = RunOnUi,
-            ApplyThumbPathsOnUi = ApplyThumbPathsOnUi,
-            ApplyFailurePlaceholder = ApplyThumbnailFailurePlaceholder,
-            IsResizeThumb = Properties.Settings.Default.IsResizeThumb,
-            UpdateMovieColumn = (dbPath, movieId, value) =>
-                UpdateMovieSingleColumn(dbPath, movieId, "movie_length", value),
-        };
+            string dbFullPath = null;
+            string dbName = null;
+            string thumbFolder = null;
+            RunOnUi(() =>
+            {
+                dbFullPath = MainVM.DbInfo.DBFullPath;
+                dbName = MainVM.DbInfo.DBName;
+                thumbFolder = MainVM.DbInfo.ThumbFolder;
+            });
+
+            return new()
+            {
+                DbFullPath = dbFullPath,
+                DbName = dbName,
+                ThumbFolder = thumbFolder,
+                LayoutCache = _thumbLayoutCache,
+                RunOnUi = RunOnUi,
+                ApplyThumbPathsOnUi = ApplyThumbPathsOnUi,
+                ApplyFailurePlaceholder = ApplyThumbnailFailurePlaceholder,
+                IsResizeThumb = Properties.Settings.Default.IsResizeThumb,
+                UpdateMovieColumn = (dbPath, movieId, value) =>
+                    UpdateMovieSingleColumn(dbPath, movieId, "movie_length", value),
+                IsSessionActive = () => _sessionState.IsActiveDb(dbFullPath),
+                FindMovieRecord = FindMovieRecordOnUi,
+            };
+        }
+
+        private MovieRecords FindMovieRecordOnUi(long movieId)
+        {
+            MovieRecords found = null;
+            RunOnUi(() => found = MainVM.MovieRecs.FirstOrDefault(x => x.Movie_Id == movieId));
+            return found;
+        }
 
         private Task CreateThumbAsync(QueueObj queueObj, bool isManual = false, CancellationToken cts = default) =>
             ThumbnailCreationOrchestrator.CreateAsync(CreateThumbnailHost(), queueObj, isManual, cts);
@@ -2372,13 +2442,33 @@ namespace IndigoMovieManager
                 MovieFullPath = mv.Movie_Path,
                 Tabindex = Tabs.SelectedIndex,
                 ThumbPanelPos = manualPos,
-                ThumbTimePos = _manualPreview.PositionSeconds
+                ThumbTimePos = _manualPreview.PositionSeconds,
+                IsManual = true
             };
 
             CloseManualThumbnailPreview();
 
-            await Task.Delay(10);
-            _ = CreateThumbAsync(queueObj, true);
+            await EnqueueManualThumbnailWorkAsync(queueObj);
+        }
+
+        private async Task EnqueueManualThumbnailWorkAsync(QueueObj queueObj)
+        {
+            for (int i = 0; i < 120; i++)
+            {
+                if (TryEnqueueManualThumbnailWork(queueObj))
+                {
+                    return;
+                }
+
+                await Task.Delay(500).ConfigureAwait(true);
+            }
+
+            MessageBox.Show(
+                this,
+                "サムネイル作成が混み合っています。しばらくしてから再度お試しください。",
+                Assembly.GetExecutingAssembly().GetName().Name,
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
         }
 
         public void DeleteBookmark(object sender, RoutedEventArgs e)
