@@ -252,7 +252,7 @@ namespace IndigoMovieManager.Thumbnail
             double maxSeekSec = ThumbnailSamplingPolicy.GetEffectiveSamplingDuration(durationSec, isManual: false);
             if (maxSeekSec <= 0d)
             {
-                maxSeekSec = ThumbnailSamplingPolicy.VirtualDurationWindowSec;
+                maxSeekSec = ThumbnailSamplingPolicy.UnknownDurationSeekWindowSec;
             }
 
             void Add(double sec)

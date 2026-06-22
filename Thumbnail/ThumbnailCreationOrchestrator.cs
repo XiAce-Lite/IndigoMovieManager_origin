@@ -120,19 +120,15 @@ namespace IndigoMovieManager.Thumbnail
 
             if (!forceFfmpeg)
             {
-                ThumbnailCreateResult openCvResult = await OpenCvThumbnailCreator
-                    .TryCreateAsync(ctx, thumbInfo, cts)
+                ThumbnailCreateResult openCvResult = await TryCreateWithOpenCvAsync(
+                        ctx,
+                        thumbInfo,
+                        saveThumbFileName,
+                        cts)
                     .ConfigureAwait(false);
 
                 if (openCvResult.Success)
                 {
-                    if (ThumbnailDuplicateDetector.HasDuplicatePanels(openCvResult.PanelPaths))
-                    {
-                        Debug.WriteLine(
-                            $"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : [thumb] duplicate panels accepted (opencv)"
-                        );
-                    }
-
                     created = true;
                 }
                 else
@@ -184,6 +180,50 @@ namespace IndigoMovieManager.Thumbnail
             {
                 host.ApplyFailurePlaceholder(queueObj, saveThumbFileName);
             }
+        }
+
+        private static async Task<ThumbnailCreateResult> TryCreateWithOpenCvAsync(
+            ThumbnailJobContext ctx,
+            ThumbInfo thumbInfo,
+            string saveThumbFileName,
+            CancellationToken cts
+        )
+        {
+            ThumbnailCreateResult openCvResult = await OpenCvThumbnailCreator
+                .TryCreateAsync(ctx, thumbInfo, cts)
+                .ConfigureAwait(false);
+
+            if (openCvResult.Success
+                && ThumbnailDuplicateDetector.HasDuplicatePanels(openCvResult.PanelPaths))
+            {
+                Debug.WriteLine(
+                    $"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : [thumb] duplicate panels detected, retrying per-panel opencv"
+                );
+                ThumbnailMetadataWriter.CleanupPartialOutput(saveThumbFileName, openCvResult.PanelPaths);
+
+                openCvResult = await OpenCvThumbnailCreator
+                    .TryCreatePerPanelAsync(ctx, thumbInfo, cts)
+                    .ConfigureAwait(false);
+            }
+
+            if (openCvResult.Success)
+            {
+#if DEBUG == false
+                OpenCvThumbnailCreator.CleanupTempPanels(ctx);
+#endif
+            }
+
+            if (openCvResult.Success
+                && ThumbnailDuplicateDetector.HasDuplicatePanels(openCvResult.PanelPaths))
+            {
+                Debug.WriteLine(
+                    $"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : [thumb] duplicate panels remain after per-panel retry"
+                );
+                ThumbnailMetadataWriter.CleanupPartialOutput(saveThumbFileName, openCvResult.PanelPaths);
+                return ThumbnailCreateResult.Failed("opencv duplicate panels after per-panel retry");
+            }
+
+            return openCvResult;
         }
     }
 }

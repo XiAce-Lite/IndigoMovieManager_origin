@@ -15,42 +15,72 @@ namespace IndigoMovieManager.Thumbnail
                 return false;
             }
 
+            double fromFfprobe = 0d;
+            if (FfmpegPathResolver.TryResolveFfprobe(out string ffprobePath))
+            {
+                fromFfprobe = TryResolveFromFfprobe(ffprobePath, movieFullPath);
+            }
+
+            double fromShell = TryResolveFromShell(movieFullPath);
+            double fromOpenCv = TryResolveFromOpenCv(movieFullPath);
+            durationSec = PickBestDuration(fromFfprobe, fromShell, fromOpenCv);
+
+            if (durationSec > 0)
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// ffprobe → Shell → OpenCV の順で信頼し、OpenCV だけが異常に大きい場合は無視する。
+        /// </summary>
+        internal static double PickBestDuration(double fromFfprobe, double fromShell, double fromOpenCv)
+        {
+            if (fromFfprobe > 0d)
+            {
+                return fromFfprobe;
+            }
+
+            if (fromShell > 0d)
+            {
+                return fromShell;
+            }
+
+            if (fromOpenCv > 0d)
+            {
+                return fromOpenCv;
+            }
+
+            return 0d;
+        }
+
+        private static double TryResolveFromOpenCv(string movieFullPath)
+        {
             try
             {
                 using VideoCapture capture = OpenVideoCapture(movieFullPath);
                 capture.Grab();
 
-                if (capture.IsOpened())
+                if (!capture.IsOpened())
                 {
-                    double frameCount = capture.Get(VideoCaptureProperties.FrameCount);
-                    double fps = capture.Get(VideoCaptureProperties.Fps);
-                    if (fps > 0 && frameCount > 0)
-                    {
-                        durationSec = Math.Truncate(frameCount / fps);
-                    }
+                    return 0d;
+                }
+
+                double frameCount = capture.Get(VideoCaptureProperties.FrameCount);
+                double fps = capture.Get(VideoCaptureProperties.Fps);
+                if (fps > 0d && frameCount > 0d)
+                {
+                    return Math.Truncate(frameCount / fps);
                 }
             }
             catch
             {
-                // OpenCV 取得失敗時は後段へ
+                // OpenCV 取得失敗時は 0 のまま
             }
 
-            double durationFromShell = TryResolveFromShell(movieFullPath);
-            if (durationFromShell > 0)
-            {
-                durationSec = durationFromShell;
-            }
-
-            if (durationSec <= 0 && FfmpegPathResolver.TryResolveFfprobe(out string ffprobePath))
-            {
-                double durationFromFfprobe = TryResolveFromFfprobe(ffprobePath, movieFullPath);
-                if (durationFromFfprobe > 0)
-                {
-                    durationSec = durationFromFfprobe;
-                }
-            }
-
-            return durationSec > 0;
+            return 0d;
         }
 
         private static VideoCapture OpenVideoCapture(string movieFullPath)

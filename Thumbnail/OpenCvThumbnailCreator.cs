@@ -10,9 +10,22 @@ namespace IndigoMovieManager.Thumbnail
 {
     internal static class OpenCvThumbnailCreator
     {
-        public static async Task<ThumbnailCreateResult> TryCreateAsync(
+        public static Task<ThumbnailCreateResult> TryCreateAsync(
             ThumbnailJobContext ctx,
             ThumbInfo thumbInfo,
+            CancellationToken cts
+        ) => TryCreateInternalAsync(ctx, thumbInfo, freshCapturePerPanel: false, cts);
+
+        public static Task<ThumbnailCreateResult> TryCreatePerPanelAsync(
+            ThumbnailJobContext ctx,
+            ThumbInfo thumbInfo,
+            CancellationToken cts
+        ) => TryCreateInternalAsync(ctx, thumbInfo, freshCapturePerPanel: true, cts);
+
+        private static async Task<ThumbnailCreateResult> TryCreateInternalAsync(
+            ThumbnailJobContext ctx,
+            ThumbInfo thumbInfo,
+            bool freshCapturePerPanel,
             CancellationToken cts
         )
         {
@@ -29,74 +42,25 @@ namespace IndigoMovieManager.Thumbnail
 
             try
             {
-                using VideoCapture capture = OpenVideoCapture(ctx.MovieFullPath);
-                capture.Grab();
-
-                if (!capture.IsOpened())
-                {
-                    return ThumbnailCreateResult.Failed("VideoCapture open failed");
-                }
-
                 bool isSuccess = true;
                 await Task.Run(
                     () =>
                     {
-                        for (int i = 0; i < thumbInfo.ThumbSec.Count; i++)
+                        if (freshCapturePerPanel)
                         {
-                            sw.Restart();
-
-                            using Mat img = new();
-                            capture.PosMsec = thumbInfo.ThumbSec[i] * 1000;
-
-                            int msecCounter = 0;
-                            while (capture.Read(img) == false)
-                            {
-                                capture.PosMsec += 100;
-                                if (msecCounter > 100)
-                                {
-                                    break;
-                                }
-
-                                msecCounter++;
-                            }
-
-                            sw.Stop();
-                            if (sw.Elapsed.TotalSeconds > 60)
+                            CaptureAllPanelsWithFreshCapture(ctx, thumbInfo, paths, ref sz, ref isSuccess, sw);
+                        }
+                        else
+                        {
+                            using VideoCapture sharedCapture = OpenVideoCapture(ctx.MovieFullPath);
+                            sharedCapture.Grab();
+                            if (!sharedCapture.IsOpened())
                             {
                                 isSuccess = false;
                                 return;
                             }
 
-                            if (img.Empty() || img.Width == 0 || img.Height == 0)
-                            {
-                                isSuccess = false;
-                                return;
-                            }
-
-                            using Mat temp = new(img, ThumbnailImageGeometry.GetAspect(img.Width, img.Height));
-                            string saveFile = Path.Combine(ctx.TempPath, $"tn_{ctx.TempFileBody}{i:D2}.jpg");
-
-                            if (ctx.IsResizeThumb)
-                            {
-                                sz = new OpenCvSharp.Size
-                                {
-                                    Width = ctx.TabInfo.Width,
-                                    Height = ctx.TabInfo.Height,
-                                };
-                            }
-                            else if (sz.Width == 0)
-                            {
-                                sz = new OpenCvSharp.Size
-                                {
-                                    Width = temp.Width < 320 ? temp.Width : 320,
-                                    Height = temp.Height < 240 ? temp.Height : 240,
-                                };
-                            }
-
-                            using Mat dst = new();
-                            Cv2.Resize(temp, dst, sz);
-                            BitmapConverter.ToBitmap(dst).Save(saveFile, ImageFormat.Jpeg);
-                            paths.Add(saveFile);
+                            CaptureAllPanels(sharedCapture, ctx, thumbInfo, paths, ref sz, ref isSuccess, sw);
                         }
                     },
                     cts
@@ -112,31 +76,188 @@ namespace IndigoMovieManager.Thumbnail
                     return ThumbnailCreateResult.Failed("opencv produced incomplete panel set");
                 }
 
-                Bitmap bmp = ConcatImages(paths, ctx.TabInfo.Columns, ctx.TabInfo.Rows);
-                if (bmp == null)
-                {
-                    return ThumbnailCreateResult.Failed("opencv concat failed");
-                }
-
-                if (File.Exists(ctx.SaveThumbFileName))
-                {
-                    File.Delete(ctx.SaveThumbFileName);
-                }
-
-                bmp.Save(ctx.SaveThumbFileName, ImageFormat.Jpeg);
-                bmp.Dispose();
-                ThumbnailMetadataWriter.AppendMetadata(ctx.SaveThumbFileName, thumbInfo);
-
-#if DEBUG == false
-                CleanupTempPanels(ctx);
-#endif
-
-                return ThumbnailCreateResult.Succeeded(paths);
+                return FinalizeThumbnail(ctx, thumbInfo, paths);
             }
             catch (Exception ex)
             {
                 return ThumbnailCreateResult.Failed(ex.Message);
             }
+        }
+
+        private static void CaptureAllPanelsWithFreshCapture(
+            ThumbnailJobContext ctx,
+            ThumbInfo thumbInfo,
+            List<string> paths,
+            ref OpenCvSharp.Size sz,
+            ref bool isSuccess,
+            Stopwatch sw
+        )
+        {
+            for (int i = 0; i < thumbInfo.ThumbSec.Count; i++)
+            {
+                if (!CaptureSinglePanel(ctx, thumbInfo, paths, ref sz, ref isSuccess, sw, i, null))
+                {
+                    return;
+                }
+            }
+        }
+
+        private static void CaptureAllPanels(
+            VideoCapture sharedCapture,
+            ThumbnailJobContext ctx,
+            ThumbInfo thumbInfo,
+            List<string> paths,
+            ref OpenCvSharp.Size sz,
+            ref bool isSuccess,
+            Stopwatch sw
+        )
+        {
+            for (int i = 0; i < thumbInfo.ThumbSec.Count; i++)
+            {
+                if (!CaptureSinglePanel(ctx, thumbInfo, paths, ref sz, ref isSuccess, sw, i, sharedCapture))
+                {
+                    return;
+                }
+            }
+        }
+
+        private static bool CaptureSinglePanel(
+            ThumbnailJobContext ctx,
+            ThumbInfo thumbInfo,
+            List<string> paths,
+            ref OpenCvSharp.Size sz,
+            ref bool isSuccess,
+            Stopwatch sw,
+            int panelIndex,
+            VideoCapture sharedCapture
+        )
+        {
+            sw.Restart();
+
+            VideoCapture ownedCapture = null;
+            VideoCapture capture = sharedCapture;
+            if (sharedCapture == null)
+            {
+                ownedCapture = OpenVideoCapture(ctx.MovieFullPath);
+                capture = ownedCapture;
+                capture.Grab();
+                if (!capture.IsOpened())
+                {
+                    ownedCapture.Dispose();
+                    isSuccess = false;
+                    return false;
+                }
+            }
+
+            try
+            {
+                if (!TryCapturePanelAtSec(
+                        capture,
+                        thumbInfo.ThumbSec[panelIndex],
+                        out Mat dst,
+                        ref sz,
+                        ctx))
+                {
+                    dst?.Dispose();
+                    isSuccess = false;
+                    return false;
+                }
+
+                sw.Stop();
+                if (sw.Elapsed.TotalSeconds > 60)
+                {
+                    dst.Dispose();
+                    isSuccess = false;
+                    return false;
+                }
+
+                string saveFile = Path.Combine(ctx.TempPath, $"tn_{ctx.TempFileBody}{panelIndex:D2}.jpg");
+                BitmapConverter.ToBitmap(dst).Save(saveFile, ImageFormat.Jpeg);
+                dst.Dispose();
+                paths.Add(saveFile);
+                return true;
+            }
+            finally
+            {
+                ownedCapture?.Dispose();
+            }
+        }
+
+        private static bool TryCapturePanelAtSec(
+            VideoCapture capture,
+            int sec,
+            out Mat dst,
+            ref OpenCvSharp.Size sz,
+            ThumbnailJobContext ctx
+        )
+        {
+            dst = null;
+            using Mat img = new();
+            capture.PosMsec = sec * 1000;
+
+            int msecCounter = 0;
+            while (!capture.Read(img))
+            {
+                capture.PosMsec += 100;
+                if (msecCounter > 100)
+                {
+                    return false;
+                }
+
+                msecCounter++;
+            }
+
+            if (img.Empty() || img.Width == 0 || img.Height == 0)
+            {
+                return false;
+            }
+
+            using Mat temp = new(img, ThumbnailImageGeometry.GetAspect(img.Width, img.Height));
+
+            if (ctx.IsResizeThumb)
+            {
+                sz = new OpenCvSharp.Size
+                {
+                    Width = ctx.TabInfo.Width,
+                    Height = ctx.TabInfo.Height,
+                };
+            }
+            else if (sz.Width == 0)
+            {
+                sz = new OpenCvSharp.Size
+                {
+                    Width = temp.Width < 320 ? temp.Width : 320,
+                    Height = temp.Height < 240 ? temp.Height : 240,
+                };
+            }
+
+            dst = new Mat();
+            Cv2.Resize(temp, dst, sz);
+            return true;
+        }
+
+        private static ThumbnailCreateResult FinalizeThumbnail(
+            ThumbnailJobContext ctx,
+            ThumbInfo thumbInfo,
+            List<string> paths
+        )
+        {
+            Bitmap bmp = ConcatImages(paths, ctx.TabInfo.Columns, ctx.TabInfo.Rows);
+            if (bmp == null)
+            {
+                return ThumbnailCreateResult.Failed("opencv concat failed");
+            }
+
+            if (File.Exists(ctx.SaveThumbFileName))
+            {
+                File.Delete(ctx.SaveThumbFileName);
+            }
+
+            bmp.Save(ctx.SaveThumbFileName, ImageFormat.Jpeg);
+            bmp.Dispose();
+            ThumbnailMetadataWriter.AppendMetadata(ctx.SaveThumbFileName, thumbInfo);
+
+            return ThumbnailCreateResult.Succeeded(paths);
         }
 
         private static VideoCapture OpenVideoCapture(string movieFullPath)
@@ -167,7 +288,7 @@ namespace IndigoMovieManager.Thumbnail
             }
         }
 
-        private static void CleanupTempPanels(ThumbnailJobContext ctx)
+        internal static void CleanupTempPanels(ThumbnailJobContext ctx)
         {
             string[] oldTempFiles = Directory.GetFiles(
                 ctx.TempPath,

@@ -64,6 +64,7 @@ namespace IndigoMovieManager
 
         //結局、タイマー方式で動画とマニュアルサムネイルのスライダーを同期させた
         private readonly DispatcherTimer timer;
+        private readonly ManualThumbnailPreviewController _manualPreview;
         private bool isDragging = false;
 
         //マニュアルサムネイル時の右クリックしたカラムの返却を受け取る変数
@@ -127,14 +128,14 @@ namespace IndigoMovieManager
             };
             timer.Tick += new EventHandler(Timer_Tick);
 
-            //ボリュームと再生速度のスライダー初期値をセット
-            uxVideoPlayer.Volume = (double)uxVolumeSlider.Value;
+            _manualPreview = new ManualThumbnailPreviewController(Dispatcher);
+            _manualPreview.OnFrameReady = source => uxPreviewImage.Source = source;
 
             uxTime.Text = "00:00:00";
             uxVolume.Text = ((int)(uxVolumeSlider.Value * 100)).ToString();
             PlayerArea.Visibility = Visibility.Collapsed;
             PlayerController.Visibility = Visibility.Collapsed;
-            uxVideoPlayer.Visibility = Visibility.Collapsed;
+            uxPreviewImage.Visibility = Visibility.Collapsed;
             #endregion
         }
 
@@ -2277,12 +2278,13 @@ namespace IndigoMovieManager
         /// <param name="e"></param>
         private void Start_Click(object sender, RoutedEventArgs e)
         {
+            if (!_manualPreview.IsOpen) { return; }
+
             PlayerArea.Visibility = Visibility.Visible;
             PlayerController.Visibility = Visibility.Visible;
-            uxVideoPlayer.Visibility = Visibility.Visible;
-            uxVideoPlayer.Play();
+            uxPreviewImage.Visibility = Visibility.Visible;
             IsPlaying = true;
-            uxTimeSlider.Value = uxVideoPlayer.Position.TotalMilliseconds;
+            uxTimeSlider.Value = _manualPreview.PositionMs;
             timer.Start();
         }
 
@@ -2293,22 +2295,14 @@ namespace IndigoMovieManager
         /// <param name="e"></param>
         private void Pause_Click(object sender, RoutedEventArgs e)
         {
-            uxVideoPlayer.Pause();
             IsPlaying = false;
         }
 
-        private void UxVideoPlayer_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+        private void UxPreviewImage_MouseDown(object sender, MouseButtonEventArgs e)
         {
-            if (IsPlaying == true)
-            {
-                uxVideoPlayer.Pause();
-                IsPlaying = false;
-            }
-            else
-            {
-                uxVideoPlayer.Play();
-                IsPlaying = true;
-            }
+            if (!_manualPreview.IsOpen) { return; }
+
+            IsPlaying = !IsPlaying;
         }
 
         /// <summary>
@@ -2318,12 +2312,7 @@ namespace IndigoMovieManager
         /// <param name="e"></param>
         private void Stop_Click(object sender, RoutedEventArgs e)
         {
-            PlayerArea.Visibility = Visibility.Collapsed;
-            PlayerController.Visibility = Visibility.Collapsed;
-            uxVideoPlayer.Visibility = Visibility.Collapsed;
-            uxVideoPlayer.Stop();
-            IsPlaying = false;
-            timer.Stop();
+            CloseManualThumbnailPreview();
         }
 
         /// <summary>
@@ -2333,25 +2322,17 @@ namespace IndigoMovieManager
         /// <param name="e"></param>
         private void UxTimeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
+            if (!_manualPreview.IsOpen) { return; }
+
             DateTime now = DateTime.Now;
             TimeSpan timeSinceLastUpdate = now - _lastSliderTime;
 
             if (timeSinceLastUpdate >= _timeSliderInterval)
             {
-                uxVideoPlayer.Position = new TimeSpan(0, 0, 0, 0, (int)uxTimeSlider.Value);
+                _manualPreview.SetPositionMs(uxTimeSlider.Value);
                 _lastSliderTime = now;
-                uxTime.Text = uxVideoPlayer.Position.ToString()[..8];
+                uxTime.Text = _manualPreview.PositionText;
             }
-        }
-
-        /// <summary>
-        /// 動画ファイル再生開始のイベントハンドラ
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void UxVideoPlayer_MediaOpened(object sender, RoutedEventArgs e)
-        {
-            uxTimeSlider.Maximum = uxVideoPlayer.NaturalDuration.TimeSpan.TotalMilliseconds;
         }
 
         /// <summary>
@@ -2361,10 +2342,9 @@ namespace IndigoMovieManager
         /// <param name="e"></param>
         private void UxVolumeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
-            uxVideoPlayer.Volume = (double)uxVolumeSlider.Value;
             if (uxVolume != null)
             {
-                uxVolume.Text = ((int)(uxVideoPlayer.Volume * 100)).ToString();
+                uxVolume.Text = ((int)(uxVolumeSlider.Value * 100)).ToString();
             }
         }
 
@@ -2384,7 +2364,7 @@ namespace IndigoMovieManager
             if (mv == null) { return; }
 
             timer.Stop();
-            uxVideoPlayer.Pause();
+            IsPlaying = false;
 
             QueueObj queueObj = new()
             {
@@ -2392,15 +2372,10 @@ namespace IndigoMovieManager
                 MovieFullPath = mv.Movie_Path,
                 Tabindex = Tabs.SelectedIndex,
                 ThumbPanelPos = manualPos,
-                ThumbTimePos = (int)uxVideoPlayer.Position.TotalSeconds
+                ThumbTimePos = _manualPreview.PositionSeconds
             };
-            uxVideoPlayer.Stop();
 
-            PlayerArea.Visibility = Visibility.Collapsed;
-            PlayerController.Visibility = Visibility.Collapsed;
-            uxVideoPlayer.Visibility = Visibility.Collapsed;
-
-            IsPlaying = false;
+            CloseManualThumbnailPreview();
 
             await Task.Delay(10);
             _ = CreateThumbAsync(queueObj, true);
@@ -2428,15 +2403,11 @@ namespace IndigoMovieManager
             if (mv == null) { return; }
 
             timer.Stop();
-            uxVideoPlayer.Pause();
-
-            PlayerArea.Visibility = Visibility.Collapsed;
-            PlayerController.Visibility = Visibility.Collapsed;
-            uxVideoPlayer.Visibility = Visibility.Collapsed;
+            IsPlaying = false;
 
             MovieInfo mvi = new(mv.Movie_Path, true);        //Hashの取得が重いのでオプション付けた。ブックマークには不要。
 
-            int pos = (int)uxVideoPlayer.Position.TotalSeconds;
+            int pos = _manualPreview.PositionSeconds;
             var targetFrame = pos * (int)mvi.FPS;
             var timestamp = string.Format($"{DateTime.Now:HH-mm-ss}");
             var thumbBody = $"{mv.Movie_Body}[({targetFrame}){timestamp}]";
@@ -2454,8 +2425,7 @@ namespace IndigoMovieManager
             //bookmark用サムネイル作成処理。通常と重複は多いんだけども。
             _ = CreateBookmarkThumbAsync(mv.Movie_Path, thumbFileName, pos);
 
-            uxVideoPlayer.Stop();
-            IsPlaying = false;
+            CloseManualThumbnailPreview();
 
             //Bookmarkテーブルへのレコード書き込み処理追加
             mvi.MovieName = thumbBody;
@@ -2481,26 +2451,34 @@ namespace IndigoMovieManager
                 }
             }
 
-            //動画ファイルの指定
-            uxVideoPlayer.Source = new Uri(mv.Movie_Path);
-            await Task.Delay(1000);
+            await _manualPreview.OpenAsync(mv.Movie_Path, msec);
+            if (_manualPreview.DurationMs > 0d)
+            {
+                uxTimeSlider.Maximum = _manualPreview.DurationMs;
+            }
 
-            //動画の再生
-            uxVideoPlayer.Volume = 0;
-            uxVideoPlayer.Play();
-
-            //再生位置の移動
-            uxVideoPlayer.Position = new TimeSpan(0, 0, 0, 0, msec);
-            //uxVideoPlayer.Volume = (double)uxVolumeSlider.Value;
-            uxVideoPlayer.Pause();
-            await Task.Delay(100);
+            uxTimeSlider.Value = _manualPreview.PositionMs;
+            uxTime.Text = _manualPreview.PositionText;
             IsPlaying = false;
             PlayerArea.Visibility = Visibility.Visible;
-            uxVideoPlayer.Visibility = Visibility.Visible;
+            uxPreviewImage.Visibility = Visibility.Visible;
             PlayerController.Visibility = Visibility.Visible;
             uxTimeSlider.Focus();
 
             timer.Start();
+            await _manualPreview.RefreshPreviewAsync();
+        }
+
+        private void CloseManualThumbnailPreview()
+        {
+            timer.Stop();
+            _manualPreview.CancelPending();
+            _manualPreview.Close();
+            PlayerArea.Visibility = Visibility.Collapsed;
+            PlayerController.Visibility = Visibility.Collapsed;
+            uxPreviewImage.Visibility = Visibility.Collapsed;
+            uxPreviewImage.Source = null;
+            IsPlaying = false;
         }
 
         private void FR_Click(object sender, RoutedEventArgs e)
@@ -2518,22 +2496,38 @@ namespace IndigoMovieManager
         private void FF_FR(int tempSlider)
         {
             uxTimeSlider.Value = tempSlider;
-            uxVideoPlayer.Position = new TimeSpan(0, 0, 0, 0, tempSlider);
-            uxTime.Text = uxVideoPlayer.Position.ToString()[..8];
+            _manualPreview.SetPositionMs(tempSlider);
+            uxTime.Text = _manualPreview.PositionText;
         }
 
         /// <summary>
-        /// ドラッグしてなければ、スライダーの値を定期的に、動画のポジションにする。
-        /// パクリ元：https://www.c-sharpcorner.com/UploadFile/dpatra/seek-bar-for-media-element-in-wpf/
+        /// ドラッグしてなければ、再生中はスライダーを進めてプレビューを更新する。
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
         private void Timer_Tick(object sender, EventArgs e)
         {
-            if (!isDragging)
+            if (isDragging || !_manualPreview.IsOpen)
             {
-                uxTimeSlider.Value = uxVideoPlayer.Position.TotalMilliseconds;
+                return;
             }
+
+            if (!IsPlaying)
+            {
+                return;
+            }
+
+            double nextMs = _manualPreview.PositionMs + timer.Interval.TotalMilliseconds;
+            if (_manualPreview.DurationMs > 0d && nextMs > _manualPreview.DurationMs)
+            {
+                nextMs = _manualPreview.DurationMs;
+                IsPlaying = false;
+            }
+
+            _manualPreview.SetPositionMs(nextMs, schedulePreview: false);
+            uxTimeSlider.Value = _manualPreview.PositionMs;
+            uxTime.Text = _manualPreview.PositionText;
+            _ = _manualPreview.RefreshPreviewAsync();
         }
 
         private void UxTimeSlider_DragEnter(object sender, DragEventArgs e)
@@ -2544,7 +2538,8 @@ namespace IndigoMovieManager
         private void UxTimeSlider_DragLeave(object sender, DragEventArgs e)
         {
             isDragging = false;
-            uxVideoPlayer.Position = TimeSpan.FromSeconds(uxTimeSlider.Value);
+            _manualPreview.SetPositionMs(uxTimeSlider.Value);
+            uxTime.Text = _manualPreview.PositionText;
         }
 
         #endregion

@@ -1221,17 +1221,13 @@
                     ShadowDepth="10"
                     Color="DarkGoldenrod" />
             </StackPanel.Effect>
-            <MediaElement
-                x:Name="uxVideoPlayer"
+            <Image
+                x:Name="uxPreviewImage"
                 Grid.Row="0"
                 Width="900"
                 Height="Auto"
-                LoadedBehavior="Manual"
-                MediaOpened="UxVideoPlayer_MediaOpened"
-                PreviewMouseDown="UxVideoPlayer_PreviewMouseDown"
-                ScrubbingEnabled="true"
-                Stretch="Uniform"
-                UnloadedBehavior="Stop" />
+                MouseDown="UxPreviewImage_MouseDown"
+                Stretch="Uniform" />
             <StackPanel
                 x:Name="PlayerController"
                 Grid.Row="1"

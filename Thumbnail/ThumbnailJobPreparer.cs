@@ -36,11 +36,6 @@ namespace IndigoMovieManager.Thumbnail
             }
             else if (durationSec > 0)
             {
-                ThumbnailSamplingPolicy.LogVirtualDurationIfNeeded(
-                    ctx.MovieFullPath,
-                    durationSec,
-                    ctx.IsManual);
-
                 double samplingDuration = ThumbnailSamplingPolicy.GetEffectiveSamplingDuration(
                     durationSec,
                     ctx.IsManual);
