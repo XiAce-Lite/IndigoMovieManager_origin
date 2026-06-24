@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup>
+    <!-- AvalonDock 等の satellite assembly は日本語のみ出力 -->
+    <SatelliteResourceLanguages>ja</SatelliteResourceLanguages>
+    <NeutralLanguage>ja</NeutralLanguage>
+  </PropertyGroup>
+</Project>

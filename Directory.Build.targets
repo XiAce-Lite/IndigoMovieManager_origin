@@ -1,0 +1,37 @@
+<Project>
+  <!-- AvalonDock: ja 以外の言語フォルダを除去（過去ビルドの残骸も含む） -->
+  <Target Name="PruneNonJapaneseSatellites" AfterTargets="Build">
+    <ItemGroup>
+      <_LocaleDir Include="$(OutputPath)*\" />
+    </ItemGroup>
+    <RemoveDir
+      Directories="@(_LocaleDir)"
+      Condition="Exists('%(_LocaleDir.Identity)AvalonDock.resources.dll') AND '%(_LocaleDir.Identity)' != '$(OutputPath)ja\'" />
+  </Target>
+
+  <!-- Windows x64 専用: 非 Windows 向けネイティブ資産を除去 -->
+  <Target Name="PruneNonWindowsRuntimes" AfterTargets="PruneNonJapaneseSatellites">
+    <PropertyGroup>
+      <_NativeSqliteInRoot Condition="Exists('$(OutputPath)e_sqlite3.dll')">true</_NativeSqliteInRoot>
+    </PropertyGroup>
+
+    <!-- RID=win-x64 では e_sqlite3 / OpenCvSharpExtern が出力ルートに展開される -->
+    <RemoveDir
+      Directories="$(OutputPath)runtimes"
+      Condition="'$(_NativeSqliteInRoot)' == 'true' AND Exists('$(OutputPath)runtimes')" />
+
+    <ItemGroup Condition="'$(_NativeSqliteInRoot)' != 'true'">
+      <_RuntimeDirToRemove
+        Include="$(OutputPath)runtimes\*"
+        Exclude="$(OutputPath)runtimes\win-x64" />
+    </ItemGroup>
+    <RemoveDir
+      Directories="@(_RuntimeDirToRemove)"
+      Condition="'$(_NativeSqliteInRoot)' != 'true' AND Exists('$(OutputPath)runtimes')" />
+
+    <!-- AppendRuntimeIdentifierToOutputPath=false 時の旧 win-x64 出力残骸 -->
+    <RemoveDir
+      Directories="$(OutputPath)win-x64"
+      Condition="Exists('$(OutputPath)IndigoMovieManager.exe') AND Exists('$(OutputPath)win-x64')" />
+  </Target>
+</Project>

@@ -9,9 +9,14 @@
     <Title>IndigoMovieManager</Title>
     <Platforms>AnyCPU;x64</Platforms>
     <PlatformTarget>AnyCPU</PlatformTarget>
-    <FileVersion>1.0.0.25</FileVersion>
-    <AssemblyVersion>1.0.0.25</AssemblyVersion>
+    <FileVersion>1.0.0.26</FileVersion>
+    <AssemblyVersion>1.0.0.26</AssemblyVersion>
     <SupportedOSPlatformVersion>7.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Platform)' == 'x64'">
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">

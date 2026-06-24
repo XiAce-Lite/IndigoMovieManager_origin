@@ -1,4 +1,6 @@
 ﻿using IndigoMovieManager.Services;
+using System.Globalization;
+using System.Threading;
 using System.Windows;
 
 namespace IndigoMovieManager
@@ -10,6 +12,12 @@ namespace IndigoMovieManager
     {
         protected override void OnStartup(StartupEventArgs e)
         {
+            var japanese = CultureInfo.GetCultureInfo("ja");
+            CultureInfo.DefaultThreadCurrentCulture = japanese;
+            CultureInfo.DefaultThreadCurrentUICulture = japanese;
+            Thread.CurrentThread.CurrentCulture = japanese;
+            Thread.CurrentThread.CurrentUICulture = japanese;
+
             MediaExtensionSettings.EnsureRequiredExtensions();
             base.OnStartup(e);
         }
