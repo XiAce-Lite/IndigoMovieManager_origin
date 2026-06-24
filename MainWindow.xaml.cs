@@ -114,10 +114,10 @@ namespace IndigoMovieManager
 
             DataContext = MainVM;
 
-            if (Path.Exists("layout.xml"))
+            if (File.Exists(ApplicationPaths.LayoutFilePath))
             {
                 XmlLayoutSerializer layoutSerializer = new(uxDockingManager);
-                using var reader = new StreamReader("layout.xml");
+                using var reader = new StreamReader(ApplicationPaths.LayoutFilePath);
                 layoutSerializer.Deserialize(reader);
             }
 
@@ -211,7 +211,7 @@ namespace IndigoMovieManager
                 Properties.Settings.Default.Save();
 
                 XmlLayoutSerializer layoutSerializer = new(uxDockingManager);
-                using var writer = new StreamWriter("layout.xml");
+                using var writer = new StreamWriter(ApplicationPaths.LayoutFilePath);
                 layoutSerializer.Serialize(writer);
 
                 if (!string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))

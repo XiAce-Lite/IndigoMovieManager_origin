@@ -25,6 +25,8 @@ namespace IndigoMovieManager.Thumbnail
 
         public static string ImagesDirectory => Path.Combine(ApplicationBase, "Images");
 
+        public static string LayoutFilePath => Path.Combine(ApplicationBase, "layout.xml");
+
         public static string ResolveThumbRoot(string dbName, string thumbFolder)
         {
             if (!string.IsNullOrWhiteSpace(thumbFolder))

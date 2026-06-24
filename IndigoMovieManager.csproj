@@ -9,14 +9,20 @@
     <Title>IndigoMovieManager</Title>
     <Platforms>AnyCPU;x64</Platforms>
     <PlatformTarget>AnyCPU</PlatformTarget>
-    <FileVersion>1.0.0.26</FileVersion>
-    <AssemblyVersion>1.0.0.26</AssemblyVersion>
+    <FileVersion>1.0.0.27</FileVersion>
+    <AssemblyVersion>1.0.0.27</AssemblyVersion>
     <SupportedOSPlatformVersion>7.0</SupportedOSPlatformVersion>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Platform)' == 'x64'">
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <!-- 通常の Release 出力も標準版 publish と同じ SingleFile 構成へ寄せる -->
+    <StandardReleaseSingleFile>true</StandardReleaseSingleFile>
+    <StandardReleasePublishMirrorDir>$(MSBuildProjectDirectory)\obj\StandardReleaseSingleFile\</StandardReleasePublishMirrorDir>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
@@ -72,8 +78,8 @@
 
   </ItemGroup>
 
-  <!-- ffmpeg.exe は .gitignore 対象のため Content+Condition だと VS 読み込み時に除外されやすい。ビルド時コピーにする。 -->
-  <Target Name="CopyFfmpegToOutput" AfterTargets="Build">
+  <!-- ffmpeg は配布物に含めない。開発用 build のみ tools からコピーする。 -->
+  <Target Name="CopyFfmpegToOutput" AfterTargets="Build" Condition="'$(PublishSingleFile)' != 'true' and '$(StandardReleaseSingleFile)' != 'true'">
     <PropertyGroup>
       <_FfmpegSourcePath>$(MSBuildProjectDirectory)\tools\ffmpeg\ffmpeg.exe</_FfmpegSourcePath>
       <_FfmpegDestinationPath>$(OutputPath)ffmpeg\ffmpeg.exe</_FfmpegDestinationPath>
@@ -85,8 +91,8 @@
     <Copy SourceFiles="$(_FfprobeSourcePath)" DestinationFiles="$(_FfprobeDestinationPath)" SkipUnchangedFiles="true" Condition="Exists('$(_FfprobeSourcePath)')" />
   </Target>
 
-  <!-- sinku.exe / Sinku.dll は .gitignore 対象のため Content+Condition だと VS 読み込み時に除外されやすい。ビルド時コピーにする。 -->
-  <Target Name="CopySinkuToOutput" AfterTargets="Build">
+  <!-- sinku は開発用 build 向け。配布物は CopyDistributionAssets が publish 出力へコピーする。 -->
+  <Target Name="CopySinkuToOutput" AfterTargets="Build" Condition="'$(PublishSingleFile)' != 'true' and '$(StandardReleaseSingleFile)' != 'true'">
     <PropertyGroup>
       <_SinkuSourceDir>$(MSBuildProjectDirectory)\tools\sinku\</_SinkuSourceDir>
     </PropertyGroup>
@@ -94,6 +100,86 @@
     <Copy SourceFiles="$(_SinkuSourceDir)Sinku.dll" DestinationFiles="$(OutputPath)Sinku.dll" SkipUnchangedFiles="true" Condition="Exists('$(_SinkuSourceDir)Sinku.dll')" />
     <Copy SourceFiles="$(_SinkuSourceDir)codecs.ini" DestinationFiles="$(OutputPath)codecs.ini" SkipUnchangedFiles="true" Condition="Exists('$(_SinkuSourceDir)codecs.ini')" />
     <Copy SourceFiles="$(_SinkuSourceDir)format.ini" DestinationFiles="$(OutputPath)format.ini" SkipUnchangedFiles="true" Condition="Exists('$(_SinkuSourceDir)format.ini')" />
+  </Target>
+
+  <!-- 標準版配布: SingleFile Exe + sinku / Images（ffmpeg は同梱しない） -->
+  <Target Name="CopyDistributionAssets" AfterTargets="Publish">
+    <PropertyGroup>
+      <_DistDir Condition="'$(_DistDir)' == ''">$(PublishDir)</_DistDir>
+      <_SinkuSourceDir>$(MSBuildProjectDirectory)\tools\sinku\</_SinkuSourceDir>
+      <_ImagesSourceDir>$(MSBuildProjectDirectory)\Images\</_ImagesSourceDir>
+    </PropertyGroup>
+
+    <MakeDir Directories="$(_DistDir)Images" />
+
+    <Copy
+      SourceFiles="$(_SinkuSourceDir)sinku.exe"
+      DestinationFiles="$(_DistDir)sinku.exe"
+      SkipUnchangedFiles="true"
+      Condition="Exists('$(_SinkuSourceDir)sinku.exe')" />
+    <Copy
+      SourceFiles="$(_SinkuSourceDir)Sinku.dll"
+      DestinationFiles="$(_DistDir)Sinku.dll"
+      SkipUnchangedFiles="true"
+      Condition="Exists('$(_SinkuSourceDir)Sinku.dll')" />
+    <Copy
+      SourceFiles="$(_SinkuSourceDir)codecs.ini"
+      DestinationFiles="$(_DistDir)codecs.ini"
+      SkipUnchangedFiles="true"
+      Condition="Exists('$(_SinkuSourceDir)codecs.ini')" />
+    <Copy
+      SourceFiles="$(_SinkuSourceDir)format.ini"
+      DestinationFiles="$(_DistDir)format.ini"
+      SkipUnchangedFiles="true"
+      Condition="Exists('$(_SinkuSourceDir)format.ini')" />
+
+    <ItemGroup>
+      <_DistImage Include="$(_ImagesSourceDir)*.jpg" />
+    </ItemGroup>
+    <Copy
+      SourceFiles="@(_DistImage)"
+      DestinationFolder="$(_DistDir)Images"
+      SkipUnchangedFiles="true"
+      Condition="Exists('$(_ImagesSourceDir)')" />
+  </Target>
+
+  <Target
+    Name="MirrorStandardReleasePublishToOutput"
+    AfterTargets="Build"
+    Condition="'$(StandardReleaseSingleFile)' == 'true' and '$(PublishSingleFile)' != 'true' and '$(_RunningStandardReleaseMirror)' != 'true'">
+    <RemoveDir
+      Directories="$(StandardReleasePublishMirrorDir)"
+      Condition="Exists('$(StandardReleasePublishMirrorDir)')" />
+
+    <MSBuild
+      Projects="$(MSBuildProjectFullPath)"
+      Targets="Publish"
+      Properties="Configuration=$(Configuration);Platform=$(Platform);PublishProfile=Win-x64-SingleFile;PublishDir=$(StandardReleasePublishMirrorDir);_RunningStandardReleaseMirror=true" />
+
+    <ItemGroup>
+      <_LooseOutputFileToDelete
+        Include="$(OutputPath)*.dll;$(OutputPath)*.pdb;$(OutputPath)*.deps.json;$(OutputPath)*.runtimeconfig.json"
+        Exclude="$(OutputPath)IndigoMovieManager.dll;$(OutputPath)IndigoMovieManager.deps.json;$(OutputPath)IndigoMovieManager.runtimeconfig.json" />
+      <_MirroredPublishFile Include="$(StandardReleasePublishMirrorDir)*" Exclude="$(StandardReleasePublishMirrorDir)Images\**" />
+      <_MirroredPublishImage Include="$(StandardReleasePublishMirrorDir)Images\**\*" />
+      <_AvalonLocaleDir Include="$(OutputPath)*\" />
+    </ItemGroup>
+
+    <Delete Files="@(_LooseOutputFileToDelete)" />
+    <RemoveDir Directories="$(OutputPath)ffmpeg" Condition="Exists('$(OutputPath)ffmpeg')" />
+    <RemoveDir Directories="$(OutputPath)runtimes" Condition="Exists('$(OutputPath)runtimes')" />
+    <RemoveDir Directories="$(OutputPath)win-x64" Condition="Exists('$(OutputPath)win-x64')" />
+    <RemoveDir Directories="$(OutputPath)publish" Condition="Exists('$(OutputPath)publish')" />
+    <RemoveDir Directories="$(OutputPath)Images" Condition="Exists('$(OutputPath)Images')" />
+    <RemoveDir Directories="@(_AvalonLocaleDir)" Condition="Exists('%(_AvalonLocaleDir.Identity)AvalonDock.resources.dll')" />
+    <Delete Files="$(OutputPath)sinku.exe;$(OutputPath)Sinku.dll;$(OutputPath)codecs.ini;$(OutputPath)format.ini" />
+
+    <Copy SourceFiles="@(_MirroredPublishFile)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
+    <MakeDir Directories="$(OutputPath)Images" />
+    <Copy
+      SourceFiles="@(_MirroredPublishImage)"
+      DestinationFiles="@(_MirroredPublishImage->'$(OutputPath)Images\%(RecursiveDir)%(Filename)%(Extension)')"
+      SkipUnchangedFiles="true" />
   </Target>
 
   <ItemGroup>

@@ -1,32 +1,149 @@
 # IndigoMovieManager
-WhiteBrowserの互換プログラムを作ろうと思い立ちまして。いつ使えなくなるかも分からんし。
 
-- WPFで、今風（？）のUIで。
-  - WPFは激しく初心者（2023年11月からです）
-  - 無駄コードやダメコードはいっぱいあると思う。
-- WhiteBrowserのSQLiteデータベースファイルは、そのまま使えるように。
-  - WhiteBrowserの既存のスキン4種をベースに。他のスキンは対応する気なし。
-    - 5枚×2段のスキン（と言うかタブ）は追加してみた。
-  - WhiteBrowser の サムネイルはそのまま使えるはず。
-    - 但し「Thum」から「Thumb」にフォルダは変えて。
-    - 配下のフォルダ名は変更要らないはず。
-    - まぁソース見て。
-      
-  ~~- Extensionも対応予定なし。~~
-    - 何となく対応 → 全部じゃないけど。
-    - Bookmarkも対応。
-    - タグバーに似た機能は枠だけしか実装してない。
-    
-- 動画をサムネとタグで管理出来て、監視出来て。削除も出来て。辺りをまずは目指す。
-  - 任意のサムネイル作成機能 → 実装したつもり。
-    - 小窓でプレビューとかも必要になるわな。→ 実装したつもり。
+WhiteBrowser 互換を目指した、Windows 向けの動画管理ツールです。  
+WPF / .NET 8 ベースで、WhiteBrowser の SQLite データベースやサムネイル資産をなるべくそのまま使える方向で作っています。
 
-辺りをぼちぼちやっていこうかなと。
+## 対応環境
 
-こんなダメな感じですが協力者やアドバイザーは大歓迎です。
+- Windows 専用
+- .NET 8 Desktop Runtime x64
+- `x64 Release` を前提
 
-今の所、検索機能が全然です。And検索ぐらいしか出来ません。
+Linux / macOS での動作は想定していません。
 
-インクリメンタルサーチも微妙な挙動だと思います。
+## 主な仕様
 
-多分、遅いと思うんで。軽めのフォルダ登録からのテストをお薦め。
+- WhiteBrowser の SQLite データベースファイルをそのまま利用可能
+- 既存の WhiteBrowser 系スキン 4 種をベースに動作
+- 追加で 5 枚 x 2 段タブも実装
+- サムネイル管理、タグ管理、監視フォルダ登録、削除に対応
+- ブックマーク対応
+- ZIP 形式も一部対応
+- 最近開いた管理ファイル一覧、個別設定、共通設定あり
+
+### サムネイル関連
+
+- 既存サムネイルの流用に対応
+- アプリ既定のサムネイル保存先は `Thumb`
+  - WhiteBrowser の `Thum` ではなく `Thumb`
+  - 配下のフォルダ構成は概ね従来互換
+- 任意サムネイル作成機能あり
+- プレビュー小窓あり
+
+### 検索
+
+- 通常のキーワード検索
+- AND 検索
+- 特殊検索
+  - `{tag}` : タグ付きのみ
+  - `{notag}` : タグなしのみ
+  - `{nofile}` : DB 上は存在するが実ファイルがないもののみ
+
+### 監視・走査対象拡張子
+
+- 共通設定で対象拡張子をカンマ区切りで指定可能
+  - 例: `.mp4,.mkv,.zip`
+  - `mp4,mkv` のように `.` を省略しても可
+- 個別設定で除外拡張子を指定可能
+  - 例: `.zip,.jpg`
+  - 共通設定の対象拡張子のうち、ここで指定したものを除外
+
+## 外部ツールについて
+
+IndigoMovieManager は単体でも起動し、基本操作は可能です。  
+ただし、一部の詳細取得や一部形式のサムネイル生成では外部ツールがあると精度や成功率が上がります。
+
+### `sinku` 関連
+
+以下 4 ファイルは、**必要な場合のみユーザー自身で用意**し、`IndigoMovieManager.exe` と **同じフォルダ** に配置してください。
+
+- `sinku.exe`
+- `Sinku.dll`
+- `format.ini`
+- `codecs.ini`
+
+用途:
+
+- メディア詳細情報（コンテナ、映像、音声、追加情報など）の取得
+
+注意:
+
+- 4 ファイルはセット運用前提です
+- `Sinku.dll` だけ差し替えて `format.ini` / `codecs.ini` が古いと正常に動かないことがあります
+- 本リポジトリ / 標準配布物には同梱しない前提です
+
+### `ffmpeg` 関連
+
+以下 2 ファイルは、**必要な場合のみユーザー自身で用意**し、`IndigoMovieManager.exe` と **同じフォルダ** にある `ffmpeg` フォルダへ配置してください。
+
+配置例:
+
+```text
+IndigoMovieManager.exe
+ffmpeg/
+  ffmpeg.exe
+  ffprobe.exe
+```
+
+用途:
+
+- OpenCV で失敗した動画サムネイル生成のフォールバック
+- 一部の ZIP 内 WebP の変換
+- 一部の動画長取得やプレビュー補助
+
+補足:
+
+- `ffmpeg` がなくてもアプリは起動します
+- `ffmpeg` がない場合、一部形式ではサムネイル生成が失敗し、プレースホルダ画像になることがあります
+
+## 配布方針
+
+### 通常の `x64 Release`
+
+```powershell
+dotnet build -c Release -p:Platform=x64
+```
+
+出力先:
+
+```text
+bin\x64\Release\net8.0-windows
+```
+
+現在の Release 出力は、できるだけ配布しやすいよう整理されています。
+
+- `IndigoMovieManager.exe` は単一 Exe 寄りの構成
+- 不要な多言語 satellite は `ja` のみ残す
+- 非 Windows 向け `runtimes` は削除
+
+### 標準版配布物（publish）
+
+```powershell
+.\scripts\publish-standard.ps1
+```
+
+または
+
+```powershell
+dotnet publish IndigoMovieManager.csproj -c Release -p:Platform=x64 -p:PublishProfile=Win-x64-SingleFile
+```
+
+出力先:
+
+```text
+bin\x64\Release\net8.0-windows\publish
+```
+
+標準版配布物は Framework 依存 SingleFile です。
+
+## 注意事項
+
+- `layout.xml` は実行時に exe 基準で保存 / 読み込みします
+- `Thumb`, `temp`, `bookmark` などは実行時に作成されます
+- UI や内部実装はまだ整理途中です
+- WhiteBrowser 完全互換を保証するものではありません
+
+## 補足
+
+WPF は 2023 年 11 月から触り始めたので、無駄コードやダメコードはまだ多いと思います。  
+改善提案やアドバイスは歓迎です。
