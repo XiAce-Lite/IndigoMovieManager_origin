@@ -60,7 +60,8 @@ namespace IndigoMovieManager.Services
         public static List<string> FindUnregisteredFiles(
             MoviePathRegistrationIndex index,
             string folder,
-            bool recurseSubdirectories)
+            bool recurseSubdirectories,
+            string excludeExtSetting = null)
         {
             List<string> discovered = [];
             if (index == null || string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder))
@@ -68,7 +69,10 @@ namespace IndigoMovieManager.Services
                 return discovered;
             }
 
-            foreach (FileInfo file in FolderCheckService.EnumerateMediaFiles(new DirectoryInfo(folder), recurseSubdirectories))
+            foreach (FileInfo file in FolderCheckService.EnumerateMediaFiles(
+                         new DirectoryInfo(folder),
+                         recurseSubdirectories,
+                         excludeExtSetting))
             {
                 if (!index.IsRegistered(file.FullName))
                 {

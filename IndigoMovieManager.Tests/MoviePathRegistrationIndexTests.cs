@@ -43,23 +43,40 @@ public class MoviePathRegistrationIndexTests
         Directory.CreateDirectory(folder);
         string registered = Path.Combine(folder, "known.zip");
         string fresh = Path.Combine(folder, "new.zip");
+        string excluded = Path.Combine(folder, "skip.zip");
         File.WriteAllBytes(registered, [0x50, 0x4B, 0x05, 0x06]);
         File.WriteAllBytes(fresh, [0x50, 0x4B, 0x05, 0x06]);
+        File.WriteAllBytes(excluded, [0x50, 0x4B, 0x05, 0x06]);
+        string previousCheckExt = Properties.Settings.Default.CheckExt;
         try
         {
+            Properties.Settings.Default.CheckExt = ".zip";
             string dbPath = Path.Combine(Path.GetTempPath(), $"imm-scan-db-{Guid.NewGuid():N}.wb");
             SQLite.CreateDatabase(dbPath);
             MoviePathRegistrationIndex index = MoviePathRegistrationIndex.Load(dbPath);
             index.Register(registered);
 
-            List<string> found = MoviePathRegistrationIndex.FindUnregisteredFiles(index, folder, recurseSubdirectories: false);
-            Assert.Single(found);
-            Assert.Equal(fresh, found[0]);
+            List<string> found = MoviePathRegistrationIndex.FindUnregisteredFiles(
+                index,
+                folder,
+                recurseSubdirectories: false,
+                excludeExtSetting: ".zip");
+            Assert.DoesNotContain(excluded, found);
+            Assert.DoesNotContain(registered, found);
+
+            List<string> foundWithoutExclude = MoviePathRegistrationIndex.FindUnregisteredFiles(
+                index,
+                folder,
+                recurseSubdirectories: false);
+            Assert.Equal(2, foundWithoutExclude.Count);
+            Assert.Contains(fresh, foundWithoutExclude);
+            Assert.Contains(excluded, foundWithoutExclude);
 
             File.Delete(dbPath);
         }
         finally
         {
+            Properties.Settings.Default.CheckExt = previousCheckExt;
             Directory.Delete(folder, recursive: true);
         }
     }

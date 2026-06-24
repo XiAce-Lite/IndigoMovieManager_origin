@@ -11,6 +11,7 @@ namespace IndigoMovieManager
         private string sort = "";
         private string thumbFolder = "";
         private string bookmarkFolder = "";
+        private string excludeExt = "";
         private int searchCount = 0;
         private int currentTabIndex = -1;
 
@@ -51,6 +52,15 @@ namespace IndigoMovieManager
         {
             get => bookmarkFolder;
             set { bookmarkFolder = value; OnPropertyChanged(nameof(BookmarkFolder)); }
+        }
+
+        /// <summary>
+        /// 走査から除外する拡張子（カンマ区切り。例: .jpg,.zip）。共通設定の対象拡張子のうちここに含まれるものを除外。
+        /// </summary>
+        public string ExcludeExt
+        {
+            get => excludeExt;
+            set { excludeExt = value ?? ""; OnPropertyChanged(nameof(ExcludeExt)); }
         }
 
         public string SearchKeyword

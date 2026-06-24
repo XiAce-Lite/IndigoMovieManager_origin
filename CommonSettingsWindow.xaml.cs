@@ -35,7 +35,7 @@ namespace IndigoMovieManager
             Properties.Settings.Default.DefaultZipViewerPath = DefaultZipViewerPath.Text;
             Properties.Settings.Default.DefaultZipViewerParam = DefaultZipViewerParam.Text;
             Properties.Settings.Default.RecentFilesCount = (int)slider.Value;
-            Properties.Settings.Default.CheckExt = CheckExt.Text;
+            Properties.Settings.Default.CheckExt = MediaExtensionSettings.NormalizeListForStorage(CheckExt.Text);
             MediaExtensionSettings.EnsureRequiredExtensions();
             Properties.Settings.Default.Save();
         }

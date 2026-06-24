@@ -46,12 +46,158 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Border" Property="Background" Value="{DynamicResource MaterialDesign.Brush.Primary.Light}" />
+                                <Setter TargetName="Border" Property="Background" Value="{DynamicResource MaterialDesign.Brush.TextBox.HoverBackground}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
+        </Style>
+
+        <DataTemplate x:Key="NavigationDrawerPrimaryItemTemplate" DataType="{x:Type local:NavigationDrawerItem}">
+            <DockPanel Margin="0,0,1,0">
+                <materialDesign:PackIcon
+                    VerticalAlignment="Center"
+                    Foreground="{DynamicResource MaterialDesign.Brush.Primary}"
+                    Kind="{Binding IconKind}" />
+                <TextBlock
+                    Margin="10,0,10,0"
+                    VerticalAlignment="Center"
+                    FontSize="14"
+                    FontWeight="Bold"
+                    Foreground="{DynamicResource MaterialDesign.Brush.Primary}"
+                    Text="{Binding Text}"
+                    TextTrimming="CharacterEllipsis"
+                    ToolTip="{Binding Text}" />
+            </DockPanel>
+        </DataTemplate>
+
+        <DataTemplate x:Key="NavigationDrawerNestedItemTemplate" DataType="{x:Type local:NavigationDrawerItem}">
+            <DockPanel Margin="1,0,1,0">
+                <materialDesign:PackIcon
+                    VerticalAlignment="Center"
+                    Foreground="{DynamicResource MaterialDesign.Brush.Primary}"
+                    Kind="{Binding IconKind}" />
+                <TextBlock
+                    Margin="10,4,10,2"
+                    VerticalAlignment="Center"
+                    FontSize="14"
+                    FontWeight="Bold"
+                    Foreground="{DynamicResource MaterialDesign.Brush.Primary}"
+                    Text="{Binding Text}"
+                    TextTrimming="CharacterEllipsis"
+                    ToolTip="{Binding Text}" />
+            </DockPanel>
+        </DataTemplate>
+
+        <Style x:Key="NavigationDrawerListBoxStyle" TargetType="ListBox">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="ItemTemplate" Value="{StaticResource NavigationDrawerPrimaryItemTemplate}" />
+            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+        </Style>
+
+        <Style
+            x:Key="NavigationDrawerNestedListBoxStyle"
+            BasedOn="{StaticResource NavigationDrawerListBoxStyle}"
+            TargetType="ListBox">
+            <Setter Property="ItemTemplate" Value="{StaticResource NavigationDrawerNestedItemTemplate}" />
+        </Style>
+
+        <Style x:Key="NavigationDrawerListBoxItemStyle" TargetType="ListBoxItem">
+            <Setter Property="Padding" Value="4,4,0,6" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground" Value="{DynamicResource MaterialDesign.Brush.Primary}" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border
+                            x:Name="Border"
+                            Padding="{TemplateBinding Padding}"
+                            Background="{TemplateBinding Background}"
+                            SnapsToDevicePixels="True">
+                            <ContentPresenter
+                                HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Border" Property="Background" Value="{DynamicResource MaterialDesign.Brush.TextBox.HoverBackground}" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Border" Property="Background" Value="Transparent" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style
+            x:Key="NavigationDrawerRecentListBoxItemStyle"
+            BasedOn="{StaticResource NavigationDrawerListBoxItemStyle}"
+            TargetType="ListBoxItem" />
+
+        <Style x:Key="NavigationDrawerSectionChevronStyle" TargetType="materialDesign:PackIcon">
+            <Setter Property="Width" Value="19" />
+            <Setter Property="Height" Value="19" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Foreground" Value="{DynamicResource MaterialDesign.Brush.Primary}" />
+            <Setter Property="Kind" Value="ChevronRight" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsChecked, RelativeSource={RelativeSource AncestorType=ToggleButton}}" Value="True">
+                    <Setter Property="Kind" Value="ChevronDown" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="NavigationDrawerSectionHeaderToggleStyle" TargetType="ToggleButton">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Foreground" Value="{DynamicResource MaterialDesign.Brush.Primary}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="IsChecked" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border
+                            x:Name="Border"
+                            Padding="4,4,0,6"
+                            Background="{TemplateBinding Background}"
+                            SnapsToDevicePixels="True">
+                            <ContentPresenter
+                                HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Border" Property="Background" Value="{DynamicResource MaterialDesign.Brush.TextBox.HoverBackground}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="NavigationDrawerSectionHeaderTextStyle" TargetType="TextBlock">
+            <Setter Property="Margin" Value="10,4,10,2" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Foreground" Value="{DynamicResource MaterialDesign.Brush.Primary}" />
         </Style>
 
         <ContextMenu x:Key="menuContext" FontSize="10" Opened="MenuContext_Opened">
@@ -965,163 +1111,83 @@
                         IsChecked="{Binding IsChecked, ElementName=MenuToggleButton, Mode=TwoWay}"
                         Style="{StaticResource MaterialDesignHamburgerToggleButton}" />
 
-                    <VirtualizingStackPanel
+                    <ScrollViewer
                         Margin="16,4"
-                        VirtualizingPanel.IsVirtualizing="true"
-                        VirtualizingPanel.VirtualizationMode="Recycling">
-                        <Button
-                            x:Name="BtnNew"
-                            Margin="9,0,0,0"
-                            HorizontalAlignment="Left"
-                            Click="BtnNew_Click"
-                            Style="{StaticResource MaterialDesignFlatButton}">
-                            <DockPanel>
-                                <materialDesign:PackIcon Kind="FolderAdd" />
-                                <TextBlock Margin="10,0" Text="新規作成" />
-                            </DockPanel>
-                        </Button>
+                        HorizontalScrollBarVisibility="Disabled"
+                        VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
+                            <ListBox
+                                x:Name="PrimaryNavList"
+                                Margin="9,0,0,0"
+                                ItemContainerStyle="{StaticResource NavigationDrawerListBoxItemStyle}"
+                                ItemsSource="{Binding PrimaryNavItems}"
+                                PreviewMouseLeftButtonUp="NavigationList_PreviewMouseLeftButtonUp"
+                                Style="{StaticResource NavigationDrawerListBoxStyle}" />
 
-                        <Button
-                            x:Name="BtnOpen"
-                            Margin="9,0,0,0"
-                            HorizontalAlignment="Left"
-                            Click="BtnOpen_Click"
-                            Style="{StaticResource MaterialDesignFlatButton}">
-                            <DockPanel>
-                                <materialDesign:PackIcon Kind="FolderOpen" />
-                                <TextBlock Margin="10,0" Text="ファイルを開く" />
-                            </DockPanel>
-                        </Button>
+                            <ToggleButton
+                                x:Name="RecentSectionToggle"
+                                Style="{StaticResource NavigationDrawerSectionHeaderToggleStyle}">
+                                <DockPanel Margin="1,0,1,0">
+                                    <materialDesign:PackIcon Style="{StaticResource NavigationDrawerSectionChevronStyle}" />
+                                    <materialDesign:PackIcon VerticalAlignment="Center" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" Kind="History" />
+                                    <TextBlock Style="{StaticResource NavigationDrawerSectionHeaderTextStyle}" Text="最近開いたファイル" />
+                                </DockPanel>
+                            </ToggleButton>
+                            <ListBox
+                                x:Name="RecentNavList"
+                                Margin="19,0,0,0"
+                                ItemContainerStyle="{StaticResource NavigationDrawerRecentListBoxItemStyle}"
+                                ItemsSource="{Binding RecentFileItems, UpdateSourceTrigger=PropertyChanged}"
+                                PreviewMouseLeftButtonUp="NavigationList_PreviewMouseLeftButtonUp"
+                                PreviewMouseRightButtonDown="RecentNavList_PreviewMouseRightButtonDown"
+                                Style="{StaticResource NavigationDrawerNestedListBoxStyle}"
+                                Visibility="{Binding IsChecked, ElementName=RecentSectionToggle, Converter={StaticResource BoolToVisibilityConverter}}" />
 
-                        <TreeView
-                            x:Name="MenuRecent"
-                            Margin="0,0,0,0"
-                            ItemsSource="{Binding RecentTreeRoot, UpdateSourceTrigger=PropertyChanged}">
+                            <ToggleButton
+                                x:Name="SettingsSectionToggle"
+                                Style="{StaticResource NavigationDrawerSectionHeaderToggleStyle}">
+                                <DockPanel Margin="1,0,1,0">
+                                    <materialDesign:PackIcon Style="{StaticResource NavigationDrawerSectionChevronStyle}" />
+                                    <materialDesign:PackIcon VerticalAlignment="Center" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" Kind="SettingsApplications" />
+                                    <TextBlock Style="{StaticResource NavigationDrawerSectionHeaderTextStyle}" Text="設定" />
+                                </DockPanel>
+                            </ToggleButton>
+                            <ListBox
+                                x:Name="SettingsNavList"
+                                Margin="19,0,0,0"
+                                ItemContainerStyle="{StaticResource NavigationDrawerListBoxItemStyle}"
+                                ItemsSource="{Binding SettingsNavItems}"
+                                PreviewMouseLeftButtonUp="NavigationList_PreviewMouseLeftButtonUp"
+                                Style="{StaticResource NavigationDrawerNestedListBoxStyle}"
+                                Visibility="{Binding IsChecked, ElementName=SettingsSectionToggle, Converter={StaticResource BoolToVisibilityConverter}}" />
 
-                            <TreeView.Resources>
-                                <Style TargetType="TreeViewItem">
-                                    <Setter Property="IsExpanded" Value="{Binding Path=IsExpanded, Mode=TwoWay}" />
-                                    <Setter Property="VerticalContentAlignment" Value="Center" />
-                                    <Setter Property="HorizontalContentAlignment" Value="Center" />
-                                </Style>
-                            </TreeView.Resources>
+                            <ToggleButton
+                                x:Name="ToolSectionToggle"
+                                Style="{StaticResource NavigationDrawerSectionHeaderToggleStyle}">
+                                <DockPanel Margin="1,0,1,0">
+                                    <materialDesign:PackIcon Style="{StaticResource NavigationDrawerSectionChevronStyle}" />
+                                    <materialDesign:PackIcon VerticalAlignment="Center" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" Kind="Toolbox" />
+                                    <TextBlock Style="{StaticResource NavigationDrawerSectionHeaderTextStyle}" Text="ツール" />
+                                </DockPanel>
+                            </ToggleButton>
+                            <ListBox
+                                x:Name="ToolNavList"
+                                Margin="19,0,0,0"
+                                ItemContainerStyle="{StaticResource NavigationDrawerListBoxItemStyle}"
+                                ItemsSource="{Binding ToolNavItems}"
+                                PreviewMouseLeftButtonUp="NavigationList_PreviewMouseLeftButtonUp"
+                                Style="{StaticResource NavigationDrawerNestedListBoxStyle}"
+                                Visibility="{Binding IsChecked, ElementName=ToolSectionToggle, Converter={StaticResource BoolToVisibilityConverter}}" />
 
-                            <TreeView.ItemTemplate>
-                                <HierarchicalDataTemplate DataType="{x:Type local:TreeSource}" ItemsSource="{Binding Children, UpdateSourceTrigger=PropertyChanged}">
-                                    <Button
-                                        Margin="1,0,1,0"
-                                        Padding="4,4,0,6"
-                                        HorizontalAlignment="Left"
-                                        Click="MenuRecentTree_Click"
-                                        FontSize="14"
-                                        FontWeight="Bold"
-                                        PreviewMouseRightButtonDown="RecentFileButton_PreviewMouseRightButtonDown"
-                                        Style="{StaticResource MaterialDesignFlatButton}"
-                                        Tag="{Binding Text}">
-                                        <DockPanel>
-                                            <materialDesign:PackIcon VerticalAlignment="Center" Kind="File" />
-                                            <TextBlock
-                                                Margin="10,4,10,2"
-                                                VerticalAlignment="Center"
-                                                Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}"
-                                                ToolTip="{Binding Text}" />
-                                        </DockPanel>
-                                    </Button>
-                                </HierarchicalDataTemplate>
-                            </TreeView.ItemTemplate>
-
-                        </TreeView>
-
-                        <TreeView
-                            x:Name="MenuConfig"
-                            ItemsSource="{Binding ConfigTreeRoot, UpdateSourceTrigger=PropertyChanged}"
-                            Style="{StaticResource MaterialDesignTreeView}">
-
-                            <TreeView.Resources>
-                                <Style TargetType="TreeViewItem">
-                                    <Setter Property="IsExpanded" Value="{Binding Path=IsExpanded, Mode=TwoWay}" />
-                                    <Setter Property="VerticalContentAlignment" Value="Center" />
-                                    <Setter Property="HorizontalContentAlignment" Value="Center" />
-                                </Style>
-                            </TreeView.Resources>
-
-                            <TreeView.ItemTemplate>
-                                <HierarchicalDataTemplate DataType="{x:Type local:TreeSource}" ItemsSource="{Binding Children, UpdateSourceTrigger=PropertyChanged}">
-                                    <Button
-                                        Margin="1,0,1,0"
-                                        Padding="4,4,0,6"
-                                        HorizontalAlignment="Left"
-                                        Click="MenuBtnSettings_Click"
-                                        FontSize="14"
-                                        FontWeight="Bold"
-                                        Style="{StaticResource MaterialDesignFlatButton}"
-                                        Tag="{Binding Text}">
-                                        <DockPanel>
-                                            <materialDesign:PackIcon VerticalAlignment="Center" Kind="{Binding IconKind}" />
-                                            <TextBlock
-                                                Margin="10,4,10,2"
-                                                VerticalAlignment="Center"
-                                                Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}"
-                                                ToolTip="{Binding Text}" />
-                                        </DockPanel>
-                                    </Button>
-                                </HierarchicalDataTemplate>
-                            </TreeView.ItemTemplate>
-                        </TreeView>
-
-                        <TreeView
-                            x:Name="MenuTool"
-                            ItemsSource="{Binding ToolTreeRoot, UpdateSourceTrigger=PropertyChanged}"
-                            Style="{StaticResource MaterialDesignTreeView}">
-
-                            <TreeView.Resources>
-                                <Style TargetType="TreeViewItem">
-                                    <Setter Property="IsExpanded" Value="{Binding Path=IsExpanded, Mode=TwoWay}" />
-                                    <Setter Property="VerticalContentAlignment" Value="Center" />
-                                    <Setter Property="HorizontalContentAlignment" Value="Center" />
-                                </Style>
-                            </TreeView.Resources>
-
-                            <TreeView.ItemTemplate>
-                                <HierarchicalDataTemplate DataType="{x:Type local:TreeSource}" ItemsSource="{Binding Children, UpdateSourceTrigger=PropertyChanged}">
-                                    <Button
-                                        Margin="1,0,1,0"
-                                        Padding="4,4,0,6"
-                                        HorizontalAlignment="Left"
-                                        Click="MenuBtnTool_Click"
-                                        FontSize="14"
-                                        FontWeight="Bold"
-                                        Style="{StaticResource MaterialDesignFlatButton}"
-                                        Tag="{Binding Text}">
-                                        <DockPanel>
-                                            <materialDesign:PackIcon VerticalAlignment="Center" Kind="{Binding IconKind}" />
-                                            <TextBlock
-                                                Margin="10,4,10,2"
-                                                VerticalAlignment="Center"
-                                                Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}"
-                                                ToolTip="{Binding Text}" />
-                                        </DockPanel>
-                                    </Button>
-                                </HierarchicalDataTemplate>
-                            </TreeView.ItemTemplate>
-                        </TreeView>
-
-                        <Button
-                            x:Name="BtnExit"
-                            Margin="9,0,0,0"
-                            HorizontalAlignment="Left"
-                            Click="BtnExit_Click"
-                            Style="{StaticResource MaterialDesignFlatButton}">
-                            <DockPanel>
-                                <materialDesign:PackIcon VerticalAlignment="Center" Kind="ExitToApp" />
-                                <TextBlock
-                                    Margin="10,0"
-                                    VerticalAlignment="Center"
-                                    Text="終了" />
-                            </DockPanel>
-                        </Button>
-
-                    </VirtualizingStackPanel>
+                            <ListBox
+                                x:Name="ExitNavList"
+                                Margin="9,0,0,0"
+                                ItemContainerStyle="{StaticResource NavigationDrawerListBoxItemStyle}"
+                                ItemsSource="{Binding ExitNavItems}"
+                                PreviewMouseLeftButtonUp="NavigationList_PreviewMouseLeftButtonUp"
+                                Style="{StaticResource NavigationDrawerListBoxStyle}" />
+                        </StackPanel>
+                    </ScrollViewer>
                 </DockPanel>
             </materialDesign:DrawerHost.LeftDrawerContent>
 

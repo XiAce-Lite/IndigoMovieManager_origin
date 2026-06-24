@@ -1,7 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.IO;
-using IndigoMovieManager.ModelViews;
 
 namespace IndigoMovieManager.Services
 {
@@ -28,11 +27,14 @@ namespace IndigoMovieManager.Services
             return stack;
         }
 
-        public static void PopulateTreeChildren(Stack<string> recentFiles, TreeSource rootItem)
+        public static void RebuildRecentItems(
+            ObservableCollection<NavigationDrawerItem> recentItems,
+            Stack<string> recentFiles)
         {
-            foreach (string item in recentFiles)
+            recentItems.Clear();
+            foreach (string path in recentFiles)
             {
-                rootItem.Add(new TreeSource { Text = item, IsExpanded = false });
+                recentItems.Add(NavigationDrawerItem.ForRecentFile(path));
             }
         }
 
@@ -76,24 +78,6 @@ namespace IndigoMovieManager.Services
             }
 
             return updated;
-        }
-
-        public static void RebuildTreeChildren(
-            ObservableCollection<TreeSource> recentTreeRoot,
-            Stack<string> recentFiles)
-        {
-            if (recentTreeRoot.Count == 0)
-            {
-                return;
-            }
-
-            TreeSource rootItem = recentTreeRoot[0];
-            rootItem.Children?.Clear();
-
-            foreach (string item in recentFiles)
-            {
-                rootItem.Add(new TreeSource { Text = item, IsExpanded = false });
-            }
         }
     }
 }

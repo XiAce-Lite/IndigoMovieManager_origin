@@ -21,6 +21,7 @@ using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Threading;
 using IndigoMovieManager.Thumbnail;
 using static IndigoMovieManager.SQLite;
@@ -42,7 +43,6 @@ namespace IndigoMovieManager
         private readonly FileWatcherManager _fileWatcherManager = new();
         private bool _openingDatabase;
 
-        private const string RECENT_OPEN_FILE_LABEL = "最近開いたファイル";
         private Stack<string> recentFiles = new();
 
         private IEnumerable<MovieRecords> filterList = [];
@@ -106,13 +106,10 @@ namespace IndigoMovieManager
             TextCompositionManager.AddPreviewTextInputStartHandler(SearchBox, OnPreviewTextInputStart);
             TextCompositionManager.AddPreviewTextInputUpdateHandler(SearchBox, OnPreviewTextInputUpdate);
 
-            var rootItem = new TreeSource() { Text = RECENT_OPEN_FILE_LABEL, IsExpanded = false };
-            MainVM.RecentTreeRoot.Add(rootItem);
-
             if (Properties.Settings.Default.RecentFiles != null)
             {
                 recentFiles = RecentFilesService.LoadFromSettings(Properties.Settings.Default.RecentFiles);
-                RecentFilesService.PopulateTreeChildren(recentFiles, rootItem);
+                RecentFilesService.RebuildRecentItems(MainVM.RecentFileItems, recentFiles);
             }
 
             DataContext = MainVM;
@@ -408,7 +405,10 @@ namespace IndigoMovieManager
 
             try
             {
-                if (!MediaExtensionSettings.MatchesExtension(e.FullPath, Properties.Settings.Default.CheckExt)
+                if (!MediaExtensionSettings.ShouldScanFile(
+                        e.FullPath,
+                        Properties.Settings.Default.CheckExt,
+                        MainVM.DbInfo.ExcludeExt)
                     || e.ChangeType != WatcherChangeTypes.Created)
                 {
                     return;
@@ -533,7 +533,10 @@ namespace IndigoMovieManager
                 return;
             }
 
-            if (!MediaExtensionSettings.MatchesExtension(e.FullPath, Properties.Settings.Default.CheckExt))
+            if (!MediaExtensionSettings.ShouldScanFile(
+                    e.FullPath,
+                    Properties.Settings.Default.CheckExt,
+                    MainVM.DbInfo.ExcludeExt))
             {
                 return;
             }
@@ -1580,7 +1583,7 @@ namespace IndigoMovieManager
                 recentFiles,
                 newItem,
                 Properties.Settings.Default.RecentFilesCount);
-            RecentFilesService.RebuildTreeChildren(MainVM.RecentTreeRoot, recentFiles);
+            RecentFilesService.RebuildRecentItems(MainVM.RecentFileItems, recentFiles);
         }
 
         private void PersistRecentFilesToSettings()
@@ -1590,47 +1593,225 @@ namespace IndigoMovieManager
             Properties.Settings.Default.Save();
         }
 
-        private Button _recentFileRemoveTargetButton;
+        private NavigationDrawerItem _recentFileRemoveTarget;
 
-        private void RecentFileButton_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+        private void RecentNavList_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
         {
-            if (sender is not Button button)
+            NavigationDrawerItem item = TryGetNavigationItem(e);
+            if (item == null || string.IsNullOrEmpty(item.Id))
             {
                 return;
             }
 
-            string path = button.Tag?.ToString() ?? "";
-            if (string.IsNullOrEmpty(path)
-                || string.Equals(path, RECENT_OPEN_FILE_LABEL, StringComparison.Ordinal))
-            {
-                return;
-            }
-
-            _recentFileRemoveTargetButton = button;
+            _recentFileRemoveTarget = item;
             RecentFileRemovePopup.IsOpen = true;
             e.Handled = true;
         }
 
         private void RemoveRecentFile_Click(object sender, RoutedEventArgs e)
         {
-            Button button = _recentFileRemoveTargetButton;
-            if (button == null)
-            {
-                return;
-            }
-
-            string path = button.Tag?.ToString() ?? "";
-            if (string.IsNullOrEmpty(path)
-                || string.Equals(path, RECENT_OPEN_FILE_LABEL, StringComparison.Ordinal))
+            string path = _recentFileRemoveTarget?.Id ?? "";
+            if (string.IsNullOrEmpty(path))
             {
                 return;
             }
 
             recentFiles = RecentFilesService.Remove(recentFiles, path);
-            RecentFilesService.RebuildTreeChildren(MainVM.RecentTreeRoot, recentFiles);
+            RecentFilesService.RebuildRecentItems(MainVM.RecentFileItems, recentFiles);
             PersistRecentFilesToSettings();
             RecentFileRemovePopup.IsOpen = false;
-            _recentFileRemoveTargetButton = null;
+            _recentFileRemoveTarget = null;
+        }
+
+        private void NavigationList_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            if (e.ChangedButton != MouseButton.Left || sender is not ListBox listBox)
+            {
+                return;
+            }
+
+            NavigationDrawerItem item = TryGetNavigationItem(e);
+            if (item == null || string.IsNullOrEmpty(item.Id))
+            {
+                return;
+            }
+
+            switch (listBox.Name)
+            {
+                case nameof(PrimaryNavList):
+                    ExecutePrimaryNavigation(item.Id);
+                    break;
+                case nameof(RecentNavList):
+                    OpenRecentFile(item.Id);
+                    break;
+                case nameof(SettingsNavList):
+                    ExecuteSettingsNavigation(item.Id);
+                    break;
+                case nameof(ToolNavList):
+                    ExecuteToolNavigation(item.Id);
+                    break;
+                case nameof(ExitNavList):
+                    BtnExit_Click(sender, e);
+                    break;
+            }
+
+            listBox.SelectedIndex = -1;
+            e.Handled = true;
+        }
+
+        private static NavigationDrawerItem TryGetNavigationItem(MouseButtonEventArgs e)
+        {
+            if (e.OriginalSource is not DependencyObject current)
+            {
+                return null;
+            }
+
+            while (current != null)
+            {
+                if (current is ListBoxItem { DataContext: NavigationDrawerItem item })
+                {
+                    return item;
+                }
+
+                current = VisualTreeHelper.GetParent(current);
+            }
+
+            return null;
+        }
+
+        private void ExecutePrimaryNavigation(string actionId)
+        {
+            switch (actionId)
+            {
+                case NavigationActionIds.New:
+                    BtnNew_Click(this, new RoutedEventArgs());
+                    break;
+                case NavigationActionIds.Open:
+                    BtnOpen_Click(this, new RoutedEventArgs());
+                    break;
+            }
+        }
+
+        private void OpenRecentFile(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return;
+            }
+
+            MenuToggleButton.IsChecked = false;
+            if (!string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
+            {
+                UpdateSkin();
+                UpdateSort();
+            }
+
+            ReStackRecentTree(path);
+            OpenDatafile(path);
+            Properties.Settings.Default.LastDoc = path;
+            Properties.Settings.Default.Save();
+        }
+
+        private void ExecuteSettingsNavigation(string menuId)
+        {
+            switch (menuId)
+            {
+                case NavigationMenuIds.CommonSettings:
+                    MenuToggleButton.IsChecked = false;
+                    var CommonSettingsWindow = new CommonSettingsWindow
+                    {
+                        Owner = this,
+                        WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                    };
+                    CommonSettingsWindow.ShowDialog();
+                    break;
+                case NavigationMenuIds.DatabaseSettings:
+                    if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
+                    {
+                        MessageBox.Show("管理ファイルが選択されていません。", Assembly.GetExecutingAssembly().GetName().Name, MessageBoxButton.OK, MessageBoxImage.Exclamation);
+                        return;
+                    }
+
+                    MenuToggleButton.IsChecked = false;
+                    var sysData = new DatabaseSettings(MainVM.DbInfo.DBFullPath);
+                    var settingsWindow = new SettingsWindow
+                    {
+                        Owner = this,
+                        WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                        DataContext = sysData
+                    };
+                    settingsWindow.ShowDialog();
+
+                    UpsertSystemTable(MainVM.DbInfo.DBFullPath, "thum", settingsWindow.ThumbFolder.Text);
+                    UpsertSystemTable(MainVM.DbInfo.DBFullPath, "bookmark", settingsWindow.BookmarkFolder.Text);
+                    UpsertSystemTable(MainVM.DbInfo.DBFullPath, "keepHistory", settingsWindow.KeepHistory.Text);
+                    UpsertSystemTable(MainVM.DbInfo.DBFullPath, "playerPrg", settingsWindow.PlayerPrg.Text);
+                    var param = settingsWindow.PlayerParam.Text == null ? "" : settingsWindow.PlayerParam.Text.ToString();
+                    UpsertSystemTable(MainVM.DbInfo.DBFullPath, "playerParam", param);
+                    UpsertSystemTable(
+                        MainVM.DbInfo.DBFullPath,
+                        "excludeExt",
+                        MediaExtensionSettings.NormalizeListForStorage(settingsWindow.ExcludeExt.Text));
+
+                    GetSystemTable(MainVM.DbInfo.DBFullPath);
+                    break;
+            }
+        }
+
+        private void ExecuteToolNavigation(string menuId)
+        {
+            if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
+            {
+                MessageBox.Show("管理ファイルが選択されていません。", Assembly.GetExecutingAssembly().GetName().Name, MessageBoxButton.OK, MessageBoxImage.Exclamation);
+                return;
+            }
+
+            MenuToggleButton.IsChecked = false;
+
+            switch (menuId)
+            {
+                case NavigationMenuIds.WatchFolderEdit:
+                    var watchWindow = new WatchWindow(MainVM.DbInfo.DBFullPath)
+                    {
+                        Owner = this,
+                        WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                    };
+                    watchWindow.ShowDialog();
+                    break;
+
+                case NavigationMenuIds.WatchFolderCheck:
+                    _ = CheckFolderAsync(FolderCheckMode.Manual);
+                    break;
+
+                case NavigationMenuIds.RecreateAllThumbnails:
+                    if (Tabs.SelectedItem == null) { return; }
+
+                    var dialogWindow = new MessageBoxEx(this)
+                    {
+                        DlogTitle = "サムネイルの再作成",
+                        DlogMessage = $"サムネイルを再作成します。よろしいですか？",
+                        PackIconKind = MaterialDesignThemes.Wpf.PackIconKind.EventQuestion
+                    };
+
+                    dialogWindow.ShowDialog();
+                    if (dialogWindow.CloseStatus() == MessageBoxResult.Cancel)
+                    {
+                        return;
+                    }
+
+                    List<QueueObj> thumbQueue = [.. MainVM.MovieRecs.Select(rec => new QueueObj
+                    {
+                        MovieId = rec.Movie_Id,
+                        MovieFullPath = rec.Movie_Path,
+                        Tabindex = Tabs.SelectedIndex
+                    })];
+                    EnqueueThumbnailWork(thumbQueue, Tabs.SelectedIndex, beginNewJob: true);
+                    break;
+
+                case NavigationMenuIds.RefreshAllFileInfo:
+                    BeginRefreshAllFileInfoFromMenu();
+                    break;
+            }
         }
 
         private static string GetLastOpenInitialDirectory()
@@ -1692,183 +1873,6 @@ namespace IndigoMovieManager
             BookmarkList.Items.Refresh();
             await FilterAndSortAsync(MainVM.DbInfo.Sort, true).ConfigureAwait(true);
             Refresh();
-        }
-
-        private void MenuBtnSettings_Click(object sender, RoutedEventArgs e)
-        {
-            if (sender is Button item)
-            {
-                if (!string.IsNullOrEmpty(item.Tag.ToString()))
-                {
-                    var tag = item.Tag.ToString();
-                    if (tag != NavigationMenuIds.SettingsRoot)
-                    {
-
-                        switch (tag)
-                        {
-                            case NavigationMenuIds.CommonSettings:
-                                MenuToggleButton.IsChecked = false;
-                                var CommonSettingsWindow = new CommonSettingsWindow
-                                {
-                                    Owner = this,
-                                    WindowStartupLocation = WindowStartupLocation.CenterOwner,
-                                };
-                                CommonSettingsWindow.ShowDialog();
-                                break;
-                            case NavigationMenuIds.DatabaseSettings:
-                                if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
-                                {
-                                    MessageBox.Show("管理ファイルが選択されていません。", Assembly.GetExecutingAssembly().GetName().Name, MessageBoxButton.OK, MessageBoxImage.Exclamation);
-                                    return;
-                                }
-
-                                MenuToggleButton.IsChecked = false;
-                                var sysData = new DatabaseSettings(MainVM.DbInfo.DBFullPath);
-                                var settingsWindow = new SettingsWindow
-                                {
-                                    Owner = this,
-                                    WindowStartupLocation = WindowStartupLocation.CenterOwner,
-                                    DataContext = sysData
-                                };
-                                settingsWindow.ShowDialog();
-
-                                UpsertSystemTable(MainVM.DbInfo.DBFullPath, "thum", settingsWindow.ThumbFolder.Text);
-                                UpsertSystemTable(MainVM.DbInfo.DBFullPath, "bookmark", settingsWindow.BookmarkFolder.Text);
-                                UpsertSystemTable(MainVM.DbInfo.DBFullPath, "keepHistory", settingsWindow.KeepHistory.Text);
-                                UpsertSystemTable(MainVM.DbInfo.DBFullPath, "playerPrg", settingsWindow.PlayerPrg.Text);
-                                var param = settingsWindow.PlayerParam.Text == null ? "" : settingsWindow.PlayerParam.Text.ToString();
-                                UpsertSystemTable(MainVM.DbInfo.DBFullPath, "playerParam", param);
-
-                                GetSystemTable(MainVM.DbInfo.DBFullPath);
-                                break;
-                            default:
-                                break;
-                        }
-                    }
-                    else
-                    {
-                        if (MenuConfig.Items.Count > 0)
-                        {
-                            if (MenuConfig.Items[0] is TreeSource topNode)
-                            {
-                                topNode.IsExpanded = !topNode.IsExpanded;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        private void MenuBtnTool_Click(object sender, RoutedEventArgs e)
-        {
-            if (sender is Button item)
-            {
-                if (!string.IsNullOrEmpty(item.Tag.ToString()))
-                {
-                    var tag = item.Tag.ToString();
-                    if (tag != NavigationMenuIds.ToolsRoot)
-                    {
-                        if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
-                        {
-                            MessageBox.Show("管理ファイルが選択されていません。", Assembly.GetExecutingAssembly().GetName().Name, MessageBoxButton.OK, MessageBoxImage.Exclamation);
-                            return;
-                        }
-
-                        MenuToggleButton.IsChecked = false;
-
-                        switch (tag)
-                        {
-                            case NavigationMenuIds.WatchFolderEdit:
-                                var watchWindow = new WatchWindow(MainVM.DbInfo.DBFullPath)
-                                {
-                                    Owner = this,
-                                    WindowStartupLocation = WindowStartupLocation.CenterOwner,
-                                };
-                                watchWindow.ShowDialog();
-                                break;
-
-                            case NavigationMenuIds.WatchFolderCheck:
-                                _ = CheckFolderAsync(FolderCheckMode.Manual);
-                                break;
-
-                            case NavigationMenuIds.RecreateAllThumbnails:
-                                if (Tabs.SelectedItem == null) { return; }
-
-                                var dialogWindow = new MessageBoxEx(this)
-                                {
-                                    DlogTitle = "サムネイルの再作成",
-                                    DlogMessage = $"サムネイルを再作成します。よろしいですか？",
-                                    PackIconKind = MaterialDesignThemes.Wpf.PackIconKind.EventQuestion
-                                };
-
-                                dialogWindow.ShowDialog();
-                                if (dialogWindow.CloseStatus() == MessageBoxResult.Cancel)
-                                {
-                                    return;
-                                }
-
-                                List<QueueObj> thumbQueue = [.. MainVM.MovieRecs.Select(rec => new QueueObj
-                                {
-                                    MovieId = rec.Movie_Id,
-                                    MovieFullPath = rec.Movie_Path,
-                                    Tabindex = Tabs.SelectedIndex
-                                })];
-                                EnqueueThumbnailWork(thumbQueue, Tabs.SelectedIndex, beginNewJob: true);
-                                break;
-
-                            case NavigationMenuIds.RefreshAllFileInfo:
-                                BeginRefreshAllFileInfoFromMenu();
-                                break;
-                            default:
-                                break;
-                        }
-                    }
-                    else
-                    {
-                        if (MenuTool.Items.Count > 0)
-                        {
-                            if (MenuTool.Items[0] is TreeSource topNode)
-                            {
-                                topNode.IsExpanded = !topNode.IsExpanded;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        private void MenuRecentTree_Click(object sender, RoutedEventArgs e)
-        {
-            if (sender is Button item)
-            {
-                if (!string.IsNullOrEmpty(item.Tag.ToString()))
-                {
-                    var tag = item.Tag.ToString();
-                    if (tag != RECENT_OPEN_FILE_LABEL)
-                    {
-                        MenuToggleButton.IsChecked = false;
-                        if (!string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
-                        {
-                            UpdateSkin();
-                            UpdateSort();
-                        }
-                        ReStackRecentTree(tag);
-                        OpenDatafile(tag);
-                        Properties.Settings.Default.LastDoc = tag;
-                        Properties.Settings.Default.Save();
-                    }
-                    else
-                    {
-                        if (MenuRecent.Items.Count > 0)
-                        {
-                            if (MenuRecent.Items[0] is TreeSource topNode)
-                            {
-                                topNode.IsExpanded = !topNode.IsExpanded;
-                            }
-                        }
-                    }
-                }
-            }
         }
 
         public async void PlayMovie_Click(object sender, RoutedEventArgs e)
@@ -2423,19 +2427,19 @@ namespace IndigoMovieManager
         /// <exception cref="OperationCanceledException"></exception>
         private async Task CheckFolderAsync(FolderCheckMode mode)
         {
-            (int folderCheckGeneration, string dbFullPath, List<(string Folder, bool Sub)> foldersToCheck) =
+            (int folderCheckGeneration, string dbFullPath, string excludeExt, List<(string Folder, bool Sub)> foldersToCheck) =
                 await Dispatcher.InvokeAsync(() =>
                 {
                     int generation = _sessionState.FolderCheckGeneration;
                     string dbPath = MainVM.DbInfo.DBFullPath;
                     if (string.IsNullOrWhiteSpace(dbPath))
                     {
-                        return (generation, dbPath, new List<(string Folder, bool Sub)>());
+                        return (generation, dbPath, "", new List<(string Folder, bool Sub)>());
                     }
 
                     MediaExtensionSettings.EnsureRequiredExtensions();
                     GetWatchTable(dbPath, FolderCheckService.GetWatchSql(mode));
-                    return (generation, dbPath, FolderCheckService.GetFoldersToCheck(watchData));
+                    return (generation, dbPath, MainVM.DbInfo.ExcludeExt ?? "", FolderCheckService.GetFoldersToCheck(watchData));
                 }).Task.ConfigureAwait(false);
 
             if (string.IsNullOrWhiteSpace(dbFullPath) || foldersToCheck.Count == 0)
@@ -2480,7 +2484,7 @@ namespace IndigoMovieManager
                     try
                     {
                         unregisteredFiles = await Task.Run(() =>
-                            MoviePathRegistrationIndex.FindUnregisteredFiles(pathIndex, checkFolder, sub))
+                            MoviePathRegistrationIndex.FindUnregisteredFiles(pathIndex, checkFolder, sub, excludeExt))
                             .ConfigureAwait(false);
                     }
                     catch (Exception e)

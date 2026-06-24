@@ -210,7 +210,10 @@ namespace IndigoMovieManager.Services
 
 
 
-        public static IEnumerable<FileInfo> EnumerateMediaFiles(DirectoryInfo directory, bool recurseSubdirectories)
+        public static IEnumerable<FileInfo> EnumerateMediaFiles(
+            DirectoryInfo directory,
+            bool recurseSubdirectories,
+            string excludeExtSetting = null)
 
         {
 
@@ -264,7 +267,7 @@ namespace IndigoMovieManager.Services
 
             {
 
-                if (!MediaExtensionSettings.MatchesExtension(file.FullName, checkExt))
+                if (!MediaExtensionSettings.ShouldScanFile(file.FullName, checkExt, excludeExtSetting))
 
                 {
 

@@ -7,7 +7,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     Title="個別設定"
     Width="800"
-    Height="370"
+    Height="420"
     ResizeMode="NoResize"
     WindowStartupLocation="CenterOwner"
     mc:Ignorable="d">
@@ -147,6 +147,23 @@
                         Style="{StaticResource MaterialDesignDiscreteSlider}"
                         TickFrequency="1"
                         Value="{Binding KeepHistory}" />
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal">
+                    <Label
+                        Width="170"
+                        Margin="5"
+                        Content="除外拡張子"
+                        FontSize="14"
+                        ToolTip="カンマ区切り。共通設定の走査対象のうち、ここに指定した拡張子を除外します。例: .jpg,.zip" />
+                    <TextBox
+                        x:Name="ExcludeExt"
+                        Width="520"
+                        Margin="5"
+                        materialDesign:TextFieldAssist.HasClearButton="True"
+                        FontSize="14"
+                        Text="{Binding ExcludeExt}"
+                        ToolTip="カンマ区切り。例: .jpg,.zip（. は省略可）" />
                 </StackPanel>
 
             </StackPanel>

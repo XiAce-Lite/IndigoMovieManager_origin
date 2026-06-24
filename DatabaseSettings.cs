@@ -14,15 +14,17 @@ namespace IndigoMovieManager
         private int _keepHistory;
         private string _playerPrg = "";
         private string _playerParam = "";
+        private string _excludeExt = "";
         private bool _thumbExists;
         private bool _bookmarkExists;
         private bool _keepHistoryExists;
         private bool _playerPrgExists;
         private bool _playerParamExists;
+        private bool _excludeExtExists;
 
         public DatabaseSettings(string dbFullPath)
         {
-            const string keys = "'thum','bookmark','keepHistory','playerPrg','playerParam'";
+            const string keys = "'thum','bookmark','keepHistory','playerPrg','playerParam','excludeExt'";
             DataTable systemTable = SqliteDataAccess.Query(dbFullPath, $"select * from system where attr in ({keys})");
 
             if (systemTable == null || systemTable.Rows.Count == 0)
@@ -54,6 +56,10 @@ namespace IndigoMovieManager
                         _playerParam = row[1].ToString();
                         _playerParamExists = true;
                         break;
+                    case "excludeExt":
+                        _excludeExt = row[1].ToString();
+                        _excludeExtExists = true;
+                        break;
                 }
             }
         }
@@ -62,6 +68,7 @@ namespace IndigoMovieManager
         public string BookmarkFolder { get => _bookmarkFolder; set => _bookmarkFolder = value; }
         public string PlayerPrg { get => _playerPrg; set => _playerPrg = value; }
         public string PlayerParam { get => _playerParam; set => _playerParam = value; }
+        public string ExcludeExt { get => _excludeExt; set => _excludeExt = value ?? ""; }
         public int KeepHistory { get => _keepHistory; set => _keepHistory = value; }
 
         public bool ThumbExists { get => _thumbExists; set => _thumbExists = value; }
@@ -69,5 +76,6 @@ namespace IndigoMovieManager
         public bool BookmarkExists { get => _bookmarkExists; set => _bookmarkExists = value; }
         public bool KeepHistoryExists { get => _keepHistoryExists; set => _keepHistoryExists = value; }
         public bool PlayerParamExists { get => _playerParamExists; set => _playerParamExists = value; }
+        public bool ExcludeExtExists { get => _excludeExtExists; set => _excludeExtExists = value; }
     }
 }

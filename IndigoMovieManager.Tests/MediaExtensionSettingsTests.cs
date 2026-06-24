@@ -10,10 +10,39 @@ public class MediaExtensionSettingsTests
     [InlineData(@"C:\video\sample.MOD", true)]
     [InlineData(@"C:\video\sample.mp4", true)]
     [InlineData(@"C:\video\sample.txt", false)]
-    public void MatchesExtension_respects_configured_patterns(string path, bool expected)
+    [InlineData(@"C:\video\sample.mp4", false, "mp4")]
+    [InlineData(@"C:\video\sample.mp4", false, ".mp4")]
+    [InlineData(@"C:\video\sample.zip", false, ".zip")]
+    [InlineData(@"C:\video\sample.mod", true, "zip")]
+    public void MatchesExtension_respects_configured_patterns(string path, bool expected, string excludeExt = null)
     {
-        const string checkExt = "*.mp4,*.mod";
-        Assert.Equal(expected, MediaExtensionSettings.MatchesExtension(path, checkExt));
+        const string checkExt = "*.mp4,*.mod,*.zip";
+        if (excludeExt == null)
+        {
+            Assert.Equal(expected, MediaExtensionSettings.MatchesExtension(path, checkExt));
+            return;
+        }
+
+        Assert.Equal(expected, MediaExtensionSettings.ShouldScanFile(path, checkExt, excludeExt));
+    }
+
+    [Theory]
+    [InlineData("jpg", ".jpg")]
+    [InlineData(".zip", ".zip")]
+    [InlineData("*.mp4", ".mp4")]
+    [InlineData("MP4", ".mp4")]
+    public void ParsePatterns_normalizes_extension_tokens(string input, string expected)
+    {
+        IReadOnlyList<string> patterns = MediaExtensionSettings.ParsePatterns(input);
+        Assert.Single(patterns);
+        Assert.Equal(expected, patterns[0], ignoreCase: true);
+    }
+
+    [Fact]
+    public void NormalizeListForStorage_removes_wildcards_and_adds_dots()
+    {
+        string normalized = MediaExtensionSettings.NormalizeListForStorage("mp4,*.mkv,.zip");
+        Assert.Equal(".mp4,.mkv,.zip", normalized);
     }
 
     [Fact]
@@ -21,8 +50,8 @@ public class MediaExtensionSettingsTests
     {
         Properties.Settings.Default.CheckExt = "*.mp4";
         MediaExtensionSettings.EnsureRequiredExtensions();
-        Assert.Contains("*.mod", Properties.Settings.Default.CheckExt, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("*.zip", Properties.Settings.Default.CheckExt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(".mod", Properties.Settings.Default.CheckExt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(".zip", Properties.Settings.Default.CheckExt, StringComparison.OrdinalIgnoreCase);
     }
 }
 
