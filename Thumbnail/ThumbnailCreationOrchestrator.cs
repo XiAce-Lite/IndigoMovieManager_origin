@@ -309,7 +309,7 @@ namespace IndigoMovieManager.Thumbnail
                 }
             }
 
-            if (ThumbnailValidityHelper.IsUsableCompositeThumbnail(detailPath))
+            if (File.Exists(detailPath))
             {
                 ApplyIfAllowed(host, detailObj, detailPath, isFailurePlaceholder: false);
                 return;

@@ -335,7 +335,7 @@ namespace IndigoMovieManager
 
             mv.ThumbDetail = _thumbLayoutCache.BuildThumbPath(99, thumbFile, checkExists: true);
 
-            bool detailMissing = !ThumbnailValidityHelper.IsUsableCompositeThumbnail(expectedDetailPath);
+            bool detailMissing = !File.Exists(expectedDetailPath);
 
             if (ZipMediaKind.IsZipRecord(mv) || ZipMediaKind.IsZipPath(mv.Movie_Path))
             {
@@ -673,10 +673,20 @@ namespace IndigoMovieManager
 
         private void ScheduleStartupFolderCheck()
         {
-            _ = Dispatcher.InvokeAsync(async () =>
+            _ = RunStartupFolderCheckAsync();
+        }
+
+        private async Task RunStartupFolderCheckAsync()
+        {
+            await Task.Yield();
+            try
             {
-                await CheckFolderAsync(FolderCheckMode.Auto);
-            }, DispatcherPriority.ApplicationIdle);
+                await CheckFolderAsync(FolderCheckMode.Auto).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : [folder-check] {ex.Message}");
+            }
         }
 
         public string SelectSystemTable(string attr)
@@ -2413,22 +2423,22 @@ namespace IndigoMovieManager
         /// <exception cref="OperationCanceledException"></exception>
         private async Task CheckFolderAsync(FolderCheckMode mode)
         {
-            int folderCheckGeneration = await Dispatcher.InvokeAsync(() => _sessionState.FolderCheckGeneration);
-            string dbFullPath = await Dispatcher.InvokeAsync(() => MainVM.DbInfo.DBFullPath);
-            if (string.IsNullOrWhiteSpace(dbFullPath))
-            {
-                return;
-            }
+            (int folderCheckGeneration, string dbFullPath, List<(string Folder, bool Sub)> foldersToCheck) =
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    int generation = _sessionState.FolderCheckGeneration;
+                    string dbPath = MainVM.DbInfo.DBFullPath;
+                    if (string.IsNullOrWhiteSpace(dbPath))
+                    {
+                        return (generation, dbPath, new List<(string Folder, bool Sub)>());
+                    }
 
-            MediaExtensionSettings.EnsureRequiredExtensions();
+                    MediaExtensionSettings.EnsureRequiredExtensions();
+                    GetWatchTable(dbPath, FolderCheckService.GetWatchSql(mode));
+                    return (generation, dbPath, FolderCheckService.GetFoldersToCheck(watchData));
+                }).Task.ConfigureAwait(false);
 
-            List<(string Folder, bool Sub)> foldersToCheck = await Dispatcher.InvokeAsync(() =>
-            {
-                GetWatchTable(dbFullPath, FolderCheckService.GetWatchSql(mode));
-                return FolderCheckService.GetFoldersToCheck(watchData);
-            });
-
-            if (foldersToCheck.Count == 0)
+            if (string.IsNullOrWhiteSpace(dbFullPath) || foldersToCheck.Count == 0)
             {
                 return;
             }
@@ -2445,7 +2455,8 @@ namespace IndigoMovieManager
             bool FolderCheckflg = false;
             List<QueueObj> addFiles = [];
             int totalFolders = foldersToCheck.Count;
-            FolderCheckProgressSession folderCheckProgress = await BeginFolderCheckProgressAsync(totalFolders).ConfigureAwait(true);
+            FolderCheckProgressSession folderCheckProgress =
+                await BeginFolderCheckProgressAsync(totalFolders).ConfigureAwait(true);
 
             MoviePathRegistrationIndex pathIndex = await Task.Run(() =>
                 MoviePathRegistrationIndex.Load(dbFullPath)).ConfigureAwait(false);
@@ -2564,8 +2575,8 @@ namespace IndigoMovieManager
                 return;
             }
 
-            int primaryTabIndex = await Dispatcher.InvokeAsync(() => MainVM.DbInfo.CurrentTabIndex);
-            string sortId = await Dispatcher.InvokeAsync(() => MainVM.DbInfo.Sort);
+            int primaryTabIndex = await Dispatcher.InvokeAsync(() => MainVM.DbInfo.CurrentTabIndex).Task.ConfigureAwait(true);
+            string sortId = await Dispatcher.InvokeAsync(() => MainVM.DbInfo.Sort).Task.ConfigureAwait(true);
             await FilterAndSortAsync(sortId, true).ConfigureAwait(true);
 
             if (!folderCheckStillActive())

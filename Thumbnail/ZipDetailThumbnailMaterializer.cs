@@ -51,7 +51,7 @@ namespace IndigoMovieManager.Thumbnail
             for (int tabIndex = 0; tabIndex < cache.TabOutPaths.Length; tabIndex++)
             {
                 string sourcePath = cache.GetExpectedThumbPath(tabIndex, movieBody, hash);
-                if (!ThumbnailValidityHelper.IsUsableCompositeThumbnail(sourcePath))
+                if (!File.Exists(sourcePath))
                 {
                     continue;
                 }

@@ -191,16 +191,16 @@ namespace IndigoMovieManager.Services
 
             foreach (MovieRecords item in filterList)
             {
-                if (string.IsNullOrWhiteSpace(item.Movie_Path))
+                if (string.IsNullOrWhiteSpace(item.Movie_Path) || string.IsNullOrWhiteSpace(item.Hash))
                 {
                     continue;
                 }
 
                 string fileBody = Path.GetFileNameWithoutExtension(item.Movie_Name ?? item.Movie_Path ?? string.Empty)
                     .ToLowerInvariant();
-                string hash = !string.IsNullOrWhiteSpace(item.Hash) ? item.Hash : GetHashCRC32(item.Movie_Path);
+                string hash = item.Hash;
                 string expectedPath = cache.GetExpectedThumbPath(tabIndex, fileBody, hash);
-                if (ThumbnailValidityHelper.IsUsableCompositeThumbnail(expectedPath))
+                if (File.Exists(expectedPath))
                 {
                     continue;
                 }
@@ -238,26 +238,25 @@ namespace IndigoMovieManager.Services
             string dbFullPath,
             int workGeneration)
         {
-            ThumbnailQueueProcessor.RequestDismissProgress();
             ClearQueue();
 
             IReadOnlyList<MovieRecords> snapshot = filterList as IReadOnlyList<MovieRecords> ?? filterList.ToList();
             List<QueueObj> work = await Task.Run(() =>
-                BuildTabSwitchWork(tabIndex, snapshot, cache, dbFullPath, workGeneration)).ConfigureAwait(true);
+                BuildTabSwitchWork(tabIndex, snapshot, cache, dbFullPath, workGeneration)).ConfigureAwait(false);
+
+            if (work.Count == 0)
+            {
+                return;
+            }
 
             lock (_sync)
             {
-                int jobId = _jobCoordinator.BeginJob(tabIndex);
-                if (work.Count == 0)
+                foreach (QueueObj item in work)
                 {
-                    ThumbnailQueueProcessor.RequestDismissProgress();
-                    return;
-                }
-
-                List<QueueObj> accepted = _jobCoordinator.RegisterWork(jobId, work);
-                foreach (QueueObj item in accepted)
-                {
-                    _queue.Enqueue(item);
+                    if (_jobCoordinator.TryRegisterSilentWork(item))
+                    {
+                        _queue.Enqueue(item);
+                    }
                 }
             }
         }
