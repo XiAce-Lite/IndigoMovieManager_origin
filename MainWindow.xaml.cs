@@ -1519,11 +1519,26 @@ namespace IndigoMovieManager
             _recentFileRemoveTargetButton = null;
         }
 
+        private static string GetLastOpenInitialDirectory()
+        {
+            string lastDoc = Properties.Settings.Default.LastDoc;
+            if (!string.IsNullOrWhiteSpace(lastDoc))
+            {
+                string directory = Path.GetDirectoryName(lastDoc);
+                if (!string.IsNullOrEmpty(directory) && Directory.Exists(directory))
+                {
+                    return directory;
+                }
+            }
+
+            return Directory.GetCurrentDirectory();
+        }
+
         private void BtnOpen_Click(object sender, RoutedEventArgs e)
         {
             var ofd = new OpenFileDialog
             {
-                InitialDirectory = Directory.GetCurrentDirectory(),
+                InitialDirectory = GetLastOpenInitialDirectory(),
                 RestoreDirectory = true,
                 Filter = "設定ファイル(*.wb)|*.wb|すべてのファイル(*.*)|*.*",
                 FilterIndex = 1,
