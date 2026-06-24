@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using IndigoMovieManager.Services;
 using IndigoMovieManager.Thumbnail;
 using static IndigoMovieManager.Tools;
 
@@ -34,12 +35,19 @@ namespace IndigoMovieManager.Thumbnail
             }
 
             TabInfo tbi = new(queueObj.Tabindex, host.DbName, host.ThumbFolder);
-            string movieFullPath = queueObj.MovieFullPath;
+            string movieFullPath = MediaPathNormalizer.Normalize(queueObj.MovieFullPath);
             string hash = GetHashCRC32(movieFullPath);
-            string fileBody = Path.GetFileNameWithoutExtension(movieFullPath);
-            string saveThumbFileName = Path.Combine(tbi.OutPath, $"{fileBody}.#{hash}.jpg");
+            string fileBody = Path.GetFileNameWithoutExtension(movieFullPath).ToLowerInvariant();
+            string saveThumbFileName = host.LayoutCache != null
+                ? host.LayoutCache.GetExpectedThumbPath(queueObj.Tabindex, fileBody, hash)
+                : Path.Combine(tbi.OutPath, ThumbnailLayoutCache.GetThumbFileName(fileBody, hash));
 
             if (isManual && !Path.Exists(saveThumbFileName))
+            {
+                return;
+            }
+
+            if (isManual && ZipMediaKind.IsZipPath(movieFullPath))
             {
                 return;
             }
@@ -54,22 +62,18 @@ namespace IndigoMovieManager.Thumbnail
             }
 
             string tempFileBody = $"{fileBody}_{hash}_tab{queueObj.Tabindex}_temp";
-            string tempPath = Path.Combine(Directory.GetCurrentDirectory(), "temp");
-            if (!Path.Exists(tempPath))
-            {
-                Directory.CreateDirectory(tempPath);
-            }
+            string tempPath = ApplicationPaths.TempDirectory;
 
             if (!Path.Exists(tbi.OutPath))
             {
                 Directory.CreateDirectory(tbi.OutPath);
             }
 
-            if (!Path.Exists(queueObj.MovieFullPath))
+            if (!Path.Exists(movieFullPath))
             {
                 if (!Path.Exists(saveThumbFileName))
                 {
-                    string noFileJpeg = Path.Combine(Directory.GetCurrentDirectory(), "Images");
+                    string noFileJpeg = ApplicationPaths.ImagesDirectory;
                     noFileJpeg = queueObj.Tabindex switch
                     {
                         0 => Path.Combine(noFileJpeg, "noFileSmall.jpg"),
@@ -99,6 +103,52 @@ namespace IndigoMovieManager.Thumbnail
                 IsManual = isManual,
                 IsResizeThumb = host.IsResizeThumb,
             };
+
+            if (ZipMediaKind.IsZipPath(movieFullPath))
+            {
+                if (ZipImageCatalog.TryGetImageEntries(movieFullPath, out IReadOnlyList<string> zipEntries)
+                    && zipEntries.Count > 0)
+                {
+                    MovieRecords zipMovieItem = host.FindMovieRecord?.Invoke(queueObj.MovieId);
+                    if (zipMovieItem != null && IsSessionActive(host))
+                    {
+                        string lengthDisplay = $"{zipEntries.Count}枚";
+                        if (zipMovieItem.Movie_Length != lengthDisplay)
+                        {
+                            string dbPath = host.DbFullPath;
+                            long movieId = queueObj.MovieId;
+                            long imageCount = zipEntries.Count;
+                            host.RunOnUi(() =>
+                            {
+                                MovieRecords current = host.FindMovieRecord?.Invoke(movieId);
+                                if (current != null && current.Movie_Length != lengthDisplay)
+                                {
+                                    current.Movie_Length = lengthDisplay;
+                                }
+                            });
+                            host.UpdateMovieColumn(dbPath, movieId, imageCount);
+                        }
+                    }
+                }
+
+                bool zipCreated = await TryCreateZipThumbnailAsync(ctx, cts).ConfigureAwait(false);
+                if (!IsSessionActive(host) || host.FindMovieRecord?.Invoke(queueObj.MovieId) == null)
+                {
+                    return;
+                }
+
+                if (zipCreated)
+                {
+                    ApplyIfAllowed(host, queueObj, saveThumbFileName, isFailurePlaceholder: false);
+                    await EnsureDetailThumbnailAfterPrimaryAsync(host, queueObj, saveThumbFileName, cts).ConfigureAwait(false);
+                }
+                else
+                {
+                    ApplyIfAllowed(host, queueObj, saveThumbFileName, isFailurePlaceholder: true);
+                }
+
+                return;
+            }
 
             if (!ThumbnailDurationResolver.TryResolve(movieFullPath, out double durationSec))
             {
@@ -196,11 +246,76 @@ namespace IndigoMovieManager.Thumbnail
             if (created)
             {
                 ApplyIfAllowed(host, queueObj, saveThumbFileName, isFailurePlaceholder: false);
+                await EnsureDetailThumbnailAfterPrimaryAsync(host, queueObj, saveThumbFileName, cts).ConfigureAwait(false);
             }
             else
             {
                 ApplyIfAllowed(host, queueObj, saveThumbFileName, isFailurePlaceholder: true);
             }
+        }
+
+        private static async Task EnsureDetailThumbnailAfterPrimaryAsync(
+            ThumbnailCreationHost host,
+            QueueObj sourceObj,
+            string primaryThumbPath,
+            CancellationToken cts)
+        {
+            if (sourceObj == null
+                || sourceObj.Tabindex is < 0 or > 4
+                || !IsSessionActive(host)
+                || string.IsNullOrWhiteSpace(sourceObj.MovieFullPath))
+            {
+                return;
+            }
+
+            string hash = GetHashCRC32(sourceObj.MovieFullPath);
+            if (string.IsNullOrEmpty(hash))
+            {
+                return;
+            }
+
+            string fileBody = Path.GetFileNameWithoutExtension(sourceObj.MovieFullPath).ToLowerInvariant();
+            string detailPath = host.LayoutCache != null
+                ? host.LayoutCache.GetExpectedThumbPath(99, fileBody, hash)
+                : Path.Combine(new TabInfo(99, host.DbName, host.ThumbFolder).OutPath,
+                    ThumbnailLayoutCache.GetThumbFileName(fileBody, hash));
+
+            var detailObj = new QueueObj
+            {
+                MovieId = sourceObj.MovieId,
+                MovieFullPath = sourceObj.MovieFullPath,
+                Tabindex = 99,
+                DbFullPath = sourceObj.DbFullPath,
+                WorkGeneration = sourceObj.WorkGeneration,
+            };
+
+            if (ZipMediaKind.IsZipPath(sourceObj.MovieFullPath))
+            {
+                bool copied = ZipDetailThumbnailMaterializer.TryCopyFile(primaryThumbPath, detailPath);
+                if (!copied
+                    && host.LayoutCache != null)
+                {
+                    copied = ZipDetailThumbnailMaterializer.TryCopyFromExistingTabThumbs(
+                        host.LayoutCache,
+                        fileBody,
+                        hash,
+                        detailPath);
+                }
+
+                if (copied)
+                {
+                    ApplyIfAllowed(host, detailObj, detailPath, isFailurePlaceholder: false);
+                    return;
+                }
+            }
+
+            if (ThumbnailValidityHelper.IsUsableCompositeThumbnail(detailPath))
+            {
+                ApplyIfAllowed(host, detailObj, detailPath, isFailurePlaceholder: false);
+                return;
+            }
+
+            await CreateAsync(host, detailObj, isManual: false, cts).ConfigureAwait(false);
         }
 
         private static bool IsSessionActive(ThumbnailCreationHost host) =>
@@ -269,6 +384,33 @@ namespace IndigoMovieManager.Thumbnail
             }
 
             return openCvResult;
+        }
+
+        private static async Task<bool> TryCreateZipThumbnailAsync(
+            ThumbnailJobContext ctx,
+            CancellationToken cts)
+        {
+            if (!ZipImageCatalog.TryGetImageEntries(ctx.MovieFullPath, out IReadOnlyList<string> entries)
+                || entries.Count == 0)
+            {
+                return false;
+            }
+
+            if (!ThumbnailJobPreparer.TryBuildZipThumbInfo(ctx, entries.Count, out ThumbInfo thumbInfo))
+            {
+                return false;
+            }
+
+            ThumbnailCreateResult result = await ZipThumbnailCreator
+                .TryCreateAsync(ctx, thumbInfo, entries, cts)
+                .ConfigureAwait(false);
+
+            if (!result.Success && !string.IsNullOrWhiteSpace(result.FailureReason))
+            {
+                Debug.WriteLine($"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : [thumb] zip: {result.FailureReason}");
+            }
+
+            return result.Success;
         }
     }
 }

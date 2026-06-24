@@ -8,7 +8,7 @@
     xmlns:prop="clr-namespace:IndigoMovieManager.Properties"
     Title="共通設定"
     Width="800"
-    Height="480"
+    Height="560"
     ResizeMode="NoResize"
     WindowStartupLocation="CenterOwner"
     mc:Ignorable="d">
@@ -100,6 +100,49 @@
                         IsEditable="True"
                         Text="{Binding DefaultPlayerParam, Source={x:Static prop:Settings.Default}}"
                         ToolTip="&lt;ms&gt;と&lt;file&gt;の置換のみ対応" />
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal">
+                    <Label
+                        Width="300"
+                        Margin="5"
+                        Content="ZIP画像ビューワー"
+                        FontSize="14"
+                        ToolTip="ZIP内の画像を開くときに使うビューワー。未指定時は既定のアプリで開きます。" />
+                    <TextBox
+                        x:Name="DefaultZipViewerPath"
+                        Width="400"
+                        Margin="5"
+                        materialDesign:TextFieldAssist.HasClearButton="True"
+                        FontSize="14"
+                        IsReadOnly="True"
+                        Text="{Binding DefaultZipViewerPath, Source={x:Static prop:Settings.Default}}"
+                        ToolTip="{Binding DefaultZipViewerPath}" />
+                    <Button
+                        x:Name="OpenDialogZipViewer"
+                        Width="30"
+                        Height="30"
+                        Click="OpenDialogZipViewer_Click"
+                        Content="{materialDesign:PackIcon Kind=FolderOpen}"
+                        Style="{StaticResource MaterialDesignIconButton}" />
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal">
+                    <Label
+                        Width="300"
+                        Margin="5"
+                        Content="ZIP画像ビューワーパラメータ"
+                        FontSize="14"
+                        ToolTip="&lt;file&gt;の置換のみ対応" />
+                    <ComboBox
+                        x:Name="DefaultZipViewerParam"
+                        Width="400"
+                        Margin="5"
+                        materialDesign:TextFieldAssist.HasClearButton="True"
+                        FontSize="14"
+                        IsEditable="True"
+                        Text="{Binding DefaultZipViewerParam, Source={x:Static prop:Settings.Default}}"
+                        ToolTip="&lt;file&gt;の置換のみ対応" />
                 </StackPanel>
 
                 <StackPanel Orientation="Horizontal">

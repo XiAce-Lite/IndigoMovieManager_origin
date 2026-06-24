@@ -62,5 +62,32 @@ namespace IndigoMovieManager.Thumbnail
             thumbInfo.NewThumbInfo();
             return true;
         }
+
+        public static bool TryBuildZipThumbInfo(ThumbnailJobContext ctx, int imageCount, out ThumbInfo thumbInfo)
+        {
+            thumbInfo = null;
+            if (ctx == null || imageCount <= 0)
+            {
+                return false;
+            }
+
+            thumbInfo = new ThumbInfo
+            {
+                ThumbWidth = ctx.TabInfo.Width,
+                ThumbHeight = ctx.TabInfo.Height,
+                ThumbRows = ctx.TabInfo.Rows,
+                ThumbColumns = ctx.TabInfo.Columns,
+                ThumbCounts = ctx.TabInfo.Columns * ctx.TabInfo.Rows,
+            };
+
+            int[] indices = ZipSamplingPolicy.PickIndices(imageCount, thumbInfo.ThumbCounts);
+            foreach (int index in indices)
+            {
+                thumbInfo.Add(index);
+            }
+
+            thumbInfo.NewThumbInfo();
+            return thumbInfo.ThumbCounts > 0;
+        }
     }
 }

@@ -321,6 +321,33 @@ namespace IndigoMovieManager
             }
         }
 
+        public static void UpdateMovieZipInfo(string dbFullPath, long movieId, int imageCount)
+        {
+            try
+            {
+                using SQLiteConnection connection = new($"Data Source={dbFullPath}");
+                connection.Open();
+
+                using var transaction = connection.BeginTransaction();
+                using (SQLiteCommand cmd = connection.CreateCommand())
+                {
+                    cmd.CommandText =
+                        "update movie set container = @container, video = '', audio = '', extra = '', " +
+                        "movie_length = @movie_length where movie_id = @id";
+                    cmd.Parameters.Add(new SQLiteParameter("@id", movieId));
+                    cmd.Parameters.Add(new SQLiteParameter("@container", "zip"));
+                    cmd.Parameters.Add(new SQLiteParameter("@movie_length", imageCount));
+                    cmd.ExecuteNonQuery();
+                }
+                transaction.Commit();
+            }
+            catch (Exception e)
+            {
+                var title = $"{Assembly.GetExecutingAssembly().GetName().Name} - {MethodBase.GetCurrentMethod().Name}";
+                UiErrorReporter.ShowError(e.Message, title);
+            }
+        }
+
         public static void UpsertSystemTable(string dbFullPath, string attr, string value)
         {
             DataTable dt = GetData(dbFullPath, $"select * from system where attr = '{attr}'");
@@ -439,10 +466,11 @@ namespace IndigoMovieManager
         }
 
 
-        public static async Task InsertMovieTable(string dbFullPath, MovieInfo mvi)
+        public static async Task<bool> InsertMovieTable(string dbFullPath, MovieInfo mvi)
         {
             try
             {
+                mvi.MoviePath = MediaPathNormalizer.Normalize(mvi.MoviePath);
                 using SQLiteConnection connection = new($"Data Source={dbFullPath}");
                 connection.Open();
 
@@ -481,13 +509,27 @@ namespace IndigoMovieManager
 
                 if (SinkuMetadataFetcher.TryFetch(mvi.MoviePath, out SinkuMetadata metadata))
                 {
-                    container = metadata.Container;
+                    if (string.IsNullOrEmpty(container))
+                    {
+                        container = metadata.Container;
+                    }
+
                     video = metadata.Video;
                     audio = metadata.Audio;
                     extra = metadata.Extra;
                     if (movieLengthLong < 1 && metadata.MovieLengthSec > 0)
                     {
                         movieLengthLong = metadata.MovieLengthSec;
+                    }
+                }
+
+                if (!string.IsNullOrEmpty(mvi.Container))
+                {
+                    container = mvi.Container;
+                    if (string.Equals(container, "zip", StringComparison.OrdinalIgnoreCase)
+                        && mvi.MovieLength > 0)
+                    {
+                        movieLengthLong = mvi.MovieLength;
                     }
                 }
 
@@ -541,17 +583,20 @@ namespace IndigoMovieManager
                     cmd.ExecuteNonQuery();
                 }
                 transaction.Commit();
-                //Debug.WriteLine(mvi.MovieName);
+                return true;
             }
 
             // 例外が発生した場合
             catch (Exception e)
             {
-                // 例外の内容を表示します。
-                var title = $"{Assembly.GetExecutingAssembly().GetName().Name} - {MethodBase.GetCurrentMethod().Name}";
-                UiErrorReporter.ShowError(e.Message, title);
+                Debug.WriteLine(
+                    $"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : [SQLite] InsertMovieTable failed: {mvi?.MoviePath} : {e.Message}");
+                return false;
             }
-            await Task.Delay(5);
+            finally
+            {
+                await Task.Delay(5).ConfigureAwait(false);
+            }
         }
 
         public static void InsertHistoryTable(string dbFullPath, string find_text)

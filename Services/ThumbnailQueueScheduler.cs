@@ -113,6 +113,47 @@ namespace IndigoMovieManager.Services
             }
         }
 
+        /// <summary>
+        /// 詳細タブ（99）用。in-flight でなければ tracked を解除してから silent → 通常ジョブの順で投入する。
+        /// </summary>
+        public bool TryEnqueueDetailWork(QueueObj item)
+        {
+            if (item == null || item.Tabindex != 99)
+            {
+                return false;
+            }
+
+            lock (_sync)
+            {
+                if (_jobCoordinator.IsInFlight(item.MovieId, 99))
+                {
+                    return false;
+                }
+
+                _jobCoordinator.UntrackIfNotInFlight(item.MovieId, 99);
+
+                if (_jobCoordinator.TryRegisterSilentWork(item))
+                {
+                    _queue.Enqueue(item);
+                    return true;
+                }
+
+                int jobId = _jobCoordinator.CurrentJobId;
+                if (jobId == 0)
+                {
+                    jobId = _jobCoordinator.BeginJob(99);
+                }
+
+                List<QueueObj> accepted = _jobCoordinator.RegisterWork(jobId, [item]);
+                foreach (QueueObj acceptedItem in accepted)
+                {
+                    _queue.Enqueue(acceptedItem);
+                }
+
+                return accepted.Count > 0;
+            }
+        }
+
         public bool TryEnqueueManualWork(QueueObj item)
         {
             if (item == null)
@@ -150,15 +191,16 @@ namespace IndigoMovieManager.Services
 
             foreach (MovieRecords item in filterList)
             {
-                if (string.IsNullOrWhiteSpace(item.Movie_Path) || !Path.Exists(item.Movie_Path))
+                if (string.IsNullOrWhiteSpace(item.Movie_Path))
                 {
                     continue;
                 }
 
-                string fileBody = Path.GetFileNameWithoutExtension(item.Movie_Name ?? item.Movie_Path ?? string.Empty);
+                string fileBody = Path.GetFileNameWithoutExtension(item.Movie_Name ?? item.Movie_Path ?? string.Empty)
+                    .ToLowerInvariant();
                 string hash = !string.IsNullOrWhiteSpace(item.Hash) ? item.Hash : GetHashCRC32(item.Movie_Path);
                 string expectedPath = cache.GetExpectedThumbPath(tabIndex, fileBody, hash);
-                if (File.Exists(expectedPath))
+                if (ThumbnailValidityHelper.IsUsableCompositeThumbnail(expectedPath))
                 {
                     continue;
                 }
@@ -186,10 +228,22 @@ namespace IndigoMovieManager.Services
             string dbFullPath,
             int workGeneration)
         {
+            _ = StartTabSwitchJobAsync(tabIndex, filterList, cache, dbFullPath, workGeneration);
+        }
+
+        public async Task StartTabSwitchJobAsync(
+            int tabIndex,
+            IEnumerable<MovieRecords> filterList,
+            ThumbnailLayoutCache cache,
+            string dbFullPath,
+            int workGeneration)
+        {
             ThumbnailQueueProcessor.RequestDismissProgress();
             ClearQueue();
 
-            List<QueueObj> work = BuildTabSwitchWork(tabIndex, filterList, cache, dbFullPath, workGeneration);
+            IReadOnlyList<MovieRecords> snapshot = filterList as IReadOnlyList<MovieRecords> ?? filterList.ToList();
+            List<QueueObj> work = await Task.Run(() =>
+                BuildTabSwitchWork(tabIndex, snapshot, cache, dbFullPath, workGeneration)).ConfigureAwait(true);
 
             lock (_sync)
             {

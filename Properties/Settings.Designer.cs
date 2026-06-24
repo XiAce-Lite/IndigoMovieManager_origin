@@ -196,13 +196,37 @@ namespace IndigoMovieManager.Properties {
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
         [global::System.Configuration.DefaultSettingValueAttribute("*.avi,*.wmv,*.mpg,*.flv,*.asf,*.mpeg,*.mkv,*.swf,*.ogm,*.mp4,*.mov,*.avs,*.divx,*" +
-            ".3gp,*.3g2,*.m4v")]
+            ".3gp,*.3g2,*.m4v,*.zip")]
         public string CheckExt {
             get {
                 return ((string)(this["CheckExt"]));
             }
             set {
                 this["CheckExt"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string DefaultZipViewerPath {
+            get {
+                return ((string)(this["DefaultZipViewerPath"]));
+            }
+            set {
+                this["DefaultZipViewerPath"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string DefaultZipViewerParam {
+            get {
+                return ((string)(this["DefaultZipViewerParam"]));
+            }
+            set {
+                this["DefaultZipViewerParam"] = value;
             }
         }
     }

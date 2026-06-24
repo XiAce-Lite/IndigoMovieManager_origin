@@ -1,5 +1,6 @@
 using System.IO;
 using System.Windows;
+using IndigoMovieManager.Thumbnail;
 using static IndigoMovieManager.Tools;
 
 namespace IndigoMovieManager.Services
@@ -55,7 +56,9 @@ namespace IndigoMovieManager.Services
                 }
             }
 
-            msec = thumbInfo.ThumbSec[secPos] * 1000;
+            msec = ZipMediaKind.IsZipRecord(mv)
+                ? thumbInfo.ThumbSec[secPos]
+                : thumbInfo.ThumbSec[secPos] * 1000;
             returnPos = secPos;
             return msec;
         }

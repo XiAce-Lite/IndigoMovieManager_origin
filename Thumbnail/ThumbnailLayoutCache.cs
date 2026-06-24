@@ -22,7 +22,7 @@ namespace IndigoMovieManager.Thumbnail
 
         public void Refresh(string dbName, string thumbFolder, int tabCount)
         {
-            ImagesBasePath = Path.Combine(Directory.GetCurrentDirectory(), "Images");
+            ImagesBasePath = ApplicationPaths.ImagesDirectory;
             TabOutPaths = new string[tabCount];
             for (int i = 0; i < tabCount; i++)
             {
@@ -96,7 +96,8 @@ namespace IndigoMovieManager.Thumbnail
 
         public static string GetThumbFileName(string movieNameWithoutExt, string hash)
         {
-            return $"{movieNameWithoutExt}.#{hash}.jpg";
+            string body = (movieNameWithoutExt ?? "").ToLowerInvariant();
+            return $"{body}.#{hash}.jpg";
         }
     }
 }

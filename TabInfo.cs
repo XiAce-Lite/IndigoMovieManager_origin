@@ -1,4 +1,5 @@
 ﻿using System.IO;
+using IndigoMovieManager.Thumbnail;
 
 namespace IndigoMovieManager
 {
@@ -62,14 +63,8 @@ namespace IndigoMovieManager
                     break;
             }
             divCount = columns * rows;
-            if (thumbFolder == "")
-            {
-                outPath = Path.Combine(Directory.GetCurrentDirectory(), "Thumb", dbName, $"{width}x{height}x{columns}x{rows}");
-            }
-            else
-            {
-                outPath = Path.Combine(thumbFolder, $"{width}x{height}x{columns}x{rows}");
-            }
+            string thumbRoot = ApplicationPaths.ResolveThumbRoot(dbName, thumbFolder);
+            outPath = Path.Combine(thumbRoot, $"{width}x{height}x{columns}x{rows}");
         }
     }
 }

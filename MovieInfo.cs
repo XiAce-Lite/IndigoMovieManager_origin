@@ -1,6 +1,7 @@
 ﻿using OpenCvSharp;
 using System.Diagnostics;
 using System.IO;
+using IndigoMovieManager.Thumbnail;
 
 namespace IndigoMovieManager
 {
@@ -17,7 +18,7 @@ namespace IndigoMovieManager
         private readonly long score = 0;
         private long view_count = 0;
         private string hash = "";
-        private readonly string container = "";
+        private string container = "";
         private readonly string video = "";
         private readonly string audio = "";
         private readonly string extra = "";
@@ -70,6 +71,17 @@ namespace IndigoMovieManager
                 hash = Tools.GetHashCRC32(fileFullPath);
             }
 
+            if (ZipMediaKind.IsZipPath(fileFullPath))
+            {
+                container = "zip";
+                if (ZipImageCatalog.TryGetImageEntries(fileFullPath, out IReadOnlyList<string> entries))
+                {
+                    movie_length = entries.Count;
+                }
+
+                return;
+            }
+
             if (!ShouldSkipOpenCvProbe(fileFullPath))
             {
                 TryProbeWithOpenCv(fileFullPath);
@@ -79,7 +91,8 @@ namespace IndigoMovieManager
         private static bool ShouldSkipOpenCvProbe(string fileFullPath)
         {
             string ext = Path.GetExtension(fileFullPath);
-            return ext.Equals(".mod", StringComparison.OrdinalIgnoreCase);
+            return ext.Equals(".mod", StringComparison.OrdinalIgnoreCase)
+                || ext.Equals(".zip", StringComparison.OrdinalIgnoreCase);
         }
 
         private void TryProbeWithOpenCv(string fileFullPath)

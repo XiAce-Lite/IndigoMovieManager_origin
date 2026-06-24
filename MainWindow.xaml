@@ -54,7 +54,7 @@
             </Setter>
         </Style>
 
-        <ContextMenu x:Key="menuContext" FontSize="10">
+        <ContextMenu x:Key="menuContext" FontSize="10" Opened="MenuContext_Opened">
             <MenuItem
                 x:Name="PlayDefault"
                 Click="PlayMovie_Click"

@@ -122,25 +122,31 @@ namespace IndigoMovieManager
     /// <summary>
     /// 進捗表示なし（クリック時の詳細サムネなど）。
     /// </summary>
-    public bool TryRegisterSilentWork(QueueObj item)
-    {
-      if (item == null)
-      {
-        return false;
-      }
-
-      lock (_lock)
-      {
-        var key = (item.MovieId, item.Tabindex);
-        if (!_tracked.Add(key))
+        public bool TryRegisterSilentWork(QueueObj item)
         {
-          return false;
-        }
+            if (item == null)
+            {
+                return false;
+            }
 
-        item.JobId = SilentJobId;
-        return true;
-      }
-    }
+            lock (_lock)
+            {
+                var key = (item.MovieId, item.Tabindex);
+                if (_inFlight.Contains(key))
+                {
+                    return false;
+                }
+
+                _tracked.Remove(key);
+                if (!_tracked.Add(key))
+                {
+                    return false;
+                }
+
+                item.JobId = SilentJobId;
+                return true;
+            }
+        }
 
     /// <summary>
     /// 手動サムネ用。in-flight 中でなければ tracked を更新してキュー投入可能にする。
@@ -193,6 +199,18 @@ namespace IndigoMovieManager
       lock (_lock)
       {
         return _inFlight.Contains((movieId, tabIndex));
+      }
+    }
+
+    public void UntrackIfNotInFlight(long movieId, int tabIndex)
+    {
+      lock (_lock)
+      {
+        var key = (movieId, tabIndex);
+        if (!_inFlight.Contains(key))
+        {
+          _tracked.Remove(key);
+        }
       }
     }
 

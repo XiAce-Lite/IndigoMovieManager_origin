@@ -10,6 +10,7 @@ namespace IndigoMovieManager.Services
         private static readonly string[] RequiredPatterns =
         [
             "*.mod",
+            "*.zip",
         ];
 
         public static void EnsureRequiredExtensions()

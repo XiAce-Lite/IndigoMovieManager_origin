@@ -1,3 +1,5 @@
+using IndigoMovieManager.Thumbnail;
+
 namespace IndigoMovieManager.Services
 {
     internal static class MovieFileInfoHelper
@@ -28,6 +30,20 @@ namespace IndigoMovieManager.Services
             {
                 rec.Movie_Length = new TimeSpan(0, 0, (int)metadata.MovieLengthSec).ToString(@"hh\:mm\:ss");
             }
+        }
+
+        public static void ApplyZipInfoToRecord(MovieRecords rec, int imageCount)
+        {
+            if (rec == null)
+            {
+                return;
+            }
+
+            rec.Container = "zip";
+            rec.Video = "";
+            rec.Audio = "";
+            rec.Extra = "";
+            rec.Movie_Length = imageCount > 0 ? $"{imageCount}枚" : "0枚";
         }
     }
 }

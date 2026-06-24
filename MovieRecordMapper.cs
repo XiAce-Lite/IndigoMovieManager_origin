@@ -43,6 +43,11 @@ namespace IndigoMovieManager
             string tag = TagLeadingNewlinesRegex().Replace(tags, "");
             string ext = Path.GetExtension(movieFullPath);
             string movieBody = Path.GetFileNameWithoutExtension(movieFullPath);
+            string containerValue = row["container"].ToString();
+            long movieLengthRaw = (long)row["movie_length"];
+            string movieLength = string.Equals(containerValue, "zip", StringComparison.OrdinalIgnoreCase)
+                ? $"{movieLengthRaw}枚"
+                : new TimeSpan(0, 0, (int)movieLengthRaw).ToString(@"hh\:mm\:ss");
 
             return new MovieRecords
             {
@@ -50,7 +55,7 @@ namespace IndigoMovieManager
                 Movie_Name = $"{row["movie_name"]}{ext}",
                 Movie_Body = movieBody,
                 Movie_Path = row["movie_path"].ToString(),
-                Movie_Length = new TimeSpan(0, 0, (int)(long)row["movie_length"]).ToString(@"hh\:mm\:ss"),
+                Movie_Length = movieLength,
                 Movie_Size = (long)row["movie_size"],
                 Last_Date = ((DateTime)row["last_date"]).ToString("yyyy-MM-dd HH:mm:ss"),
                 File_Date = ((DateTime)row["file_date"]).ToString("yyyy-MM-dd HH:mm:ss"),
@@ -58,7 +63,7 @@ namespace IndigoMovieManager
                 Score = (long)row["score"],
                 View_Count = (long)row["view_count"],
                 Hash = hash,
-                Container = row["container"].ToString(),
+                Container = containerValue,
                 Video = row["video"].ToString(),
                 Audio = row["audio"].ToString(),
                 Extra = row["extra"].ToString(),
