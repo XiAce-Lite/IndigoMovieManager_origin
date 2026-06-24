@@ -6,6 +6,8 @@ namespace IndigoMovieManager.Services
     internal sealed class MainWindowSessionState
     {
         private int _filterGeneration;
+        private int _folderCheckGeneration;
+        private int _thumbnailWorkGeneration;
 
         public string ActiveDbFullPath { get; private set; } = "";
 
@@ -13,11 +15,20 @@ namespace IndigoMovieManager.Services
         {
             ActiveDbFullPath = dbFullPath ?? "";
             BumpFilterGeneration();
+            BumpFolderCheckGeneration();
         }
 
         public int BumpFilterGeneration() => Interlocked.Increment(ref _filterGeneration);
 
         public int FilterGeneration => Volatile.Read(ref _filterGeneration);
+
+        public int BumpFolderCheckGeneration() => Interlocked.Increment(ref _folderCheckGeneration);
+
+        public int FolderCheckGeneration => Volatile.Read(ref _folderCheckGeneration);
+
+        public int BumpThumbnailWorkGeneration() => Interlocked.Increment(ref _thumbnailWorkGeneration);
+
+        public int ThumbnailWorkGeneration => Volatile.Read(ref _thumbnailWorkGeneration);
 
         public bool IsActiveDb(string dbFullPath)
         {

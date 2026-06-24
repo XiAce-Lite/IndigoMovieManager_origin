@@ -1,4 +1,5 @@
-﻿using System.Windows;
+﻿using IndigoMovieManager.Services;
+using System.Windows;
 
 namespace IndigoMovieManager
 {
@@ -7,5 +8,10 @@ namespace IndigoMovieManager
     /// </summary>
     public partial class App : Application
     {
+        protected override void OnStartup(StartupEventArgs e)
+        {
+            MediaExtensionSettings.EnsureRequiredExtensions();
+            base.OnStartup(e);
+        }
     }
 }

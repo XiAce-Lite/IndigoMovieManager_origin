@@ -57,6 +57,27 @@ namespace IndigoMovieManager.Services
             return updated;
         }
 
+        public static Stack<string> Remove(Stack<string> recentFiles, string pathToRemove)
+        {
+            Stack<string> updated = new();
+            foreach (string item in recentFiles.Reverse())
+            {
+                if (string.IsNullOrEmpty(item))
+                {
+                    continue;
+                }
+
+                if (string.Equals(item, pathToRemove, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                updated.Push(item);
+            }
+
+            return updated;
+        }
+
         public static void RebuildTreeChildren(
             ObservableCollection<TreeSource> recentTreeRoot,
             Stack<string> recentFiles)

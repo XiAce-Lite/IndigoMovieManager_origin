@@ -1,3 +1,5 @@
+using System.IO;
+
 namespace IndigoMovieManager
 {
     internal static class MovieListFilter
@@ -38,16 +40,25 @@ namespace IndigoMovieManager
 
                     if (inner.Equals("notag", StringComparison.CurrentCultureIgnoreCase))
                     {
-                        filterList = filterList.Where(x => string.IsNullOrEmpty(x.Tags));
+                        filterList = filterList.Where(x => string.IsNullOrWhiteSpace(x.Tags));
+                        searchCount = filterList.Count();
+                    }
+                    else if (inner.Equals("tag", StringComparison.CurrentCultureIgnoreCase))
+                    {
+                        filterList = filterList.Where(x => !string.IsNullOrWhiteSpace(x.Tags));
+                        searchCount = filterList.Count();
+                    }
+                    else if (inner.Equals("nofile", StringComparison.CurrentCultureIgnoreCase))
+                    {
+                        filterList = filterList.Where(x => !File.Exists(x.Movie_Path ?? ""));
                         searchCount = filterList.Count();
                     }
                     else if (inner.Equals("dup", StringComparison.CurrentCultureIgnoreCase))
                     {
-                        HashSet<string> dupHashes = filterList
+                        HashSet<string> dupHashes = [.. filterList
                             .GroupBy(x => x.Hash)
                             .Where(g => !string.IsNullOrEmpty(g.Key) && g.Count() > 1)
-                            .Select(g => g.Key)
-                            .ToHashSet();
+                            .Select(g => g.Key)];
 
                         filterList = filterList.Where(x => dupHashes.Contains(x.Hash));
                         searchCount = filterList.Count();
@@ -90,7 +101,7 @@ namespace IndigoMovieManager
             }
 
             filterList = SortDefinitions.Apply(sortId, filterList);
-            List<MovieRecords> items = filterList.ToList();
+            List<MovieRecords> items = [.. filterList];
 
             return new FilterResult
             {

@@ -54,6 +54,45 @@ public class MovieListFilterTests
   }
 
   [Fact]
+  public void Build_Tag_FiltersTaggedRecords()
+  {
+    var source = new[]
+    {
+      CreateRecord("a.mp4", @"C:\a.mp4", ""),
+      CreateRecord("b.mp4", @"C:\b.mp4", "x"),
+      CreateRecord("c.mp4", @"C:\c.mp4", "   "),
+    };
+
+    var result = MovieListFilter.Build(source, "{tag}", "1");
+
+    Assert.Single(result.Items);
+    Assert.Equal("b.mp4", result.Items[0].Movie_Name);
+  }
+
+  [Fact]
+  public void Build_Nofile_FiltersMissingFiles()
+  {
+    string existingPath = Path.GetTempFileName();
+    try
+    {
+      var source = new[]
+      {
+        CreateRecord("exists.mp4", existingPath),
+        CreateRecord("missing.mp4", @"C:\missing\missing.mp4"),
+      };
+
+      var result = MovieListFilter.Build(source, "{nofile}", "1");
+
+      Assert.Single(result.Items);
+      Assert.Equal("missing.mp4", result.Items[0].Movie_Name);
+    }
+    finally
+    {
+      File.Delete(existingPath);
+    }
+  }
+
+  [Fact]
   public void Build_Dup_FiltersDuplicateHashes()
   {
     var source = new[]

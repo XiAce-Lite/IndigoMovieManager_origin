@@ -1,3 +1,4 @@
+using IndigoMovieManager.Services;
 using Notification.Wpf;
 using Notification.Wpf.Base;
 using Notification.Wpf.Constants;
@@ -90,7 +91,13 @@ namespace IndigoMovieManager
 
         public void Dispose()
         {
+            if (_disposed)
+            {
+                return;
+            }
+
             _disposed = true;
+            ThumbnailProgressRegistry.Unregister(this);
 
             if (_progress is IDisposable disposable)
             {
@@ -141,6 +148,7 @@ namespace IndigoMovieManager
                 null,
                 null,
                 _messageSettings);
+            ThumbnailProgressRegistry.Register(this);
         }
 
         private static string GetBaseTitle(int tabIndex)

@@ -1,4 +1,5 @@
 ﻿using OpenCvSharp;
+using System.Diagnostics;
 using System.IO;
 
 namespace IndigoMovieManager
@@ -8,14 +9,14 @@ namespace IndigoMovieManager
         private long movie_id = 0;
         private string movie_name = "";
         private string movie_path = "";
-        private readonly long movie_length = 0;
-        private readonly long movie_size = 0;
+        private long movie_length = 0;
+        private long movie_size = 0;
         private DateTime last_date = DateTime.Now;
         private DateTime file_date = DateTime.Now;
         private DateTime regist_date = DateTime.Now;
         private readonly long score = 0;
         private long view_count = 0;
-        private readonly string hash = "";
+        private string hash = "";
         private readonly string container = "";
         private readonly string video = "";
         private readonly string audio = "";
@@ -35,22 +36,21 @@ namespace IndigoMovieManager
         private readonly string comment1 = "";
         private readonly string comment2 = "";
         private readonly string comment3 = "";
-        private readonly double fps = 30;
-        private readonly double totalFrames = 0;
+        private double fps = 30;
+        private double totalFrames = 0;
 
         public MovieInfo(string fileFullPath, bool noHash = false)
         {
-            using var capture = new VideoCapture(fileFullPath);
-            //なんか、Grabしないと遅いって話をどっかで見たので。
-            capture.Grab();
-            totalFrames = capture.Get(VideoCaptureProperties.FrameCount);
-            fps = capture.Get(VideoCaptureProperties.Fps);
-            double durationSec = totalFrames / fps;
+            if (string.IsNullOrWhiteSpace(fileFullPath))
+            {
+                throw new ArgumentException("ファイルパスが空です。", nameof(fileFullPath));
+            }
 
             FileInfo file = new(fileFullPath);
-            long size = file.Length;
-
-            var iso = capture.Get(VideoCaptureProperties.IsoSpeed);
+            if (!file.Exists)
+            {
+                throw new FileNotFoundException("ファイルが見つかりません。", fileFullPath);
+            }
 
             var now = DateTime.Now;
             var result = now.AddTicks(-(now.Ticks % TimeSpan.TicksPerSecond));
@@ -58,20 +58,64 @@ namespace IndigoMovieManager
             regist_date = result;
 
             movie_name = Path.GetFileNameWithoutExtension(fileFullPath);
-            movie_path = fileFullPath;
-            movie_length = (long)durationSec;
-            movie_size = size;
-            if (noHash == false)
-            {
-                hash = Tools.GetHashCRC32(fileFullPath);
-            }
+            movie_path = file.FullName;
+            movie_size = file.Length;
 
             var lastWrite = file.LastWriteTime;
             result = lastWrite.AddTicks(-(lastWrite.Ticks % TimeSpan.TicksPerSecond));
             file_date = result;
+
+            if (!noHash)
+            {
+                hash = Tools.GetHashCRC32(fileFullPath);
+            }
+
+            if (!ShouldSkipOpenCvProbe(fileFullPath))
+            {
+                TryProbeWithOpenCv(fileFullPath);
+            }
         }
 
-        //無駄なもんもありつつ、FPSやらは追加してる。
+        private static bool ShouldSkipOpenCvProbe(string fileFullPath)
+        {
+            string ext = Path.GetExtension(fileFullPath);
+            return ext.Equals(".mod", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private void TryProbeWithOpenCv(string fileFullPath)
+        {
+            try
+            {
+                using VideoCapture capture = new(fileFullPath);
+                if (!capture.IsOpened())
+                {
+                    return;
+                }
+
+                capture.Grab();
+                double frameCount = capture.Get(VideoCaptureProperties.FrameCount);
+                double captureFps = capture.Get(VideoCaptureProperties.Fps);
+                if (captureFps <= 0
+                    || frameCount <= 0
+                    || double.IsNaN(captureFps)
+                    || double.IsInfinity(captureFps)
+                    || double.IsNaN(frameCount)
+                    || double.IsInfinity(frameCount))
+                {
+                    return;
+                }
+
+                totalFrames = frameCount;
+                fps = captureFps;
+                movie_length = (long)(totalFrames / fps);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine(
+                    $"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : [MovieInfo] OpenCV probe skipped: {fileFullPath} : {ex.Message}");
+            }
+        }
+
         public long MovieId { get { return movie_id; } set { movie_id = value; } }
         public string MovieName { get { return movie_name; } set { movie_name = value; } }
         public string MoviePath { get { return movie_path; } set { movie_path = value; } }

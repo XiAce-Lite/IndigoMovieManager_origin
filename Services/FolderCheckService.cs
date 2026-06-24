@@ -46,7 +46,8 @@ namespace IndigoMovieManager.Services
 
         public static bool IsFileRegistered(IEnumerable<MovieRecords> movieRecords, string fullPath)
         {
-            return movieRecords.Any(x => string.Equals(x.Movie_Path, fullPath, StringComparison.Ordinal));
+            return movieRecords.Any(x =>
+                string.Equals(x.Movie_Path, fullPath, StringComparison.OrdinalIgnoreCase));
         }
 
         public static bool IsFileRegisteredInDb(string dbFullPath, string fullPath)
@@ -61,7 +62,7 @@ namespace IndigoMovieManager.Services
                 using System.Data.SQLite.SQLiteConnection connection = new($"Data Source={dbFullPath}");
                 connection.Open();
                 using System.Data.SQLite.SQLiteCommand cmd = connection.CreateCommand();
-                cmd.CommandText = "SELECT COUNT(1) FROM movie WHERE movie_path = @path";
+                cmd.CommandText = "SELECT COUNT(1) FROM movie WHERE lower(movie_path) = lower(@path)";
                 cmd.Parameters.AddWithValue("@path", fullPath);
                 object result = cmd.ExecuteScalar();
                 return result != null && Convert.ToInt64(result) > 0;

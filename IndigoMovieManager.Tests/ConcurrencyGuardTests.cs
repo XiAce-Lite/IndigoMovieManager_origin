@@ -19,6 +19,18 @@ public class MainWindowSessionStateTests
 public class ThumbnailJobCoordinatorTests
 {
     [Fact]
+    public void AbandonAndClearQueue_marks_previous_job_abandoned()
+    {
+        var scheduler = new ThumbnailQueueScheduler();
+        var firstJobItem = new QueueObj { MovieId = 1, Tabindex = 0, DbFullPath = @"C:\a\db.sqlite" };
+        scheduler.EnqueueWork(firstJobItem, 0, beginNewJob: true);
+
+        scheduler.AbandonAndClearQueue(1);
+
+        Assert.False(scheduler.JobCoordinator.ShouldProcess(firstJobItem));
+    }
+
+    [Fact]
     public void TryRegisterManualWork_allows_requeue_when_not_in_flight()
     {
         var coordinator = new ThumbnailJobCoordinator();

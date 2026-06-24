@@ -1,4 +1,5 @@
-﻿using Microsoft.Win32;
+﻿using IndigoMovieManager.Services;
+using Microsoft.Win32;
 using System.ComponentModel;
 using System.Windows;
 
@@ -27,6 +28,8 @@ namespace IndigoMovieManager
             Properties.Settings.Default.DefaultPlayerPath = DefaultPlayerPath.Text;
             Properties.Settings.Default.DefaultPlayerParam = DefaultPlayerParam.Text;
             Properties.Settings.Default.RecentFilesCount = (int)slider.Value;
+            Properties.Settings.Default.CheckExt = CheckExt.Text;
+            MediaExtensionSettings.EnsureRequiredExtensions();
             Properties.Settings.Default.Save();
         }
 

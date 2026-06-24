@@ -41,6 +41,29 @@ namespace IndigoMovieManager.Services
             }
         }
 
+        /// <summary>
+        /// DB 切替などで進行中ジョブを破棄し、キューを空にする。
+        /// </summary>
+        public void AbandonAndClearQueue(int primaryTabIndex = 0)
+        {
+            ThumbnailQueueProcessor.RequestDismissProgress();
+
+            lock (_sync)
+            {
+                List<QueueObj> removed = [];
+                while (_queue.TryDequeue(out QueueObj obj))
+                {
+                    if (obj != null)
+                    {
+                        removed.Add(obj);
+                    }
+                }
+
+                _jobCoordinator.CancelQueued(removed);
+                _jobCoordinator.BeginJob(primaryTabIndex);
+            }
+        }
+
         public void EnqueueWork(IReadOnlyList<QueueObj> items, int primaryTabIndex, bool beginNewJob = false)
         {
             if (items == null || items.Count == 0)
@@ -115,7 +138,9 @@ namespace IndigoMovieManager.Services
         public List<QueueObj> BuildTabSwitchWork(
             int tabIndex,
             IEnumerable<MovieRecords> filterList,
-            ThumbnailLayoutCache cache)
+            ThumbnailLayoutCache cache,
+            string dbFullPath,
+            int workGeneration)
         {
             List<QueueObj> work = [];
             if (tabIndex < 0 || tabIndex >= ThumbPathPropertyNames.Length)
@@ -145,6 +170,8 @@ namespace IndigoMovieManager.Services
                         MovieId = item.Movie_Id,
                         MovieFullPath = item.Movie_Path,
                         Tabindex = tabIndex,
+                        DbFullPath = dbFullPath,
+                        WorkGeneration = workGeneration,
                     });
                 }
             }
@@ -152,12 +179,17 @@ namespace IndigoMovieManager.Services
             return work;
         }
 
-        public void StartTabSwitchJob(int tabIndex, IEnumerable<MovieRecords> filterList, ThumbnailLayoutCache cache)
+        public void StartTabSwitchJob(
+            int tabIndex,
+            IEnumerable<MovieRecords> filterList,
+            ThumbnailLayoutCache cache,
+            string dbFullPath,
+            int workGeneration)
         {
             ThumbnailQueueProcessor.RequestDismissProgress();
             ClearQueue();
 
-            List<QueueObj> work = BuildTabSwitchWork(tabIndex, filterList, cache);
+            List<QueueObj> work = BuildTabSwitchWork(tabIndex, filterList, cache, dbFullPath, workGeneration);
 
             lock (_sync)
             {

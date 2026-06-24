@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Windows;
 using System.Windows.Threading;
+using IndigoMovieManager.Services;
 
 namespace IndigoMovieManager
 {
@@ -22,6 +23,7 @@ namespace IndigoMovieManager
     /// </summary>
     public static void RequestDismissProgress()
     {
+      ThumbnailProgressRegistry.DismissAll();
       s_cancelPendingProgressShow?.Invoke();
       s_dismissActiveProgress?.Invoke();
     }
@@ -35,7 +37,8 @@ namespace IndigoMovieManager
       Func<int> maxParallelismResolver = null,
       int pollIntervalMs = 100,
       Action<string> log = null,
-      CancellationToken cts = default)
+      CancellationToken cts = default,
+      Func<CancellationToken> batchCancellationToken = null)
     {
       Dispatcher uiDispatcher = Application.Current?.Dispatcher;
       int safePollIntervalMs = pollIntervalMs < 50 ? 50 : pollIntervalMs;
@@ -199,13 +202,15 @@ namespace IndigoMovieManager
             ReplaceProgressShowCts).ConfigureAwait(false);
 
           int safeMaxParallelism = ResolveMaxParallelism(maxParallelism, maxParallelismResolver);
+          CancellationToken batchToken = batchCancellationToken?.Invoke() ?? cts;
+          using CancellationTokenSource linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cts, batchToken);
 
           await Parallel.ForEachAsync(
             currentBatch,
             new ParallelOptions
             {
               MaxDegreeOfParallelism = safeMaxParallelism,
-              CancellationToken = cts,
+              CancellationToken = linkedCts.Token,
             },
             async (item, token) =>
             {

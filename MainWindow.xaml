@@ -24,6 +24,36 @@
         <!--  BoolToVisibilityConverter を追加  -->
         <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter" />
 
+        <Style x:Key="RecentFileRemoveButtonStyle" TargetType="Button">
+            <Setter Property="OverridesDefaultStyle" Value="True" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="10,5" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border
+                            x:Name="Border"
+                            Padding="{TemplateBinding Padding}"
+                            Background="{TemplateBinding Background}"
+                            SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Border" Property="Background" Value="{DynamicResource MaterialDesign.Brush.Primary.Light}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <ContextMenu x:Key="menuContext" FontSize="10">
             <MenuItem
                 x:Name="PlayDefault"
@@ -985,6 +1015,7 @@
                                         Click="MenuRecentTree_Click"
                                         FontSize="14"
                                         FontWeight="Bold"
+                                        PreviewMouseRightButtonDown="RecentFileButton_PreviewMouseRightButtonDown"
                                         Style="{StaticResource MaterialDesignFlatButton}"
                                         Tag="{Binding Text}">
                                         <DockPanel>
@@ -1337,6 +1368,24 @@
                     ToolTip="終了" />
             </StackPanel>
         </StackPanel>
+
+        <Popup
+            x:Name="RecentFileRemovePopup"
+            AllowsTransparency="True"
+            Placement="MousePoint"
+            StaysOpen="False">
+            <Border
+                Padding="2"
+                Background="{DynamicResource MaterialDesign.Brush.Background}"
+                BorderBrush="{DynamicResource MaterialDesign.Brush.TextBox.HoverBackground}"
+                BorderThickness="1"
+                SnapsToDevicePixels="True">
+                <Button
+                    Click="RemoveRecentFile_Click"
+                    Content="最近使ったファイルから削除(_R)"
+                    Style="{StaticResource RecentFileRemoveButtonStyle}" />
+            </Border>
+        </Popup>
 
         <Grid
             x:Name="LoadingOverlay"
