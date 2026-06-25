@@ -1,4 +1,5 @@
 using IndigoMovieManager.Services;
+using IndigoMovieManager.Thumbnail;
 using Xunit;
 
 namespace IndigoMovieManager.Tests;
@@ -49,5 +50,63 @@ public class ThumbnailJobCoordinatorTests
         coordinator.TryRegisterSilentWork(item);
         coordinator.CancelTrackedForMovie(99);
         Assert.False(coordinator.IsTracked(99, 2));
+    }
+
+    [Fact]
+    public void ClearSilentQueue_preserves_visible_job_items()
+    {
+        var scheduler = new ThumbnailQueueScheduler();
+        var visible = new QueueObj { MovieId = 1, Tabindex = 0, DbFullPath = @"C:\a\db.sqlite" };
+        var silent = new QueueObj { MovieId = 2, Tabindex = 0, DbFullPath = @"C:\a\db.sqlite" };
+
+        scheduler.EnqueueWork(visible, 0, beginNewJob: true);
+        scheduler.EnqueueSilentWork(silent);
+
+        Assert.Equal(2, scheduler.Queue.Count);
+
+        scheduler.ClearSilentQueue();
+
+        Assert.Single(scheduler.Queue);
+        Assert.True(scheduler.JobCoordinator.ShouldProcess(visible));
+        Assert.False(scheduler.JobCoordinator.IsTracked(2, 0));
+    }
+
+    [Fact]
+    public async Task StartTabSwitchJobAsync_enqueues_visible_job()
+    {
+        var scheduler = new ThumbnailQueueScheduler();
+        string thumbRoot = Path.Combine(Path.GetTempPath(), $"imm-tab-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(thumbRoot);
+        try
+        {
+            var cache = new ThumbnailLayoutCache();
+            cache.Refresh("testdb", thumbRoot, 5);
+
+            var records = new List<MovieRecords>
+            {
+                new()
+                {
+                    Movie_Id = 1,
+                    Movie_Path = @"C:\fake\movie.mod",
+                    Movie_Name = "movie",
+                    Hash = "abc123",
+                },
+            };
+
+            await scheduler.StartTabSwitchJobAsync(0, records, cache, @"C:\fake\db.wb", workGeneration: 1);
+
+            Assert.Single(scheduler.Queue);
+            scheduler.Queue.TryDequeue(out QueueObj item);
+            Assert.NotNull(item);
+            Assert.NotEqual(ThumbnailJobCoordinator.SilentJobId, item.JobId);
+            Assert.True(scheduler.JobCoordinator.ShouldProcess(item));
+        }
+        finally
+        {
+            if (Directory.Exists(thumbRoot))
+            {
+                Directory.Delete(thumbRoot, true);
+            }
+        }
     }
 }

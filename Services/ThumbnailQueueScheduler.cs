@@ -42,6 +42,41 @@ namespace IndigoMovieManager.Services
         }
 
         /// <summary>
+        /// タブ切替用。進捗表示付きジョブは残し、サイレントキューのみ破棄する。
+        /// </summary>
+        public void ClearSilentQueue()
+        {
+            lock (_sync)
+            {
+                List<QueueObj> removed = [];
+                List<QueueObj> kept = [];
+                while (_queue.TryDequeue(out QueueObj obj))
+                {
+                    if (obj == null)
+                    {
+                        continue;
+                    }
+
+                    if (obj.JobId == ThumbnailJobCoordinator.SilentJobId)
+                    {
+                        removed.Add(obj);
+                    }
+                    else
+                    {
+                        kept.Add(obj);
+                    }
+                }
+
+                foreach (QueueObj item in kept)
+                {
+                    _queue.Enqueue(item);
+                }
+
+                _jobCoordinator.CancelQueued(removed);
+            }
+        }
+
+        /// <summary>
         /// DB 切替などで進行中ジョブを破棄し、キューを空にする。
         /// </summary>
         public void AbandonAndClearQueue(int primaryTabIndex = 0)
@@ -238,9 +273,9 @@ namespace IndigoMovieManager.Services
             string dbFullPath,
             int workGeneration)
         {
-            ClearQueue();
+            ClearSilentQueue();
 
-            IReadOnlyList<MovieRecords> snapshot = filterList as IReadOnlyList<MovieRecords> ?? filterList.ToList();
+            IReadOnlyList<MovieRecords> snapshot = filterList as IReadOnlyList<MovieRecords> ?? [.. filterList];
             List<QueueObj> work = await Task.Run(() =>
                 BuildTabSwitchWork(tabIndex, snapshot, cache, dbFullPath, workGeneration)).ConfigureAwait(false);
 
@@ -249,16 +284,7 @@ namespace IndigoMovieManager.Services
                 return;
             }
 
-            lock (_sync)
-            {
-                foreach (QueueObj item in work)
-                {
-                    if (_jobCoordinator.TryRegisterSilentWork(item))
-                    {
-                        _queue.Enqueue(item);
-                    }
-                }
-            }
+            EnqueueWork(work, tabIndex, beginNewJob: true);
         }
 
         public static int GetMaxParallelism()
