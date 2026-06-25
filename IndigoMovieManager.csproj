@@ -9,8 +9,8 @@
     <Title>IndigoMovieManager</Title>
     <Platforms>AnyCPU;x64</Platforms>
     <PlatformTarget>AnyCPU</PlatformTarget>
-    <FileVersion>1.0.0.30</FileVersion>
-    <AssemblyVersion>1.0.0.30</AssemblyVersion>
+    <FileVersion>1.0.0.31</FileVersion>
+    <AssemblyVersion>1.0.0.31</AssemblyVersion>
     <SupportedOSPlatformVersion>7.0</SupportedOSPlatformVersion>
   </PropertyGroup>
 
@@ -102,36 +102,14 @@
     <Copy SourceFiles="$(_SinkuSourceDir)format.ini" DestinationFiles="$(OutputPath)format.ini" SkipUnchangedFiles="true" Condition="Exists('$(_SinkuSourceDir)format.ini')" />
   </Target>
 
-  <!-- 標準版配布: SingleFile Exe + sinku / Images（ffmpeg は同梱しない） -->
+  <!-- 標準版配布: SingleFile Exe + Images（ffmpeg / sinku は同梱しない） -->
   <Target Name="CopyDistributionAssets" AfterTargets="Publish">
     <PropertyGroup>
       <_DistDir Condition="'$(_DistDir)' == ''">$(PublishDir)</_DistDir>
-      <_SinkuSourceDir>$(MSBuildProjectDirectory)\tools\sinku\</_SinkuSourceDir>
       <_ImagesSourceDir>$(MSBuildProjectDirectory)\Images\</_ImagesSourceDir>
     </PropertyGroup>
 
     <MakeDir Directories="$(_DistDir)Images" />
-
-    <Copy
-      SourceFiles="$(_SinkuSourceDir)sinku.exe"
-      DestinationFiles="$(_DistDir)sinku.exe"
-      SkipUnchangedFiles="true"
-      Condition="Exists('$(_SinkuSourceDir)sinku.exe')" />
-    <Copy
-      SourceFiles="$(_SinkuSourceDir)Sinku.dll"
-      DestinationFiles="$(_DistDir)Sinku.dll"
-      SkipUnchangedFiles="true"
-      Condition="Exists('$(_SinkuSourceDir)Sinku.dll')" />
-    <Copy
-      SourceFiles="$(_SinkuSourceDir)codecs.ini"
-      DestinationFiles="$(_DistDir)codecs.ini"
-      SkipUnchangedFiles="true"
-      Condition="Exists('$(_SinkuSourceDir)codecs.ini')" />
-    <Copy
-      SourceFiles="$(_SinkuSourceDir)format.ini"
-      DestinationFiles="$(_DistDir)format.ini"
-      SkipUnchangedFiles="true"
-      Condition="Exists('$(_SinkuSourceDir)format.ini')" />
 
     <ItemGroup>
       <_DistImage Include="$(_ImagesSourceDir)*.jpg" />

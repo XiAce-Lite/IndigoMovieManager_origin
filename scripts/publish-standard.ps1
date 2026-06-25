@@ -1,4 +1,4 @@
-# 標準版配布物を publish フォルダへ出力する（Framework 依存 SingleFile、ffmpeg 非同梱）
+# 標準版配布物を publish フォルダへ出力する（Framework 依存 SingleFile、ffmpeg / sinku 非同梱）
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 

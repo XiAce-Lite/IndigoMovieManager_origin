@@ -24,3 +24,62 @@ jobs:
 
       - name: Test
         run: dotnet test IndigoMovieManager.sln -c Release -p:Platform=x64 --no-build --verbosity normal
+
+  release:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Publish distribution
+        run: dotnet publish IndigoMovieManager.csproj -c Release -p:Platform=x64 -p:PublishProfile=Win-x64-SingleFile
+
+      - name: Read version and prepare release
+        id: release
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $content = Get-Content IndigoMovieManager.csproj -Raw -Encoding UTF8
+          if ($content -notmatch '<FileVersion>(?<ver>\d+\.\d+\.\d+\.\d+)</FileVersion>') {
+            throw 'FileVersion not found in IndigoMovieManager.csproj'
+          }
+          $version = $Matches.ver
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+          $template = Get-Content docs/release-notes-template.md -Raw -Encoding UTF8
+          ($template -replace '\{VERSION\}', $version) | Set-Content release-notes.md -Encoding UTF8
+
+          $publishDir = Join-Path $PWD 'bin\x64\Release\net8.0-windows\publish'
+          if (-not (Test-Path $publishDir)) {
+            throw "Publish directory not found: $publishDir"
+          }
+
+          $sinkuFiles = @('sinku.exe', 'Sinku.dll', 'codecs.ini', 'format.ini')
+          foreach ($name in $sinkuFiles) {
+            $path = Join-Path $publishDir $name
+            if (Test-Path $path) {
+              throw "Distribution must not include sinku file: $name"
+            }
+          }
+
+          $zipName = "IndigoMovieManager-v$version-win-x64.zip"
+          if (Test-Path $zipName) { Remove-Item $zipName -Force }
+          Compress-Archive -Path (Join-Path $publishDir '*') -DestinationPath $zipName
+          "zip_name=$zipName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.release.outputs.version }}
+          name: v${{ steps.release.outputs.version }}
+          body_path: release-notes.md
+          files: ${{ steps.release.outputs.zip_name }}
+

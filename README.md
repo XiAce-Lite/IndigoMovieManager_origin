@@ -136,6 +136,9 @@ bin\x64\Release\net8.0-windows\publish
 
 標準版配布物は Framework 依存 SingleFile です。
 
+- `sinku` 関連 4 ファイル・`ffmpeg` は **同梱しません**（README の「外部ツールについて」を参照）
+- 同梱されるのは `IndigoMovieManager.exe` と `Images\` 内のプレースホルダ画像などです
+
 ## 注意事項
 
 - `layout.xml` は実行時に exe 基準で保存 / 読み込みします
