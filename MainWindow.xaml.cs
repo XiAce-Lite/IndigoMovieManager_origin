@@ -48,6 +48,10 @@ namespace IndigoMovieManager
 
         private IEnumerable<MovieRecords> filterList = [];
 
+        private string _cachedAllItemsSortId;
+        private List<MovieRecords> _cachedAllItems;
+        private int _cachedAllItemsSourceCount;
+
         private DataTable systemData;
         private bool _movieRecordsLoaded;
         private readonly MovieListCoordinator _movieListCoordinator = new();
@@ -65,10 +69,15 @@ namespace IndigoMovieManager
         //private DateTime _lastInputTime = DateTime.MinValue;  //インクリメントサーチで使用。一旦オミット。
         private readonly TimeSpan _timeInputInterval = TimeSpan.FromSeconds(0.5);
 
-        //結局、タイマー方式で動画とマニュアルサムネイルのスライダーを同期させた
+        // MediaElement の再生状態と UI を同期する
         private readonly DispatcherTimer timer;
         private readonly ManualThumbnailPreviewController _manualPreview;
         private bool isDragging = false;
+        private bool _isPreviewMediaOpened;
+        private bool _isUpdatingSliderFromPlayer;
+        private double _pendingPreviewStartMs;
+        private bool _applyPendingStartOnPlay;
+        private bool _useLegacyPreviewFallback;
 
         //マニュアルサムネイル時の右クリックしたカラムの返却を受け取る変数
         private int manualPos = 0;
@@ -77,6 +86,9 @@ namespace IndigoMovieManager
         private System.Windows.Controls.Image _contextMenuThumbImage;
         private System.Windows.Point _contextMenuThumbClick;
         private bool _contextMenuThumbClickValid;
+        private System.Windows.Controls.Image _lastClickedThumbImage;
+        private System.Windows.Point _lastThumbClickOnImage;
+        private bool _lastThumbClickValid;
 
         //IME起動中的なフラグ。日本語入力中（未変換）にインクリメンタルサーチさせない為。
         private bool _imeFlag = false;
@@ -85,7 +97,6 @@ namespace IndigoMovieManager
         private readonly MainWindowSessionState _sessionState = new();
 
         //private bool _searchBoxItemSelectedByMouse = false;
-        private bool _searchBoxItemSelectedByUser = false;
         private bool _isDeletingSearchHistory = false;
         private bool _isApplyingSearchKeyword = false;
         private int _fileInfoRefreshRunning = 0;
@@ -130,13 +141,13 @@ namespace IndigoMovieManager
             #region Player Initialize
             timer = new DispatcherTimer
             {
-                Interval = TimeSpan.FromMilliseconds(1000)
+                Interval = TimeSpan.FromMilliseconds(100)
             };
             timer.Tick += new EventHandler(Timer_Tick);
 
             _manualPreview = new ManualThumbnailPreviewController(Dispatcher)
             {
-                OnFrameReady = source => uxPreviewImage.Source = source
+                OnFrameReady = source => uxPreviewFallbackImage.Source = source
             };
 
             uxTime.Text = "00:00:00";
@@ -144,6 +155,7 @@ namespace IndigoMovieManager
             PlayerArea.Visibility = Visibility.Collapsed;
             PlayerController.Visibility = Visibility.Collapsed;
             uxPreviewImage.Visibility = Visibility.Collapsed;
+            uxPreviewFallbackImage.Visibility = Visibility.Collapsed;
             #endregion
         }
 
@@ -616,6 +628,7 @@ namespace IndigoMovieManager
                 watchData?.Clear();
                 MainVM.DbInfo.SearchKeyword = "";
                 _movieRecordsLoaded = false;
+                InvalidateAllItemsFilterCache();
                 _sessionState.SetActiveDb(dbFullPath);
 
                 MainVM.DbInfo.DBName = Path.GetFileNameWithoutExtension(dbFullPath);
@@ -683,6 +696,7 @@ namespace IndigoMovieManager
 
                 MovieListCoordinator.ReplaceCollection(MainVM.MovieRecs, loaded.Records);
                 _movieRecordsLoaded = true;
+                StoreAllItemsFilterCache(sortId, loaded.Records);
             }
             finally
             {
@@ -799,6 +813,72 @@ namespace IndigoMovieManager
 
         private void Refresh() => TabSelectionHelper.RefreshLists(this);
 
+        private void InvalidateAllItemsFilterCache()
+        {
+            _cachedAllItemsSortId = null;
+            _cachedAllItems = null;
+            _cachedAllItemsSourceCount = 0;
+        }
+
+        private void StoreAllItemsFilterCache(string sortId, IReadOnlyList<MovieRecords> items)
+        {
+            _cachedAllItemsSortId = sortId;
+            _cachedAllItems = items as List<MovieRecords> ?? [.. items];
+            _cachedAllItemsSourceCount = MainVM.MovieRecs.Count;
+        }
+
+        private bool TryGetCachedAllItemsFilter(string sortId, out MovieListCoordinator.FilterApplyResult result)
+        {
+            if (_cachedAllItems != null
+                && _cachedAllItemsSortId == sortId
+                && _cachedAllItemsSourceCount == MainVM.MovieRecs.Count)
+            {
+                result = new MovieListCoordinator.FilterApplyResult
+                {
+                    Items = _cachedAllItems,
+                    SearchCount = _cachedAllItems.Count
+                };
+                return true;
+            }
+
+            result = null;
+            return false;
+        }
+
+        private void SetActiveTabItemsSource(IEnumerable<MovieRecords> items)
+        {
+            switch (Tabs?.SelectedIndex ?? 0)
+            {
+                case 0:
+                    SmallList.ItemsSource = items;
+                    break;
+                case 1:
+                    BigList.ItemsSource = items;
+                    break;
+                case 2:
+                    GridList.ItemsSource = items;
+                    break;
+                case 3:
+                    ListDataGrid.ItemsSource = items;
+                    break;
+                case 4:
+                    BigList10.ItemsSource = items;
+                    break;
+                default:
+                    SmallList.ItemsSource = items;
+                    break;
+            }
+        }
+
+        private void SetAllTabItemsSource(IEnumerable<MovieRecords> items)
+        {
+            SmallList.ItemsSource = items;
+            BigList.ItemsSource = items;
+            GridList.ItemsSource = items;
+            ListDataGrid.ItemsSource = items;
+            BigList10.ItemsSource = items;
+        }
+
         private async void RenameThumb(string eFullPath, string oldFullPath)
         {
             try
@@ -856,13 +936,30 @@ namespace IndigoMovieManager
         {
 #if DEBUG
             var sw = Stopwatch.StartNew();
+            bool cacheHit = false;
 #endif
             int capturedGeneration = _sessionState.FilterGeneration;
-            List<MovieRecords> snapshot = [.. MainVM.MovieRecs];
             string searchKeyword = MainVM.DbInfo.SearchKeyword ?? "";
+            bool showAll = string.IsNullOrEmpty(searchKeyword);
 
-            MovieListCoordinator.FilterApplyResult result = await Task.Run(() =>
-                MovieListCoordinator.ApplyFilter(snapshot, searchKeyword, id)).ConfigureAwait(true);
+            MovieListCoordinator.FilterApplyResult result;
+            if (showAll && TryGetCachedAllItemsFilter(id, out result))
+            {
+#if DEBUG
+                cacheHit = true;
+#endif
+            }
+            else
+            {
+                List<MovieRecords> snapshot = [.. MainVM.MovieRecs];
+                result = await Task.Run(() =>
+                    MovieListCoordinator.ApplyFilter(snapshot, searchKeyword, id)).ConfigureAwait(true);
+
+                if (showAll)
+                {
+                    StoreAllItemsFilterCache(id, result.Items);
+                }
+            }
 
             if (capturedGeneration != _sessionState.FilterGeneration)
             {
@@ -876,15 +973,18 @@ namespace IndigoMovieManager
                 ? Visibility.Collapsed
                 : Visibility.Visible;
 
-            SmallList.ItemsSource = filterList;
-            BigList.ItemsSource = filterList;
-            GridList.ItemsSource = filterList;
-            ListDataGrid.ItemsSource = filterList;
-            BigList10.ItemsSource = filterList;
-            Refresh();
+            if (showAll)
+            {
+                SetActiveTabItemsSource(filterList);
+            }
+            else
+            {
+                SetAllTabItemsSource(filterList);
+                Refresh();
+            }
 #if DEBUG
             sw.Stop();
-            Debug.WriteLine($"絞り込み経過時間 FilterAndSort：{sw.ElapsedMilliseconds} ミリ秒");
+            Debug.WriteLine($"絞り込み経過時間 FilterAndSort：{sw.ElapsedMilliseconds} ミリ秒 (showAll={showAll}, cacheHit={cacheHit})");
 #endif
         }
 
@@ -1431,6 +1531,7 @@ namespace IndigoMovieManager
             if (!SinkuMetadataFetcher.IsAvailable
                 && !MainVM.MovieRecs.Any(rec => ZipMediaKind.IsZipRecord(rec) || ZipMediaKind.IsZipPath(rec.Movie_Path)))
             {
+                ShowSinkuUnavailableMessage();
                 return;
             }
 
@@ -1467,6 +1568,7 @@ namespace IndigoMovieManager
             if (!SinkuMetadataFetcher.IsAvailable
                 && targets.All(rec => !ZipMediaKind.IsZipRecord(rec) && !ZipMediaKind.IsZipPath(rec.Movie_Path)))
             {
+                ShowSinkuUnavailableMessage();
                 return;
             }
 
@@ -1485,6 +1587,20 @@ namespace IndigoMovieManager
                     RefreshFileInfoCore(dbPath, rec);
                 }
             }).ConfigureAwait(true);
+        }
+
+        private void ShowSinkuUnavailableMessage()
+        {
+            MessageBox.Show(
+                "ファイル情報の再取得には sinku が必要です。\n\n" +
+                "次の 4 ファイルを IndigoMovieManager.exe と同じフォルダに配置してください。\n" +
+                "  ・sinku.exe\n" +
+                "  ・Sinku.dll\n" +
+                "  ・format.ini\n" +
+                "  ・codecs.ini",
+                Assembly.GetExecutingAssembly().GetName().Name,
+                MessageBoxButton.OK,
+                MessageBoxImage.Exclamation);
         }
 
         private async Task RefreshAllFileInfoAsync()
@@ -1941,7 +2057,14 @@ namespace IndigoMovieManager
 
                 if (sender is MenuItem senderObj && senderObj.Name == "PlayFromThumb")
                 {
-                    msec = GetPlayPosition(Tabs.SelectedIndex, mv, ref secPos);
+                    if (TryResolvePlayPositionFromThumb(mv, Tabs.SelectedIndex, out int panelIndex, out msec))
+                    {
+                        secPos = panelIndex;
+                    }
+                    else
+                    {
+                        msec = GetPlayPosition(Tabs.SelectedIndex, mv, ref secPos);
+                    }
                 }
 
                 if (ZipMediaKind.IsZipRecord(mv))
@@ -1982,33 +2105,6 @@ namespace IndigoMovieManager
             if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath)) { return; }
             if (_isDeletingSearchHistory) { return; }
             if (_isApplyingSearchKeyword) { return; }
-
-            // ドロップダウンが開いている間に選択が変わった場合のみフラグを立てる
-            if (SearchBox.IsDropDownOpen)
-            {
-                _searchBoxItemSelectedByUser = true;
-            }
-
-            if (e.Source is ComboBox)
-            {
-                /*
-                FilterAndSort(MainVM.DbInfo.Sort);  //サーチのコンボチェンジイベント。
-                SelectFirstItem();
-                if (!string.IsNullOrEmpty(MainVM.DbInfo.SearchKeyword))
-                {
-                    //セレクションが変わってもHistoryに書いてるかも。
-                    InsertHistoryTable(MainVM.DbInfo.DBFullPath, MainVM.DbInfo.SearchKeyword);
-                }
-                */
-            }
-        }
-
-        private void SearchBoxItem_MouseMove(object sender, MouseEventArgs e)
-        {
-            if (sender is ComboBoxItem item && item.IsMouseOver)
-            {
-                item.IsSelected = true;
-            }
         }
 
         private async void SearchBox_LostFocus(object sender, RoutedEventArgs e)
@@ -2043,114 +2139,90 @@ namespace IndigoMovieManager
             if (_isDeletingSearchHistory) { return; }
             if (_isApplyingSearchKeyword) { return; }
 
-            if (e.Source is ComboBox combo)
+            string text = SearchBox.Text;
+            if (string.IsNullOrEmpty(text))
             {
-                var text = combo.Text;
-                /* インクリメントサーチ部。一旦コメントアウト。
-                // 入力文字列の末尾が -, |, { のいずれかならサーチしない。}は終了なので、サーチスタート。
-                if (!string.IsNullOrEmpty(text))
-                {
-                    // すでに{があり、}がまだ無い場合はreturn
-                    int openIdx = text.IndexOf('{');
-                    int closeIdx = text.IndexOf('}');
-                    if (openIdx >= 0 && (closeIdx < 0 || closeIdx < openIdx))
-                    {
-                        return;
-                    }
-
-                    char lastChar = text[^1];
-                    if (lastChar == '-' || lastChar == '|' || lastChar == '{')
-                    {
-                        return;
-                    }
-                }
-                //インクリメンタルサーチがなぁ。ちょっと間隔で調整的な。美しくない。
-                DateTime now = DateTime.Now;
-                TimeSpan timeSinceLastUpdate = now - _lastInputTime;
-
-                if (timeSinceLastUpdate >= _timeInputInterval)
-                {
-                    _lastInputTime = now;
-                    FilterAndSort(MainVM.DbInfo.Sort);  //サーチのテキストチェンジイベント。
-                    SelectFirstItem();
-                }
-                */
-                if (string.IsNullOrEmpty(text))
-                {
-                    // テキストが空の場合はメモリ上の一覧を再フィルタするだけ（DB再読込しない）
-                    MainVM.DbInfo.SearchKeyword = "";
-                    await FilterAndSortAsync(MainVM.DbInfo.Sort, false).ConfigureAwait(true);
-                    SelectFirstItem();
-                }
+                MainVM.DbInfo.SearchKeyword = "";
+                await FilterAndSortAsync(MainVM.DbInfo.Sort, false).ConfigureAwait(true);
+                SelectFirstItem();
             }
         }
 
-        // ドロップダウンリストでマウス選択時
-        // DropDownClosedで、ユーザー操作による選択時のみ検索
         private void SearchBox_DropDownClosed(object sender, EventArgs e)
         {
-            if (_isDeletingSearchHistory)
+        }
+
+        // ドロップダウンリスト内でマウスクリック時に検索
+        private async void SearchBoxItem_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is not ComboBoxItem item)
             {
                 return;
             }
 
-            if (_searchBoxItemSelectedByUser)
+            e.Handled = true;
+            string keyword = item.Content?.ToString() ?? "";
+            if (item.DataContext is History history)
             {
-                DoSearchBoxSearch();
-                _searchBoxItemSelectedByUser = false;
-                //_searchBoxItemSelectedByMouse = false;
+                keyword = history.Find_Text ?? "";
             }
-        }
 
-        // ドロップダウンリスト内でマウスクリック時にフラグを立てる
-        private void SearchBoxItem_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-        {
-            //_searchBoxItemSelectedByMouse = true;
-            _searchBoxItemSelectedByUser = true;
+            SearchBox.IsDropDownOpen = false;
+            await SearchByKeywordAsync(keyword).ConfigureAwait(true);
         }
 
         private async void SearchBox_PreviewKeyDown(object sender, KeyEventArgs e)
         {
             if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath)) { return; }
             if (_imeFlag) { return; }
-            if (e.Source is ComboBox combo)
+            if (sender is not ComboBox combo)
             {
-                // Deleteキーで履歴削除
-                if (e.Key == Key.Delete && combo.IsDropDownOpen && combo.SelectedItem is History selectedHistory)
+                return;
+            }
+
+            if (combo.IsDropDownOpen
+                && e.Key == Key.Enter
+                && combo.SelectedItem is History enterHistory)
+            {
+                e.Handled = true;
+                combo.IsDropDownOpen = false;
+                await SearchByKeywordAsync(enterHistory.Find_Text ?? "").ConfigureAwait(true);
+                return;
+            }
+
+            // Deleteキーで履歴削除
+            if (e.Key == Key.Delete && combo.IsDropDownOpen && combo.SelectedItem is History deleteHistory)
+            {
+                e.Handled = true;
+
+                string keepText = combo.Text;
+                long findId = deleteHistory.Find_Id;
+
+                _isDeletingSearchHistory = true;
+                try
                 {
-                    e.Handled = true;
-
-                    string keepText = combo.Text;
-                    long findId = selectedHistory.Find_Id;
-
-                    _isDeletingSearchHistory = true;
-                    try
+                    MainVM.HistoryRecs.Remove(deleteHistory);
+                    combo.SelectedIndex = -1;
+                    combo.Text = keepText;
+                    if (!string.Equals(MainVM.DbInfo.SearchKeyword, keepText, StringComparison.Ordinal))
                     {
-                        MainVM.HistoryRecs.Remove(selectedHistory);
-                        combo.SelectedIndex = -1;
-                        combo.Text = keepText;
-                        if (!string.Equals(MainVM.DbInfo.SearchKeyword, keepText, StringComparison.Ordinal))
-                        {
-                            MainVM.DbInfo.SearchKeyword = keepText;
-                        }
+                        MainVM.DbInfo.SearchKeyword = keepText;
                     }
-                    finally
-                    {
-                        _isDeletingSearchHistory = false;
-                    }
-
-                    _ = Task.Run(() => DeleteHistoryTable(MainVM.DbInfo.DBFullPath, findId));
-                    return;
+                }
+                finally
+                {
+                    _isDeletingSearchHistory = false;
                 }
 
-                // Enterで検索
-                if (e.Key == Key.Enter)
-                {
-                    e.Handled = true;
-                    _searchBoxItemSelectedByUser = false;
-                    await SearchByKeywordAsync(combo.Text ?? "").ConfigureAwait(true);
-                    return;
-                }
+                _ = Task.Run(() => DeleteHistoryTable(MainVM.DbInfo.DBFullPath, findId));
+                return;
+            }
+
+            // Enterで検索
+            if (e.Key == Key.Enter)
+            {
+                e.Handled = true;
+                await SearchByKeywordAsync(combo.Text ?? "").ConfigureAwait(true);
             }
         }
 
@@ -2230,8 +2302,64 @@ namespace IndigoMovieManager
             e.Cancel = true;
         }
 
-        private int GetPlayPosition(int tabIndex, MovieRecords mv, ref int returnPos) =>
-            PlayPositionResolver.GetPlayPositionMsec(lbClickPoint, tabIndex, mv, ref returnPos);
+        private int GetPlayPosition(int tabIndex, MovieRecords mv, ref int returnPos)
+        {
+            if (_lastThumbClickValid
+                && _lastClickedThumbImage != null
+                && _lastClickedThumbImage.ActualWidth > 0
+                && _lastClickedThumbImage.ActualHeight > 0)
+            {
+                return PlayPositionResolver.GetPlayPositionMsec(
+                    _lastThumbClickOnImage,
+                    _lastClickedThumbImage.ActualWidth,
+                    _lastClickedThumbImage.ActualHeight,
+                    tabIndex,
+                    mv,
+                    ref returnPos);
+            }
+
+            return 0;
+        }
+
+        private bool TryResolvePlayPositionFromThumb(MovieRecords mv, int tabIndex, out int panelIndex, out int positionMsec)
+        {
+            panelIndex = 0;
+            positionMsec = 0;
+
+            if (_contextMenuThumbClickValid
+                && _contextMenuThumbImage != null
+                && _contextMenuThumbImage.ActualWidth > 0
+                && _contextMenuThumbImage.ActualHeight > 0
+                && ThumbPanelHitResolver.TryResolveFromImageClick(
+                    _contextMenuThumbClick,
+                    _contextMenuThumbImage.ActualWidth,
+                    _contextMenuThumbImage.ActualHeight,
+                    PlayPositionResolver.GetThumbPathForTab(mv, tabIndex),
+                    ZipMediaKind.IsZipRecord(mv),
+                    out panelIndex,
+                    out positionMsec))
+            {
+                return true;
+            }
+
+            if (_lastThumbClickValid
+                && _lastClickedThumbImage != null
+                && _lastClickedThumbImage.ActualWidth > 0
+                && _lastClickedThumbImage.ActualHeight > 0
+                && ThumbPanelHitResolver.TryResolveFromImageClick(
+                    _lastThumbClickOnImage,
+                    _lastClickedThumbImage.ActualWidth,
+                    _lastClickedThumbImage.ActualHeight,
+                    PlayPositionResolver.GetThumbPathForTab(mv, tabIndex),
+                    ZipMediaKind.IsZipRecord(mv),
+                    out panelIndex,
+                    out positionMsec))
+            {
+                return true;
+            }
+
+            return false;
+        }
 
         private void MenuContext_Opened(object sender, RoutedEventArgs e)
         {
@@ -2393,6 +2521,16 @@ namespace IndigoMovieManager
                 // DataGridの選択状態を強制的にセット
                 ListDataGrid.SelectedItem = record;
                 lbClickPoint = e.GetPosition(label);
+                _lastClickedThumbImage = FindDescendant<System.Windows.Controls.Image>(label);
+                if (_lastClickedThumbImage != null)
+                {
+                    _lastThumbClickOnImage = e.GetPosition(_lastClickedThumbImage);
+                    _lastThumbClickValid = true;
+                }
+                else
+                {
+                    _lastThumbClickValid = false;
+                }
             }
         }
 
@@ -2950,10 +3088,32 @@ namespace IndigoMovieManager
 
             PlayerArea.Visibility = Visibility.Visible;
             PlayerController.Visibility = Visibility.Visible;
-            uxPreviewImage.Visibility = Visibility.Visible;
-            IsPlaying = true;
-            uxTimeSlider.Value = _manualPreview.PositionMs;
+            SetPreviewModeUi(_useLegacyPreviewFallback);
             ApplyManualPreviewTimerInterval();
+
+            if (_useLegacyPreviewFallback)
+            {
+                IsPlaying = true;
+                timer.Start();
+                return;
+            }
+
+            if (!_isPreviewMediaOpened)
+            {
+                return;
+            }
+
+            if (_applyPendingStartOnPlay)
+            {
+                SetPreviewPositionMs(_pendingPreviewStartMs);
+                uxTime.Text = _manualPreview.PositionText;
+                _applyPendingStartOnPlay = false;
+            }
+
+            IsPlaying = true;
+            uxPreviewImage.Volume = uxVolumeSlider.Value;
+            uxPreviewImage.Play();
+            uxTimeSlider.Value = GetPreviewPositionMs();
             timer.Start();
         }
 
@@ -2965,13 +3125,23 @@ namespace IndigoMovieManager
         private void Pause_Click(object sender, RoutedEventArgs e)
         {
             IsPlaying = false;
+            if (_isPreviewMediaOpened && !_useLegacyPreviewFallback)
+            {
+                uxPreviewImage.Pause();
+            }
         }
 
         private void UxPreviewImage_MouseDown(object sender, MouseButtonEventArgs e)
         {
             if (!_manualPreview.IsOpen) { return; }
 
-            IsPlaying = !IsPlaying;
+            if (IsPlaying)
+            {
+                Pause_Click(sender, e);
+                return;
+            }
+
+            Start_Click(sender, e);
         }
 
         /// <summary>
@@ -2992,13 +3162,14 @@ namespace IndigoMovieManager
         private void UxTimeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
             if (!_manualPreview.IsOpen) { return; }
+            if (_isUpdatingSliderFromPlayer) { return; }
 
             DateTime now = DateTime.Now;
             TimeSpan timeSinceLastUpdate = now - _lastSliderTime;
 
             if (timeSinceLastUpdate >= _timeSliderInterval)
             {
-                _manualPreview.SetPositionMs(uxTimeSlider.Value);
+                SetPreviewPositionMs(uxTimeSlider.Value);
                 _lastSliderTime = now;
                 uxTime.Text = _manualPreview.PositionText;
             }
@@ -3014,6 +3185,11 @@ namespace IndigoMovieManager
             if (uxVolume != null)
             {
                 uxVolume.Text = ((int)(uxVolumeSlider.Value * 100)).ToString();
+            }
+
+            if (_isPreviewMediaOpened)
+            {
+                uxPreviewImage.Volume = uxVolumeSlider.Value;
             }
         }
 
@@ -3034,6 +3210,10 @@ namespace IndigoMovieManager
 
             timer.Stop();
             IsPlaying = false;
+            if (_isPreviewMediaOpened && !_useLegacyPreviewFallback)
+            {
+                uxPreviewImage.Pause();
+            }
 
             QueueObj queueObj = new()
             {
@@ -3099,6 +3279,10 @@ namespace IndigoMovieManager
 
             timer.Stop();
             IsPlaying = false;
+            if (_isPreviewMediaOpened && !_useLegacyPreviewFallback)
+            {
+                uxPreviewImage.Pause();
+            }
 
             MovieInfo mvi = new(mv.Movie_Path, true);        //Hashの取得が重いのでオプション付けた。ブックマークには不要。
 
@@ -3165,22 +3349,23 @@ namespace IndigoMovieManager
             }
 
             await _manualPreview.OpenAsync(mv.Movie_Path, msec);
-            if (_manualPreview.DurationMs > 0d)
-            {
-                uxTimeSlider.Maximum = _manualPreview.DurationMs;
-            }
+            _pendingPreviewStartMs = _manualPreview.PositionMs;
+            _applyPendingStartOnPlay = true;
+            _useLegacyPreviewFallback = false;
+            _isPreviewMediaOpened = false;
+            uxPreviewFallbackImage.Source = null;
+            uxPreviewImage.Stop();
+            uxPreviewImage.Source = new Uri(mv.Movie_Path, UriKind.Absolute);
+            uxPreviewImage.Volume = uxVolumeSlider.Value;
 
-            ApplyManualPreviewTimerInterval();
-
+            uxTimeSlider.Maximum = Math.Max(_manualPreview.DurationMs, _manualPreview.PositionMs);
             uxTimeSlider.Value = _manualPreview.PositionMs;
             uxTime.Text = _manualPreview.PositionText;
             IsPlaying = false;
             PlayerArea.Visibility = Visibility.Visible;
-            uxPreviewImage.Visibility = Visibility.Visible;
             PlayerController.Visibility = Visibility.Visible;
+            SetPreviewModeUi(useLegacyFallback: false);
             uxTimeSlider.Focus();
-
-            await _manualPreview.RefreshPreviewAsync();
         }
 
         private void CloseManualThumbnailPreview()
@@ -3188,16 +3373,25 @@ namespace IndigoMovieManager
             timer.Stop();
             _manualPreview.CancelPending();
             _manualPreview.Close();
+            _isPreviewMediaOpened = false;
+            _pendingPreviewStartMs = 0d;
+            _applyPendingStartOnPlay = false;
+            _useLegacyPreviewFallback = false;
+            uxPreviewImage.Stop();
             PlayerArea.Visibility = Visibility.Collapsed;
             PlayerController.Visibility = Visibility.Collapsed;
             uxPreviewImage.Visibility = Visibility.Collapsed;
+            uxPreviewFallbackImage.Visibility = Visibility.Collapsed;
             uxPreviewImage.Source = null;
+            uxPreviewFallbackImage.Source = null;
             IsPlaying = false;
         }
 
         private void ApplyManualPreviewTimerInterval()
         {
-            timer.Interval = _manualPreview.PlaybackInterval;
+            timer.Interval = _useLegacyPreviewFallback
+                ? _manualPreview.PlaybackInterval
+                : TimeSpan.FromMilliseconds(100);
         }
 
         private void FR_Click(object sender, RoutedEventArgs e)
@@ -3215,7 +3409,7 @@ namespace IndigoMovieManager
         private void FF_FR(int tempSlider)
         {
             uxTimeSlider.Value = tempSlider;
-            _manualPreview.SetPositionMs(tempSlider);
+            SetPreviewPositionMs(tempSlider);
             uxTime.Text = _manualPreview.PositionText;
         }
 
@@ -3236,17 +3430,40 @@ namespace IndigoMovieManager
                 return;
             }
 
-            double nextMs = _manualPreview.PositionMs + timer.Interval.TotalMilliseconds;
-            if (_manualPreview.DurationMs > 0d && nextMs > _manualPreview.DurationMs)
+            if (_useLegacyPreviewFallback)
             {
-                nextMs = _manualPreview.DurationMs;
-                IsPlaying = false;
+                double nextMs = _manualPreview.PositionMs + timer.Interval.TotalMilliseconds;
+                if (_manualPreview.DurationMs > 0d && nextMs > _manualPreview.DurationMs)
+                {
+                    nextMs = _manualPreview.DurationMs;
+                    IsPlaying = false;
+                }
+
+                _manualPreview.SetPositionMs(nextMs, schedulePreview: false);
+                _isUpdatingSliderFromPlayer = true;
+                uxTimeSlider.Value = _manualPreview.PositionMs;
+                _isUpdatingSliderFromPlayer = false;
+                uxTime.Text = _manualPreview.PositionText;
+                _ = _manualPreview.RefreshPreviewAsync();
+                return;
             }
 
-            _manualPreview.SetPositionMs(nextMs, schedulePreview: false);
+            if (!_isPreviewMediaOpened)
+            {
+                return;
+            }
+
+            double currentMs = GetPreviewPositionMs();
+            if (_manualPreview.DurationMs > 0d && currentMs > _manualPreview.DurationMs)
+            {
+                currentMs = _manualPreview.DurationMs;
+            }
+
+            _manualPreview.SetPositionMs(currentMs, schedulePreview: false);
+            _isUpdatingSliderFromPlayer = true;
             uxTimeSlider.Value = _manualPreview.PositionMs;
+            _isUpdatingSliderFromPlayer = false;
             uxTime.Text = _manualPreview.PositionText;
-            _ = _manualPreview.RefreshPreviewAsync();
         }
 
         private void UxTimeSlider_DragEnter(object sender, DragEventArgs e)
@@ -3257,8 +3474,89 @@ namespace IndigoMovieManager
         private void UxTimeSlider_DragLeave(object sender, DragEventArgs e)
         {
             isDragging = false;
-            _manualPreview.SetPositionMs(uxTimeSlider.Value);
+            SetPreviewPositionMs(uxTimeSlider.Value);
             uxTime.Text = _manualPreview.PositionText;
+        }
+
+        private void UxPreviewImage_MediaOpened(object sender, RoutedEventArgs e)
+        {
+            _useLegacyPreviewFallback = false;
+            _isPreviewMediaOpened = true;
+            _manualPreview.SetPositionMs(_pendingPreviewStartMs, schedulePreview: false);
+            uxPreviewImage.Volume = uxVolumeSlider.Value;
+            SetPreviewModeUi(useLegacyFallback: false);
+
+            if (uxPreviewImage.NaturalDuration.HasTimeSpan)
+            {
+                _manualPreview.SetPositionMs(Math.Min(_pendingPreviewStartMs, uxPreviewImage.NaturalDuration.TimeSpan.TotalMilliseconds), schedulePreview: false);
+                uxTimeSlider.Maximum = uxPreviewImage.NaturalDuration.TimeSpan.TotalMilliseconds;
+            }
+
+            uxPreviewImage.Position = TimeSpan.FromMilliseconds(_manualPreview.PositionMs);
+            uxPreviewImage.Play();
+            uxPreviewImage.Pause();
+            uxPreviewImage.Position = TimeSpan.FromMilliseconds(_manualPreview.PositionMs);
+            uxTime.Text = _manualPreview.PositionText;
+            _isUpdatingSliderFromPlayer = true;
+            uxTimeSlider.Value = _manualPreview.PositionMs;
+            _isUpdatingSliderFromPlayer = false;
+        }
+
+        private void UxPreviewImage_MediaEnded(object sender, RoutedEventArgs e)
+        {
+            IsPlaying = false;
+            timer.Stop();
+            _manualPreview.SetPositionMs(_manualPreview.DurationMs, schedulePreview: false);
+            _isUpdatingSliderFromPlayer = true;
+            uxTimeSlider.Value = _manualPreview.PositionMs;
+            _isUpdatingSliderFromPlayer = false;
+            uxTime.Text = _manualPreview.PositionText;
+        }
+
+        private void UxPreviewImage_MediaFailed(object sender, ExceptionRoutedEventArgs e)
+        {
+            IsPlaying = false;
+            timer.Stop();
+            _isPreviewMediaOpened = false;
+            ActivateLegacyPreviewFallback();
+        }
+
+        private double GetPreviewPositionMs() =>
+            _isPreviewMediaOpened
+                ? uxPreviewImage.Position.TotalMilliseconds
+                : _manualPreview.PositionMs;
+
+        private void SetPreviewPositionMs(double positionMs)
+        {
+            _manualPreview.SetPositionMs(positionMs, schedulePreview: false);
+            _pendingPreviewStartMs = _manualPreview.PositionMs;
+            _applyPendingStartOnPlay = false;
+            if (_useLegacyPreviewFallback)
+            {
+                _ = _manualPreview.RefreshPreviewAsync();
+                return;
+            }
+
+            if (_isPreviewMediaOpened)
+            {
+                uxPreviewImage.Position = TimeSpan.FromMilliseconds(_manualPreview.PositionMs);
+            }
+        }
+
+        private void ActivateLegacyPreviewFallback()
+        {
+            _useLegacyPreviewFallback = true;
+            _applyPendingStartOnPlay = false;
+            uxPreviewImage.Stop();
+            SetPreviewModeUi(useLegacyFallback: true);
+            ApplyManualPreviewTimerInterval();
+            _ = _manualPreview.RefreshPreviewAsync();
+        }
+
+        private void SetPreviewModeUi(bool useLegacyFallback)
+        {
+            uxPreviewImage.Visibility = useLegacyFallback ? Visibility.Collapsed : Visibility.Visible;
+            uxPreviewFallbackImage.Visibility = useLegacyFallback ? Visibility.Visible : Visibility.Collapsed;
         }
 
         #endregion

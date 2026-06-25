@@ -9,8 +9,8 @@
     <Title>IndigoMovieManager</Title>
     <Platforms>AnyCPU;x64</Platforms>
     <PlatformTarget>AnyCPU</PlatformTarget>
-    <FileVersion>1.0.0.36</FileVersion>
-    <AssemblyVersion>1.0.0.36</AssemblyVersion>
+    <FileVersion>1.0.0.38</FileVersion>
+    <AssemblyVersion>1.0.0.38</AssemblyVersion>
     <SupportedOSPlatformVersion>7.0</SupportedOSPlatformVersion>
   </PropertyGroup>
 
@@ -170,6 +170,24 @@
       SourceFiles="@(_MirroredPublishImage)"
       DestinationFiles="@(_MirroredPublishImage->'$(OutputPath)Images\%(RecursiveDir)%(Filename)%(Extension)')"
       SkipUnchangedFiles="true" />
+  </Target>
+
+  <!--
+    開発者用ローカル Release 出力には sinku を同梱する（対外配布 publish には入れない）。
+    Mirror ターゲットが sinku を削除した後に tools\sinku からコピーし直す。
+    StandardDistributionPublish=true（対外配布）と内部 Mirror 実行時は対象外。
+  -->
+  <Target
+    Name="CopySinkuToDeveloperRelease"
+    AfterTargets="MirrorStandardReleasePublishToOutput"
+    Condition="'$(StandardReleaseSingleFile)' == 'true' and '$(StandardDistributionPublish)' != 'true' and '$(_RunningStandardReleaseMirror)' != 'true' and '$(PublishSingleFile)' != 'true'">
+    <PropertyGroup>
+      <_SinkuSourceDir>$(MSBuildProjectDirectory)\tools\sinku\</_SinkuSourceDir>
+    </PropertyGroup>
+    <Copy SourceFiles="$(_SinkuSourceDir)sinku.exe" DestinationFiles="$(OutputPath)sinku.exe" SkipUnchangedFiles="true" Condition="Exists('$(_SinkuSourceDir)sinku.exe')" />
+    <Copy SourceFiles="$(_SinkuSourceDir)Sinku.dll" DestinationFiles="$(OutputPath)Sinku.dll" SkipUnchangedFiles="true" Condition="Exists('$(_SinkuSourceDir)Sinku.dll')" />
+    <Copy SourceFiles="$(_SinkuSourceDir)codecs.ini" DestinationFiles="$(OutputPath)codecs.ini" SkipUnchangedFiles="true" Condition="Exists('$(_SinkuSourceDir)codecs.ini')" />
+    <Copy SourceFiles="$(_SinkuSourceDir)format.ini" DestinationFiles="$(OutputPath)format.ini" SkipUnchangedFiles="true" Condition="Exists('$(_SinkuSourceDir)format.ini')" />
   </Target>
 
   <ItemGroup>

@@ -1249,11 +1249,15 @@
                                     <Setter Property="HorizontalAlignment" Value="Stretch" />
                                     <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                                     <Setter Property="VerticalContentAlignment" Value="Stretch" />
-                                    <EventSetter Event="MouseMove" Handler="SearchBoxItem_MouseMove" />
                                     <EventSetter Event="PreviewMouseLeftButtonDown" Handler="SearchBoxItem_PreviewMouseLeftButtonDown" />
                                     <Style.Triggers>
-                                        <!--  選択時の反転表示  -->
-                                        <Trigger Property="IsSelected" Value="True" />
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="#FFE3F2FD" />
+                                            <Setter Property="Cursor" Value="Hand" />
+                                        </Trigger>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter Property="Background" Value="#FFBBDEFB" />
+                                        </Trigger>
                                     </Style.Triggers>
 
                                 </Style>
@@ -1327,13 +1331,28 @@
                     ShadowDepth="10"
                     Color="DarkGoldenrod" />
             </StackPanel.Effect>
-            <Image
-                x:Name="uxPreviewImage"
-                Grid.Row="0"
-                Width="900"
-                Height="Auto"
-                MouseDown="UxPreviewImage_MouseDown"
-                Stretch="Uniform" />
+            <Grid Width="900">
+                <MediaElement
+                    x:Name="uxPreviewImage"
+                    Grid.Row="0"
+                    Width="900"
+                    Height="Auto"
+                    LoadedBehavior="Manual"
+                    UnloadedBehavior="Manual"
+                    MediaEnded="UxPreviewImage_MediaEnded"
+                    MediaFailed="UxPreviewImage_MediaFailed"
+                    MediaOpened="UxPreviewImage_MediaOpened"
+                    MouseDown="UxPreviewImage_MouseDown"
+                    ScrubbingEnabled="True"
+                    Stretch="Uniform" />
+                <Image
+                    x:Name="uxPreviewFallbackImage"
+                    Width="900"
+                    Height="Auto"
+                    MouseDown="UxPreviewImage_MouseDown"
+                    Stretch="Uniform"
+                    Visibility="Collapsed" />
+            </Grid>
             <StackPanel
                 x:Name="PlayerController"
                 Grid.Row="1"

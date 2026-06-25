@@ -181,7 +181,7 @@ namespace IndigoMovieManager
                                         }
 
                                         //1つ目
-                                        long sec = BitConverter.ToUInt16(bufInf, 0);
+                                        long sec = BitConverter.ToInt32(bufInf, 0);
                                         int i = 0;
                                         thumbSec[i] = (int)sec;
                                         i++;
@@ -194,7 +194,7 @@ namespace IndigoMovieManager
                                             {
                                                 break;
                                             }
-                                            sec = BitConverter.ToUInt16(bufInf, 0);
+                                            sec = BitConverter.ToInt32(bufInf, 0);
                                             thumbSec[i] = (int)sec;
                                             i++;
                                         }
