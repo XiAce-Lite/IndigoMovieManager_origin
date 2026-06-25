@@ -73,6 +73,11 @@ namespace IndigoMovieManager
         //マニュアルサムネイル時の右クリックしたカラムの返却を受け取る変数
         private int manualPos = 0;
 
+        private MovieRecords _contextMenuMovie;
+        private System.Windows.Controls.Image _contextMenuThumbImage;
+        private System.Windows.Point _contextMenuThumbClick;
+        private bool _contextMenuThumbClickValid;
+
         //IME起動中的なフラグ。日本語入力中（未変換）にインクリメンタルサーチさせない為。
         private bool _imeFlag = false;
 
@@ -2227,18 +2232,32 @@ namespace IndigoMovieManager
 
         private void MenuContext_Opened(object sender, RoutedEventArgs e)
         {
+            _contextMenuMovie = null;
+            _contextMenuThumbImage = null;
+            _contextMenuThumbClickValid = false;
+
             if (sender is not ContextMenu menu)
             {
                 return;
             }
 
-            bool isZip = false;
-            if (menu.PlacementTarget is FrameworkElement element
-                && element.DataContext is MovieRecords mv)
+            if (menu.PlacementTarget is FrameworkElement target)
             {
-                isZip = ZipMediaKind.IsZipRecord(mv);
+                _contextMenuMovie = ResolveMovieRecordsFromElement(target);
+                _contextMenuThumbImage = FindDescendant<System.Windows.Controls.Image>(target);
+                if (_contextMenuThumbImage != null)
+                {
+                    _contextMenuThumbClick = Mouse.GetPosition(_contextMenuThumbImage);
+                    _contextMenuThumbClickValid = true;
+                }
+
+                if (_contextMenuMovie != null)
+                {
+                    SelectMovieRecord(_contextMenuMovie);
+                }
             }
 
+            bool isZip = ZipMediaKind.IsZipRecord(_contextMenuMovie);
             foreach (object item in menu.Items)
             {
                 if (item is not MenuItem menuItem)
@@ -2251,6 +2270,77 @@ namespace IndigoMovieManager
                     menuItem.IsEnabled = !isZip;
                 }
             }
+        }
+
+        private static MovieRecords ResolveMovieRecordsFromElement(FrameworkElement element)
+        {
+            DependencyObject current = element;
+            while (current != null)
+            {
+                if (current is FrameworkElement fe && fe.DataContext is MovieRecords record)
+                {
+                    return record;
+                }
+
+                current = current is FrameworkElement parentFe
+                    ? parentFe.Parent
+                    : LogicalTreeHelper.GetParent(current);
+            }
+
+            return null;
+        }
+
+        private void SelectMovieRecord(MovieRecords record)
+        {
+            if (record == null)
+            {
+                return;
+            }
+
+            switch (Tabs.SelectedIndex)
+            {
+                case 0:
+                    SmallList.SelectedItem = record;
+                    break;
+                case 1:
+                    BigList.SelectedItem = record;
+                    break;
+                case 2:
+                    GridList.SelectedItem = record;
+                    break;
+                case 3:
+                    ListDataGrid.SelectedItem = record;
+                    break;
+                case 4:
+                    BigList10.SelectedItem = record;
+                    break;
+            }
+        }
+
+        private static T FindDescendant<T>(DependencyObject root) where T : DependencyObject
+        {
+            if (root == null)
+            {
+                return null;
+            }
+
+            int childCount = VisualTreeHelper.GetChildrenCount(root);
+            for (int i = 0; i < childCount; i++)
+            {
+                DependencyObject child = VisualTreeHelper.GetChild(root, i);
+                if (child is T match)
+                {
+                    return match;
+                }
+
+                T nested = FindDescendant<T>(child);
+                if (nested != null)
+                {
+                    return nested;
+                }
+            }
+
+            return null;
         }
 
         public MovieRecords GetSelectedItemByTabIndex() => TabSelectionHelper.GetSelectedItem(this);
@@ -2999,7 +3089,7 @@ namespace IndigoMovieManager
         {
             if (Tabs.SelectedItem == null) { return; }
 
-            MovieRecords mv = GetSelectedItemByTabIndex();
+            MovieRecords mv = _contextMenuMovie ?? GetSelectedItemByTabIndex();
             if (mv == null) { return; }
 
             if (ZipMediaKind.IsZipRecord(mv))
@@ -3008,9 +3098,22 @@ namespace IndigoMovieManager
             }
 
             int msec = 0;
-            if (sender is MenuItem senderObj)
+            if (sender is MenuItem senderObj && senderObj.Name == "ManualThumbnail")
             {
-                if (senderObj.Name == "ManualThumbnail")
+                if (_contextMenuThumbClickValid
+                    && _contextMenuThumbImage != null
+                    && ThumbPanelHitResolver.TryResolveFromImageClick(
+                        _contextMenuThumbClick,
+                        _contextMenuThumbImage.ActualWidth,
+                        _contextMenuThumbImage.ActualHeight,
+                        PlayPositionResolver.GetThumbPathForTab(mv, Tabs.SelectedIndex),
+                        ZipMediaKind.IsZipRecord(mv),
+                        out int panelIndex,
+                        out msec))
+                {
+                    manualPos = panelIndex;
+                }
+                else
                 {
                     msec = GetPlayPosition(Tabs.SelectedIndex, mv, ref manualPos);
                 }
@@ -3030,7 +3133,6 @@ namespace IndigoMovieManager
             PlayerController.Visibility = Visibility.Visible;
             uxTimeSlider.Focus();
 
-            timer.Start();
             await _manualPreview.RefreshPreviewAsync();
         }
 

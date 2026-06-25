@@ -9,9 +9,70 @@ namespace IndigoMovieManager.Services
     {
         public static int GetPlayPositionMsec(Point clickPoint, int tabIndex, MovieRecords mv, ref int returnPos)
         {
-            int msec = 0;
+            if (mv == null)
+            {
+                returnPos = 0;
+                return 0;
+            }
 
-            string currentThumbPath = tabIndex switch
+            string currentThumbPath = GetThumbPathForTab(mv, tabIndex);
+            if (string.IsNullOrWhiteSpace(currentThumbPath) || !File.Exists(currentThumbPath))
+            {
+                returnPos = 0;
+                return 0;
+            }
+
+            ThumbInfo thumbInfo = new();
+            thumbInfo.GetThumbInfo(currentThumbPath);
+            if (thumbInfo.IsThumbnail != true || thumbInfo.ThumbSec.Count < 1)
+            {
+                returnPos = 0;
+                return 0;
+            }
+
+            int columns = Math.Max(1, thumbInfo.ThumbColumns);
+            int rows = Math.Max(1, thumbInfo.ThumbRows);
+            int panelCount = columns * rows;
+            if (panelCount <= 0)
+            {
+                returnPos = 0;
+                return 0;
+            }
+
+            int sourceWidth = columns * Math.Max(1, thumbInfo.ThumbWidth);
+            int sourceHeight = rows * Math.Max(1, thumbInfo.ThumbHeight);
+            (int fileWidth, int fileHeight) = TryGetFilePixelSize(currentThumbPath);
+            if (fileWidth > 0)
+            {
+                sourceWidth = fileWidth;
+            }
+
+            if (fileHeight > 0)
+            {
+                sourceHeight = fileHeight;
+            }
+
+            double cellWidth = sourceWidth / (double)columns;
+            double cellHeight = sourceHeight / (double)rows;
+            int col = (int)(clickPoint.X / cellWidth);
+            int row = (int)(clickPoint.Y / cellHeight);
+            col = Math.Clamp(col, 0, columns - 1);
+            row = Math.Clamp(row, 0, rows - 1);
+            int secPos = col + (row * columns);
+
+            if (secPos >= thumbInfo.ThumbSec.Count)
+            {
+                secPos = thumbInfo.ThumbSec.Count - 1;
+            }
+
+            returnPos = secPos;
+            return ZipMediaKind.IsZipRecord(mv)
+                ? thumbInfo.ThumbSec[secPos]
+                : thumbInfo.ThumbSec[secPos] * 1000;
+        }
+
+        public static string GetThumbPathForTab(MovieRecords mv, int tabIndex) =>
+            tabIndex switch
             {
                 0 => mv.ThumbPathSmall,
                 1 => mv.ThumbPathBig,
@@ -21,46 +82,18 @@ namespace IndigoMovieManager.Services
                 _ => null,
             };
 
-            if (currentThumbPath == null || !Path.Exists(currentThumbPath))
+        private static (int Width, int Height) TryGetFilePixelSize(string path)
+        {
+            try
             {
-                return 0;
+                using var stream = File.OpenRead(path);
+                using var image = System.Drawing.Image.FromStream(stream, false, false);
+                return (image.Width, image.Height);
             }
-
-            ThumbInfo thumbInfo = new();
-            thumbInfo.GetThumbInfo(currentThumbPath);
-            if (thumbInfo.IsThumbnail != true)
+            catch
             {
-                return 0;
+                return (0, 0);
             }
-
-            List<System.Drawing.Point> points = [];
-            for (int j = 1; j < thumbInfo.ThumbRows + 1; j++)
-            {
-                for (int i = 1; i < thumbInfo.ThumbColumns + 1; i++)
-                {
-                    points.Add(new System.Drawing.Point
-                    {
-                        X = i * thumbInfo.ThumbWidth,
-                        Y = j * thumbInfo.ThumbHeight
-                    });
-                }
-            }
-
-            int secPos = points.Count;
-            for (int i = 0; i < points.Count; i++)
-            {
-                if (clickPoint.X < points[i].X && clickPoint.Y < points[i].Y)
-                {
-                    secPos = i;
-                    break;
-                }
-            }
-
-            msec = ZipMediaKind.IsZipRecord(mv)
-                ? thumbInfo.ThumbSec[secPos]
-                : thumbInfo.ThumbSec[secPos] * 1000;
-            returnPos = secPos;
-            return msec;
         }
     }
 }

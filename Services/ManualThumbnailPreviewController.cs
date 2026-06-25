@@ -128,7 +128,7 @@ namespace IndigoMovieManager.Services
             string moviePath = MoviePath;
             double positionMs = PositionMs;
 
-            string tempFile = await FfmpegPreviewFrameExtractor
+            string tempFile = await PreviewFrameExtractor
                 .TryExtractToTempFileAsync(moviePath, positionMs, extractToken)
                 .ConfigureAwait(false);
 
