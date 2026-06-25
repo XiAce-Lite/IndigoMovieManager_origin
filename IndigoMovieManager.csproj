@@ -9,8 +9,8 @@
     <Title>IndigoMovieManager</Title>
     <Platforms>AnyCPU;x64</Platforms>
     <PlatformTarget>AnyCPU</PlatformTarget>
-    <FileVersion>1.0.0.32</FileVersion>
-    <AssemblyVersion>1.0.0.32</AssemblyVersion>
+    <FileVersion>1.0.0.33</FileVersion>
+    <AssemblyVersion>1.0.0.33</AssemblyVersion>
     <SupportedOSPlatformVersion>7.0</SupportedOSPlatformVersion>
   </PropertyGroup>
 
@@ -23,6 +23,18 @@
     <!-- 通常の Release 出力も標準版 publish と同じ SingleFile 構成へ寄せる -->
     <StandardReleaseSingleFile>true</StandardReleaseSingleFile>
     <StandardReleasePublishMirrorDir>$(MSBuildProjectDirectory)\obj\StandardReleaseSingleFile\</StandardReleasePublishMirrorDir>
+  </PropertyGroup>
+
+  <!-- 標準配布 publish 用。PublishProfile 名に依存せず CI / ローカルで同じ SingleFile になる -->
+  <PropertyGroup Condition="'$(StandardDistributionPublish)' == 'true'">
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>false</EnableCompressionInSingleFile>
+    <DebugType>embedded</DebugType>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+    <PublishReadyToRun>false</PublishReadyToRun>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
@@ -132,7 +144,7 @@
     <MSBuild
       Projects="$(MSBuildProjectFullPath)"
       Targets="Publish"
-      Properties="Configuration=$(Configuration);Platform=$(Platform);PublishProfile=Win-x64-SingleFile;PublishDir=$(StandardReleasePublishMirrorDir);_RunningStandardReleaseMirror=true" />
+      Properties="Configuration=$(Configuration);Platform=$(Platform);StandardDistributionPublish=true;PublishDir=$(StandardReleasePublishMirrorDir);_RunningStandardReleaseMirror=true" />
 
     <ItemGroup>
       <_LooseOutputFileToDelete

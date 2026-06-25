@@ -125,7 +125,7 @@ bin\x64\Release\net8.0-windows
 または
 
 ```powershell
-dotnet publish IndigoMovieManager.csproj -c Release -p:Platform=x64 -p:PublishProfile=Win-x64-SingleFile
+dotnet publish IndigoMovieManager.csproj -c Release -p:Platform=x64 -p:StandardDistributionPublish=true
 ```
 
 出力先:
@@ -136,8 +136,9 @@ bin\x64\Release\net8.0-windows\publish
 
 標準版配布物は Framework 依存 SingleFile です。
 
+- Zip に含まれるのは主に **`IndigoMovieManager.exe`（約 100MB・DLL を内包）**、`Images\`、`IndigoMovieManager.dll.config` です
+- 起動時にネイティブ DLL 等が一時フォルダへ展開されることがありますが、**配布 Zip 内に DLL がばらけて入る構成ではありません**
 - `sinku` 関連 4 ファイル・`ffmpeg` は **同梱しません**（README の「外部ツールについて」を参照）
-- 同梱されるのは `IndigoMovieManager.exe` と `Images\` 内のプレースホルダ画像などです
 
 ## 注意事項
 
