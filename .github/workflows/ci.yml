@@ -40,7 +40,13 @@ jobs:
           dotnet-version: '8.0.x'
 
       - name: Publish distribution
-        run: dotnet publish IndigoMovieManager.csproj -c Release -p:Platform=x64 -p:PublishProfile=Win-x64-SingleFile
+        shell: pwsh
+        run: |
+          $publishDir = Join-Path $env:GITHUB_WORKSPACE 'artifacts/publish'
+          New-Item -ItemType Directory -Force -Path $publishDir | Out-Null
+          dotnet publish IndigoMovieManager.csproj -c Release -p:Platform=x64 `
+            -p:PublishProfile=Win-x64-SingleFile `
+            -p:PublishDir="$publishDir\"
 
       - name: Read version and prepare release
         id: release
@@ -52,12 +58,12 @@ jobs:
             throw 'FileVersion not found in IndigoMovieManager.csproj'
           }
           $version = $Matches.ver
-          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8NoBOM
 
           $template = Get-Content docs/release-notes-template.md -Raw -Encoding UTF8
           ($template -replace '\{VERSION\}', $version) | Set-Content release-notes.md -Encoding UTF8
 
-          $publishDir = Join-Path $PWD 'bin\x64\Release\net8.0-windows\publish'
+          $publishDir = Join-Path $env:GITHUB_WORKSPACE 'artifacts/publish'
           if (-not (Test-Path $publishDir)) {
             throw "Publish directory not found: $publishDir"
           }
@@ -73,7 +79,7 @@ jobs:
           $zipName = "IndigoMovieManager-v$version-win-x64.zip"
           if (Test-Path $zipName) { Remove-Item $zipName -Force }
           Compress-Archive -Path (Join-Path $publishDir '*') -DestinationPath $zipName
-          "zip_name=$zipName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "zip_name=$zipName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8NoBOM
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
