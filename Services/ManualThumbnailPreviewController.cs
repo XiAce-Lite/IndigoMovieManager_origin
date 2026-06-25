@@ -8,9 +8,13 @@ namespace IndigoMovieManager.Services
     internal sealed class ManualThumbnailPreviewController
     {
         private readonly Dispatcher _dispatcher;
+        private readonly SemaphoreSlim _refreshSemaphore = new(1, 1);
         private CancellationTokenSource _extractCts;
         private CancellationTokenSource _debounceCts;
         private int _previewRequestId;
+        private int _requestedRefreshId;
+        private int _processedRefreshId;
+        private OpenCvPreviewSession _previewSession;
 
         public ManualThumbnailPreviewController(Dispatcher dispatcher)
         {
@@ -25,6 +29,10 @@ namespace IndigoMovieManager.Services
 
         public bool IsOpen => !string.IsNullOrWhiteSpace(MoviePath);
 
+        public double PlaybackFps => _previewSession?.Fps ?? PreviewPlaybackTiming.DefaultFps;
+
+        public TimeSpan PlaybackInterval => PreviewPlaybackTiming.GetTimerInterval(PlaybackFps);
+
         public Action<BitmapSource> OnFrameReady { get; set; }
 
         public async Task OpenAsync(string moviePath, double startMs)
@@ -32,6 +40,8 @@ namespace IndigoMovieManager.Services
             CancelPending();
             MoviePath = moviePath;
             DurationMs = 0d;
+            _processedRefreshId = 0;
+            _requestedRefreshId = 0;
 
             double durationSec = await Task.Run(() =>
             {
@@ -45,12 +55,24 @@ namespace IndigoMovieManager.Services
                 DurationMs = durationSec * 1000d;
             }
 
+            _previewSession?.Dispose();
+            _previewSession = new OpenCvPreviewSession();
+            if (!_previewSession.TryOpen(moviePath))
+            {
+                _previewSession.Dispose();
+                _previewSession = null;
+            }
+
             SetPositionMs(startMs, schedulePreview: false);
         }
 
         public void Close()
         {
             CancelPending();
+            _previewSession?.Dispose();
+            _previewSession = null;
+            _processedRefreshId = 0;
+            _requestedRefreshId = 0;
             MoviePath = null;
             DurationMs = 0d;
             PositionMs = 0d;
@@ -97,7 +119,8 @@ namespace IndigoMovieManager.Services
                 return Task.CompletedTask;
             }
 
-            return RefreshPreviewCoreAsync();
+            Interlocked.Increment(ref _requestedRefreshId);
+            return ProcessRefreshQueueAsync();
         }
 
         public void CancelPending()
@@ -111,11 +134,38 @@ namespace IndigoMovieManager.Services
             try
             {
                 await Task.Delay(150, debounceToken).ConfigureAwait(false);
-                await RefreshPreviewCoreAsync().ConfigureAwait(false);
+                await RefreshPreviewAsync().ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
                 // ignore
+            }
+        }
+
+        private async Task ProcessRefreshQueueAsync()
+        {
+            if (!await _refreshSemaphore.WaitAsync(0).ConfigureAwait(false))
+            {
+                return;
+            }
+
+            try
+            {
+                while (IsOpen)
+                {
+                    int requestedRefreshId = Volatile.Read(ref _requestedRefreshId);
+                    if (requestedRefreshId == _processedRefreshId)
+                    {
+                        break;
+                    }
+
+                    await RefreshPreviewCoreAsync().ConfigureAwait(false);
+                    _processedRefreshId = requestedRefreshId;
+                }
+            }
+            finally
+            {
+                _refreshSemaphore.Release();
             }
         }
 
@@ -127,6 +177,29 @@ namespace IndigoMovieManager.Services
             int requestId = Interlocked.Increment(ref _previewRequestId);
             string moviePath = MoviePath;
             double positionMs = PositionMs;
+
+            BitmapSource sessionFrame = await Task.Run(
+                () =>
+                {
+                    if (extractToken.IsCancellationRequested)
+                    {
+                        return null;
+                    }
+
+                    return _previewSession?.TryReadFrame(positionMs);
+                },
+                extractToken).ConfigureAwait(false);
+
+            if (extractToken.IsCancellationRequested || requestId != _previewRequestId)
+            {
+                return;
+            }
+
+            if (sessionFrame != null)
+            {
+                await _dispatcher.InvokeAsync(() => OnFrameReady?.Invoke(sessionFrame));
+                return;
+            }
 
             string tempFile = await PreviewFrameExtractor
                 .TryExtractToTempFileAsync(moviePath, positionMs, extractToken)

@@ -85,7 +85,7 @@
                         d:Text="ダミーファイルsSssssssssssssssssssssssss"
                         Text="{Binding Movie_Body}"
                         TextWrapping="NoWrap"
-                        ToolTip="{Binding Movie_Path}" />
+                        ToolTip="{Binding Comment1}" />
                 </Hyperlink>
             </Label>
 

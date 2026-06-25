@@ -31,6 +31,8 @@ namespace IndigoMovieManager
                 Score = frame,
                 Kana = row["kana"].ToString(),
                 Roma = row["roma"].ToString(),
+                Hash = row["hash"]?.ToString() ?? "",
+                Comment1 = row["comment1"]?.ToString() ?? "",
                 IsExists = true,
                 Ext = ext,
                 ThumbDetail = thumbFile

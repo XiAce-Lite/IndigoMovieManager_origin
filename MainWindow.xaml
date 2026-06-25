@@ -509,6 +509,7 @@
                                                                 MouseDown="Label_MouseDown">
                                                                 <Image
                                                                     ContextMenu="{StaticResource menuContext}"
+                                                                    PreviewMouseRightButtonDown="ThumbnailImage_PreviewMouseRightButtonDown"
                                                                     Stretch="Uniform"
                                                                     VirtualizingPanel.IsVirtualizing="True"
                                                                     VirtualizingPanel.ScrollUnit="Pixel"
@@ -624,6 +625,7 @@
                                                                 MouseDown="Label_MouseDown">
                                                                 <Image
                                                                     ContextMenu="{StaticResource menuContext}"
+                                                                    PreviewMouseRightButtonDown="ThumbnailImage_PreviewMouseRightButtonDown"
                                                                     Stretch="Uniform"
                                                                     VirtualizingPanel.IsVirtualizing="True"
                                                                     VirtualizingPanel.ScrollUnit="Pixel"
@@ -699,6 +701,7 @@
                                                             MouseDown="Label_MouseDown">
                                                             <Image
                                                                 ContextMenu="{StaticResource menuContext}"
+                                                                PreviewMouseRightButtonDown="ThumbnailImage_PreviewMouseRightButtonDown"
                                                                 Stretch="Uniform"
                                                                 VirtualizingPanel.IsVirtualizing="True"
                                                                 VirtualizingPanel.ScrollUnit="Pixel"
@@ -994,6 +997,7 @@
                                                                 VirtualizingPanel.ScrollUnit="Pixel">
                                                                 <Image
                                                                     ContextMenu="{StaticResource menuContext}"
+                                                                    PreviewMouseRightButtonDown="ThumbnailImage_PreviewMouseRightButtonDown"
                                                                     Stretch="Uniform"
                                                                     VirtualizingPanel.IsVirtualizing="True"
                                                                     VirtualizingPanel.ScrollUnit="Pixel"

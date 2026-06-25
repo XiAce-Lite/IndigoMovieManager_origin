@@ -1912,9 +1912,12 @@ namespace IndigoMovieManager
                 {
                     notBookmark = false;
                     mv = item.DataContext as MovieRecords;
-                    MovieRecords bookmarkedMv = MainVM.MovieRecs.Where(
-                            x => x.Movie_Name.Contains(mv.Movie_Body, StringComparison.CurrentCultureIgnoreCase)).First();
-                    string bookMarkedFilePath = bookmarkedMv.Movie_Path;
+                    string bookMarkedFilePath = BookmarkSourceResolver.ResolveSourceMoviePath(mv, MainVM.MovieRecs);
+                    if (string.IsNullOrWhiteSpace(bookMarkedFilePath) || !Path.Exists(bookMarkedFilePath))
+                    {
+                        return;
+                    }
+
                     MovieInfo mvi = new(bookMarkedFilePath, true);
                     msec = (int)mv.Score / (int)mvi.FPS * 1000;
                     moviePath = $"\"{bookMarkedFilePath}\"";
@@ -2233,8 +2236,6 @@ namespace IndigoMovieManager
         private void MenuContext_Opened(object sender, RoutedEventArgs e)
         {
             _contextMenuMovie = null;
-            _contextMenuThumbImage = null;
-            _contextMenuThumbClickValid = false;
 
             if (sender is not ContextMenu menu)
             {
@@ -2244,11 +2245,14 @@ namespace IndigoMovieManager
             if (menu.PlacementTarget is FrameworkElement target)
             {
                 _contextMenuMovie = ResolveMovieRecordsFromElement(target);
-                _contextMenuThumbImage = FindDescendant<System.Windows.Controls.Image>(target);
-                if (_contextMenuThumbImage != null)
+                if (!_contextMenuThumbClickValid)
                 {
-                    _contextMenuThumbClick = Mouse.GetPosition(_contextMenuThumbImage);
-                    _contextMenuThumbClickValid = true;
+                    _contextMenuThumbImage = FindDescendant<System.Windows.Controls.Image>(target);
+                    if (_contextMenuThumbImage != null)
+                    {
+                        _contextMenuThumbClick = Mouse.GetPosition(_contextMenuThumbImage);
+                        _contextMenuThumbClickValid = true;
+                    }
                 }
 
                 if (_contextMenuMovie != null)
@@ -2269,6 +2273,25 @@ namespace IndigoMovieManager
                 {
                     menuItem.IsEnabled = !isZip;
                 }
+            }
+        }
+
+        private void ThumbnailImage_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is not System.Windows.Controls.Image image)
+            {
+                return;
+            }
+
+            _contextMenuThumbImage = image;
+            _contextMenuThumbClick = e.GetPosition(image);
+            _contextMenuThumbClickValid = true;
+
+            if (FindAncestor<ListViewItem>(image) is ListViewItem item
+                && item.DataContext is MovieRecords record)
+            {
+                _contextMenuMovie = record;
+                SelectMovieRecord(record);
             }
         }
 
@@ -2338,6 +2361,21 @@ namespace IndigoMovieManager
                 {
                     return nested;
                 }
+            }
+
+            return null;
+        }
+
+        private static T FindAncestor<T>(DependencyObject current) where T : DependencyObject
+        {
+            while (current != null)
+            {
+                if (current is T match)
+                {
+                    return match;
+                }
+
+                current = VisualTreeHelper.GetParent(current);
             }
 
             return null;
@@ -2915,6 +2953,7 @@ namespace IndigoMovieManager
             uxPreviewImage.Visibility = Visibility.Visible;
             IsPlaying = true;
             uxTimeSlider.Value = _manualPreview.PositionMs;
+            ApplyManualPreviewTimerInterval();
             timer.Start();
         }
 
@@ -3049,7 +3088,13 @@ namespace IndigoMovieManager
 
             if (Tabs.SelectedItem == null) { return; }
 
-            MovieRecords mv = GetSelectedItemByTabIndex();
+            MovieRecords mv = null;
+            if (_manualPreview.IsOpen)
+            {
+                mv = BookmarkSourceResolver.FindMovieRecordByPath(MainVM.MovieRecs, _manualPreview.MoviePath);
+            }
+
+            mv ??= GetSelectedItemByTabIndex();
             if (mv == null) { return; }
 
             timer.Stop();
@@ -3080,7 +3125,7 @@ namespace IndigoMovieManager
             //Bookmarkテーブルへのレコード書き込み処理追加
             mvi.MovieName = thumbBody;
             mvi.MoviePath = $"{thumbBody}.jpg";
-            InsertBookmarkTable(MainVM.DbInfo.DBFullPath, mvi);
+            InsertBookmarkTable(MainVM.DbInfo.DBFullPath, mvi, mv.Movie_Path, mv.Hash);
             GetBookmarkTable();
             BookmarkList.Items.Refresh();
         }
@@ -3125,6 +3170,8 @@ namespace IndigoMovieManager
                 uxTimeSlider.Maximum = _manualPreview.DurationMs;
             }
 
+            ApplyManualPreviewTimerInterval();
+
             uxTimeSlider.Value = _manualPreview.PositionMs;
             uxTime.Text = _manualPreview.PositionText;
             IsPlaying = false;
@@ -3146,6 +3193,11 @@ namespace IndigoMovieManager
             uxPreviewImage.Visibility = Visibility.Collapsed;
             uxPreviewImage.Source = null;
             IsPlaying = false;
+        }
+
+        private void ApplyManualPreviewTimerInterval()
+        {
+            timer.Interval = _manualPreview.PlaybackInterval;
         }
 
         private void FR_Click(object sender, RoutedEventArgs e)

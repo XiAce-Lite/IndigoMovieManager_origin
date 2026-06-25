@@ -767,7 +767,11 @@ namespace IndigoMovieManager
             }
         }
 
-        public static void InsertBookmarkTable(string dbFullPath, MovieInfo mvi)
+        public static void InsertBookmarkTable(
+            string dbFullPath,
+            MovieInfo mvi,
+            string sourceMoviePath,
+            string sourceHash = "")
         {
             try
             {
@@ -813,14 +817,18 @@ namespace IndigoMovieManager
                         "   movie_path," +
                         "   last_date," +
                         "   file_date," +
-                        "   regist_date)" +
+                        "   regist_date," +
+                        "   hash," +
+                        "   comment1)" +
                         "   values (" +
                         "   @movie_id," +
                         "   @movie_name," +
                         "   @movie_path," +
                         "   @last_date," +
                         "   @file_date," +
-                        "   @regist_date)";
+                        "   @regist_date," +
+                        "   @hash," +
+                        "   @comment1)";
 
                     cmd.Parameters.Add(new SQLiteParameter("@movie_id", mvi.MovieId));
                     cmd.Parameters.Add(new SQLiteParameter("@movie_name", mvi.MovieName.ToLower()));
@@ -828,6 +836,8 @@ namespace IndigoMovieManager
                     cmd.Parameters.Add(new SQLiteParameter("@last_date", result));
                     cmd.Parameters.Add(new SQLiteParameter("@file_date", result));
                     cmd.Parameters.Add(new SQLiteParameter("@regist_date", result));
+                    cmd.Parameters.Add(new SQLiteParameter("@hash", (sourceHash ?? "").ToLower()));
+                    cmd.Parameters.Add(new SQLiteParameter("@comment1", (sourceMoviePath ?? "").ToLower()));
                     cmd.ExecuteNonQuery();
                 }
                 transaction.Commit();
