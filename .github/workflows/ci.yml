@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, develop]
   pull_request:
 
 jobs:
@@ -17,10 +17,10 @@ jobs:
           dotnet-version: '8.0.x'
 
       - name: Restore
-        run: dotnet restore IndigoMovieManager.sln
+        run: dotnet restore IndigoMovieManager.sln -p:Platform=x64
 
       - name: Build
-        run: dotnet build IndigoMovieManager.sln --configuration Release --no-restore
+        run: dotnet build IndigoMovieManager.sln -c Release -p:Platform=x64 --no-restore
 
       - name: Test
-        run: dotnet test IndigoMovieManager.sln --configuration Release --no-build --verbosity normal
+        run: dotnet test IndigoMovieManager.sln -c Release -p:Platform=x64 --no-build --verbosity normal
