@@ -101,6 +101,11 @@ namespace IndigoMovieManager
         private bool _isApplyingSearchKeyword = false;
         private int _fileInfoRefreshRunning = 0;
 
+        private const int SearchOverlayDelayMs = 400;
+        private int _loadingOverlayDepth;
+        private CancellationTokenSource _searchOverlayDelayCts;
+        private bool _searchOverlayPushed;
+
         public MainWindow()
         {
             MainVM = new MainWindowViewModel(); // ← 追加
@@ -662,9 +667,90 @@ namespace IndigoMovieManager
             }
         }
 
-        private void SetLoadingOverlayVisible(bool visible)
+        private void SetLoadingOverlayMessage(string message)
         {
-            LoadingOverlay.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+            if (LoadingOverlayMessage != null)
+            {
+                LoadingOverlayMessage.Text = message;
+            }
+        }
+
+        private void PushLoadingOverlay(string message, bool cancelPendingSearchOverlay = true)
+        {
+            if (cancelPendingSearchOverlay)
+            {
+                CancelPendingSearchOverlay();
+            }
+
+            SetLoadingOverlayMessage(message);
+            _loadingOverlayDepth++;
+            LoadingOverlay.Visibility = Visibility.Visible;
+        }
+
+        private void PopLoadingOverlay()
+        {
+            _loadingOverlayDepth = Math.Max(0, _loadingOverlayDepth - 1);
+            if (_loadingOverlayDepth == 0)
+            {
+                LoadingOverlay.Visibility = Visibility.Collapsed;
+            }
+        }
+
+        private void CancelPendingSearchOverlay()
+        {
+            if (_searchOverlayDelayCts == null)
+            {
+                return;
+            }
+
+            _searchOverlayDelayCts.Cancel();
+            _searchOverlayDelayCts.Dispose();
+            _searchOverlayDelayCts = null;
+        }
+
+        private void BeginSearchOverlayDelayed()
+        {
+            CancelPendingSearchOverlay();
+            _searchOverlayPushed = false;
+            var cts = new CancellationTokenSource();
+            _searchOverlayDelayCts = cts;
+            _ = RunSearchOverlayDelayAsync(cts);
+        }
+
+        private async Task RunSearchOverlayDelayAsync(CancellationTokenSource cts)
+        {
+            try
+            {
+                await Task.Delay(SearchOverlayDelayMs, cts.Token).ConfigureAwait(true);
+                if (cts.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    if (cts.IsCancellationRequested || !ReferenceEquals(_searchOverlayDelayCts, cts))
+                    {
+                        return;
+                    }
+
+                    PushLoadingOverlay("検索中...", cancelPendingSearchOverlay: false);
+                    _searchOverlayPushed = true;
+                });
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }
+
+        private void EndSearchOverlayDelayed()
+        {
+            CancelPendingSearchOverlay();
+            if (_searchOverlayPushed)
+            {
+                _searchOverlayPushed = false;
+                PopLoadingOverlay();
+            }
         }
 
         private int GetDefaultResolveTabIndex()
@@ -681,7 +767,7 @@ namespace IndigoMovieManager
                 return;
             }
 
-            SetLoadingOverlayVisible(true);
+            PushLoadingOverlay("読み込み中...");
             try
             {
                 _sessionState.BumpFilterGeneration();
@@ -700,7 +786,7 @@ namespace IndigoMovieManager
             }
             finally
             {
-                SetLoadingOverlayVisible(false);
+                PopLoadingOverlay();
             }
         }
 
@@ -951,19 +1037,27 @@ namespace IndigoMovieManager
             }
             else
             {
-                List<MovieRecords> snapshot = [.. MainVM.MovieRecs];
-                int currentTabIndex = Tabs?.SelectedIndex ?? MainVM.DbInfo.CurrentTabIndex;
-                var filterContext = new MovieListFilterContext
+                BeginSearchOverlayDelayed();
+                try
                 {
-                    CurrentTabIndex = currentTabIndex,
-                    ThumbnailCache = _thumbLayoutCache,
-                };
-                result = await Task.Run(() =>
-                    MovieListCoordinator.ApplyFilter(snapshot, searchKeyword, id, filterContext)).ConfigureAwait(true);
+                    List<MovieRecords> snapshot = [.. MainVM.MovieRecs];
+                    int currentTabIndex = Tabs?.SelectedIndex ?? MainVM.DbInfo.CurrentTabIndex;
+                    var filterContext = new MovieListFilterContext
+                    {
+                        CurrentTabIndex = currentTabIndex,
+                        ThumbnailCache = _thumbLayoutCache,
+                    };
+                    result = await Task.Run(() =>
+                        MovieListCoordinator.ApplyFilter(snapshot, searchKeyword, id, filterContext)).ConfigureAwait(true);
 
-                if (showAll)
+                    if (showAll)
+                    {
+                        StoreAllItemsFilterCache(id, result.Items);
+                    }
+                }
+                finally
                 {
-                    StoreAllItemsFilterCache(id, result.Items);
+                    EndSearchOverlayDelayed();
                 }
             }
 
