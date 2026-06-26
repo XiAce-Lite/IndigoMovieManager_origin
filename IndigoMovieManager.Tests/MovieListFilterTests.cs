@@ -19,7 +19,7 @@ public class MovieListFilterTests
       Hash = hash,
       Tag = string.IsNullOrEmpty(tags)
         ? []
-        : tags.Split('\n', StringSplitOptions.RemoveEmptyEntries).ToList(),
+        : [.. tags.Split('\n', StringSplitOptions.RemoveEmptyEntries)],
     };
   }
 

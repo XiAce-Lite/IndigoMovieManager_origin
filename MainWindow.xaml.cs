@@ -41,6 +41,7 @@ namespace IndigoMovieManager
         private readonly ThumbnailQueueProcessor _thumbnailQueueProcessor = new();
         private readonly ThumbnailQueueScheduler _thumbnailScheduler = new();
         private readonly FileWatcherManager _fileWatcherManager = new();
+        private readonly DiscoveredFileRegistrationGate _discoveredFileRegistrationGate = new();
         private readonly SemaphoreSlim _folderCheckGate = new(1, 1);
         private bool _openingDatabase;
 
@@ -450,7 +451,7 @@ namespace IndigoMovieManager
                     }
 
                     string path = MainVM.DbInfo.DBFullPath;
-                    return (string.IsNullOrWhiteSpace(path) ? false : true, path);
+                    return (!string.IsNullOrWhiteSpace(path), path);
                 }).Task.ConfigureAwait(false);
 
                 if (!shouldProcess || string.IsNullOrWhiteSpace(dbPath))
@@ -489,52 +490,74 @@ namespace IndigoMovieManager
                     return;
                 }
 
-                bool alreadyRegistered = await Dispatcher.InvokeAsync(() =>
-                {
-                    if (!_fileWatcherManager.IsSessionActive(watcherSession))
-                    {
-                        return true;
-                    }
-
-                    return !FolderCheckService.ShouldRegisterDiscoveredFile(dbPath, e.FullPath);
-                }).Task.ConfigureAwait(false);
-
-                if (alreadyRegistered)
+                string normalizedPath = MediaPathNormalizer.Normalize(e.FullPath);
+                if (string.IsNullOrWhiteSpace(normalizedPath))
                 {
                     return;
                 }
 
-                MovieInfo mvi = await MovieRegistrationHelper
-                    .TryRegisterDiscoveredFileAsync(dbPath, e.FullPath)
-                    .ConfigureAwait(false);
-                if (mvi == null)
+                if (!_discoveredFileRegistrationGate.TryEnter(normalizedPath))
                 {
+#if DEBUG
+                    Debug.WriteLine(
+                        $"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : [watcher] skip duplicate in-flight: {normalizedPath}");
+#endif
                     return;
                 }
 
-                await Dispatcher.InvokeAsync(async () =>
+                try
                 {
-                    if (!_fileWatcherManager.IsSessionActive(watcherSession))
+                    bool alreadyRegistered = await Dispatcher.InvokeAsync(() =>
+                    {
+                        if (!_fileWatcherManager.IsSessionActive(watcherSession))
+                        {
+                            return true;
+                        }
+
+                        return !FolderCheckService.ShouldRegisterDiscoveredFile(dbPath, e.FullPath);
+                    }).Task.ConfigureAwait(false);
+
+                    if (alreadyRegistered)
                     {
                         return;
                     }
 
-                    string sortId = MainVM.DbInfo.Sort ?? "1";
-                    await FilterAndSortAsync(sortId, true).ConfigureAwait(true);
-
-                    if (!_fileWatcherManager.IsSessionActive(watcherSession))
+                    MovieInfo mvi = await MovieRegistrationHelper
+                        .TryRegisterDiscoveredFileAsync(dbPath, e.FullPath)
+                        .ConfigureAwait(false);
+                    if (mvi == null)
                     {
                         return;
                     }
 
-                    int tabIndex = MainVM.DbInfo.CurrentTabIndex;
-                    if (tabIndex < 0)
+                    await Dispatcher.InvokeAsync(async () =>
                     {
-                        return;
-                    }
+                        if (!_fileWatcherManager.IsSessionActive(watcherSession))
+                        {
+                            return;
+                        }
 
-                    EnqueueDiscoveredFileThumbnails(mvi, tabIndex, dbPath);
-                }).Task.Unwrap().ConfigureAwait(false);
+                        string sortId = MainVM.DbInfo.Sort ?? "1";
+                        await FilterAndSortAsync(sortId, true).ConfigureAwait(true);
+
+                        if (!_fileWatcherManager.IsSessionActive(watcherSession))
+                        {
+                            return;
+                        }
+
+                        int tabIndex = MainVM.DbInfo.CurrentTabIndex;
+                        if (tabIndex < 0)
+                        {
+                            return;
+                        }
+
+                        EnqueueDiscoveredFileThumbnails(mvi, tabIndex, dbPath);
+                    }).Task.Unwrap().ConfigureAwait(false);
+                }
+                finally
+                {
+                    _discoveredFileRegistrationGate.Exit(normalizedPath);
+                }
             }
             catch (Exception ex)
             {
@@ -630,6 +653,7 @@ namespace IndigoMovieManager
                 Tabs.SelectedIndex = -1;
                 CancelActiveThumbnailWork();
                 _fileWatcherManager.Clear();
+                _discoveredFileRegistrationGate.Clear();
                 watchData?.Clear();
                 MainVM.DbInfo.SearchKeyword = "";
                 _movieRecordsLoaded = false;
@@ -1029,8 +1053,9 @@ namespace IndigoMovieManager
             bool showAll = string.IsNullOrEmpty(searchKeyword);
 
             MovieListCoordinator.FilterApplyResult result;
-            if (showAll && TryGetCachedAllItemsFilter(id, out result))
+            if (showAll && TryGetCachedAllItemsFilter(id, out MovieListCoordinator.FilterApplyResult cachedResult))
             {
+                result = cachedResult;
 #if DEBUG
                 cacheHit = true;
 #endif
@@ -2110,11 +2135,7 @@ namespace IndigoMovieManager
 
                 if (sender is MenuItem senderObj && senderObj.Name == "PlayFromThumb")
                 {
-                    if (TryResolvePlayPositionFromThumb(mv, Tabs.SelectedIndex, out int panelIndex, out msec))
-                    {
-                        secPos = panelIndex;
-                    }
-                    else
+                    if (!TryResolvePlayPositionFromThumb(mv, Tabs.SelectedIndex, out _, out msec))
                     {
                         msec = GetPlayPosition(Tabs.SelectedIndex, mv, ref secPos);
                     }
@@ -2788,7 +2809,7 @@ namespace IndigoMovieManager
                     string dbPath = MainVM.DbInfo.DBFullPath;
                     if (string.IsNullOrWhiteSpace(dbPath))
                     {
-                        return (generation, dbPath, "", new List<(string Folder, bool Sub)>());
+                        return (generation, dbPath, "", []);
                     }
 
                     MediaExtensionSettings.EnsureRequiredExtensions();
@@ -2875,34 +2896,48 @@ namespace IndigoMovieManager
 
                         try
                         {
-                            MovieInfo mvi = await MovieRegistrationHelper
-                                .TryRegisterDiscoveredFileAsync(dbFullPath, fileFullPath)
-                                .ConfigureAwait(false);
-                            if (mvi == null)
+                            string normalizedPath = MediaPathNormalizer.Normalize(fileFullPath);
+                            if (string.IsNullOrWhiteSpace(normalizedPath)
+                                || !_discoveredFileRegistrationGate.TryEnter(normalizedPath))
                             {
                                 continue;
                             }
 
-                            pathIndex.Register(mvi.MoviePath);
-                            FolderCheckflg = true;
-
-                            int tabIndex = await Dispatcher.InvokeAsync(() => MainVM.DbInfo.CurrentTabIndex);
-
-                            CancelThumbnailWorkForMovie(mvi.MovieId);
-                            addFiles.Add(new QueueObj
+                            try
                             {
-                                MovieId = mvi.MovieId,
-                                MovieFullPath = mvi.MoviePath,
-                                Tabindex = tabIndex,
-                                DbFullPath = dbFullPath,
-                            });
-                            addFiles.Add(new QueueObj
+                                MovieInfo mvi = await MovieRegistrationHelper
+                                    .TryRegisterDiscoveredFileAsync(dbFullPath, fileFullPath)
+                                    .ConfigureAwait(false);
+                                if (mvi == null)
+                                {
+                                    continue;
+                                }
+
+                                pathIndex.Register(mvi.MoviePath);
+                                FolderCheckflg = true;
+
+                                int tabIndex = await Dispatcher.InvokeAsync(() => MainVM.DbInfo.CurrentTabIndex);
+
+                                CancelThumbnailWorkForMovie(mvi.MovieId);
+                                addFiles.Add(new QueueObj
+                                {
+                                    MovieId = mvi.MovieId,
+                                    MovieFullPath = mvi.MoviePath,
+                                    Tabindex = tabIndex,
+                                    DbFullPath = dbFullPath,
+                                });
+                                addFiles.Add(new QueueObj
+                                {
+                                    MovieId = mvi.MovieId,
+                                    MovieFullPath = mvi.MoviePath,
+                                    Tabindex = 99,
+                                    DbFullPath = dbFullPath,
+                                });
+                            }
+                            finally
                             {
-                                MovieId = mvi.MovieId,
-                                MovieFullPath = mvi.MoviePath,
-                                Tabindex = 99,
-                                DbFullPath = dbFullPath,
-                            });
+                                _discoveredFileRegistrationGate.Exit(normalizedPath);
+                            }
                         }
                         catch (Exception)
                         {
