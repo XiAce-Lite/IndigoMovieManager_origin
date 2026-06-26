@@ -1,36 +1,18 @@
 using IndigoMovieManager.Services;
-using Notification.Wpf;
-using Notification.Wpf.Base;
-using Notification.Wpf.Constants;
 
 namespace IndigoMovieManager
 {
     /// <summary>
-    /// サムネイル作成の進捗ポップアップ（NotificationManager の寿命を保持する）。
+    /// サムネイル作成の進捗表示（ステータスバー）。
     /// </summary>
     internal sealed class ThumbnailProgressSession : IDisposable
     {
-        internal const double MessageFontSize = 12d;
-        internal const double PopupWidth = 400d;
-        internal const double MessageAreaWidth = 268d;
+        internal const double MessageFontSize = StatusBarProgressViewModel.MessageFontSize;
 
-        private readonly NotificationManager _notificationManager = new();
         private readonly string _baseTitle;
         private readonly int _jobSwitchToken;
-        private readonly TextContentSettings _messageSettings = new()
-        {
-            FontFamily = new System.Windows.Media.FontFamily("Segoe UI"),
-            FontSize = MessageFontSize,
-        };
-
-        private IProgress<(double? progress, string message, string title, bool? showCancel)> _progress;
+        private StatusBarProgressCoordinator.ThumbnailSlotHandle _handle;
         private bool _disposed;
-
-        static ThumbnailProgressSession()
-        {
-            NotificationConstants.MaxWidth = PopupWidth;
-            NotificationConstants.MinWidth = PopupWidth;
-        }
 
         public ThumbnailProgressSession(int primaryTabIndex, int jobSwitchToken)
         {
@@ -38,7 +20,7 @@ namespace IndigoMovieManager
             _jobSwitchToken = jobSwitchToken;
         }
 
-        public bool IsVisible => _progress != null;
+        public bool IsVisible => _handle != null;
 
         public bool TryReport(
             ThumbnailJobCoordinator coordinator,
@@ -53,7 +35,7 @@ namespace IndigoMovieManager
             }
 
             EnsureShown();
-            if (_disposed || _progress == null)
+            if (_disposed || _handle == null)
             {
                 return false;
             }
@@ -83,9 +65,9 @@ namespace IndigoMovieManager
 
             string message = string.IsNullOrEmpty(detail)
                 ? string.Empty
-                : ProgressPathFormatter.Format(detail, MessageAreaWidth);
+                : ProgressPathFormatter.Format(detail, StatusBarProgressViewModel.DetailMaxWidth);
 
-            _progress.Report((percent, message, title, false));
+            _handle.Report(title, percent, message);
             return true;
         }
 
@@ -99,12 +81,11 @@ namespace IndigoMovieManager
             _disposed = true;
             ThumbnailProgressRegistry.Unregister(this);
 
-            if (_progress is IDisposable disposable)
+            if (_handle != null)
             {
-                disposable.Dispose();
+                _handle.Dispose();
+                _handle = null;
             }
-
-            _progress = null;
         }
 
         private bool CanReport(ThumbnailJobCoordinator coordinator, int jobId)
@@ -127,27 +108,12 @@ namespace IndigoMovieManager
 
         private void EnsureShown()
         {
-            if (_disposed || _progress != null)
+            if (_disposed || _handle != null)
             {
                 return;
             }
 
-            _progress = _notificationManager.ShowProgressBar(
-                _baseTitle,
-                true,
-                false,
-                "ProgressArea",
-                true,
-                1,
-                "",
-                false,
-                false,
-                null,
-                null,
-                null,
-                null,
-                null,
-                _messageSettings);
+            _handle = StatusBarProgressHost.Coordinator.BeginThumbnail(_baseTitle);
             ThumbnailProgressRegistry.Register(this);
         }
 

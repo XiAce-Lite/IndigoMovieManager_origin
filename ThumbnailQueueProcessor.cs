@@ -1,4 +1,3 @@
-using Notification.Wpf;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Windows;

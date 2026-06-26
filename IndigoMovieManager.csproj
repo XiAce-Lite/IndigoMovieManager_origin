@@ -9,8 +9,8 @@
     <Title>IndigoMovieManager</Title>
     <Platforms>AnyCPU;x64</Platforms>
     <PlatformTarget>AnyCPU</PlatformTarget>
-    <FileVersion>1.0.0.43</FileVersion>
-    <AssemblyVersion>1.0.0.43</AssemblyVersion>
+    <FileVersion>1.0.0.44</FileVersion>
+    <AssemblyVersion>1.0.0.44</AssemblyVersion>
     <SupportedOSPlatformVersion>7.0</SupportedOSPlatformVersion>
   </PropertyGroup>
 
@@ -64,7 +64,6 @@
     <PackageReference Include="MaterialDesignColors" Version="5.3.0" />
     <PackageReference Include="MaterialDesignThemes" Version="5.3.0" />
     <PackageReference Include="Microsoft.Xaml.Behaviors.Wpf" Version="1.1.135" />
-    <PackageReference Include="Notification.Wpf" Version="8.0.0" />
     <PackageReference Include="OpenCvSharp4.Extensions" Version="4.11.0.20250507" />
     <PackageReference Include="OpenCvSharp4.Windows" Version="4.11.0.20250507" />
     <PackageReference Include="System.Data.SQLite" Version="2.0.2" />

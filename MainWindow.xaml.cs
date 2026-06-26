@@ -5,7 +5,6 @@ using IndigoMovieManager.Services;
 using IndigoMovieManager.Data;
 using Microsoft.VisualBasic.FileIO;
 using Microsoft.Win32;
-using Notification.Wpf;
 using OpenCvSharp;
 using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
@@ -96,6 +95,7 @@ namespace IndigoMovieManager
 
         private readonly ThumbnailLayoutCache _thumbLayoutCache = new();
         private readonly MainWindowSessionState _sessionState = new();
+        private readonly StatusBarProgressCoordinator _statusBarProgress;
 
         //private bool _searchBoxItemSelectedByMouse = false;
         private bool _isDeletingSearchHistory = false;
@@ -116,6 +116,10 @@ namespace IndigoMovieManager
             recentFiles.Clear();
 
             InitializeComponent();
+
+            _statusBarProgress = new StatusBarProgressCoordinator(Dispatcher);
+            StatusBarProgressHost.Attach(_statusBarProgress);
+            OperationStatusBar.DataContext = _statusBarProgress.ViewModel;
 
             // アセンブリのファイルバージョンを取得
             var version = Assembly.GetExecutingAssembly()
@@ -1762,6 +1766,11 @@ namespace IndigoMovieManager
         private void BtnExit_Click(object sender, RoutedEventArgs e)
         {
             Close();
+        }
+
+        private void OperationStatusCancel_Click(object sender, RoutedEventArgs e)
+        {
+            _statusBarProgress.RequestCancelActive();
         }
 
         private void BtnNew_Click(object sender, RoutedEventArgs e)

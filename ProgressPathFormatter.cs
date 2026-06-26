@@ -2,6 +2,7 @@ using System.Globalization;
 using System.IO;
 using System.Windows;
 using System.Windows.Media;
+using IndigoMovieManager.Services;
 
 namespace IndigoMovieManager
 {
@@ -119,7 +120,7 @@ namespace IndigoMovieManager
                 CultureInfo.CurrentCulture,
                 FlowDirection.LeftToRight,
                 MessageTypeface,
-                ThumbnailProgressSession.MessageFontSize,
+                StatusBarProgressViewModel.MessageFontSize,
                 Brushes.Black,
                 pixelsPerDip);
 
