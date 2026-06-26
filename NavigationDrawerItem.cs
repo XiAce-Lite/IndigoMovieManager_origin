@@ -14,6 +14,8 @@ namespace IndigoMovieManager
 
         public PackIconKind IconKind { get; init; } = PackIconKind.Circle;
 
+        public bool IsEnabled { get; init; } = true;
+
         public static NavigationDrawerItem ForRecentFile(string path) =>
             new()
             {

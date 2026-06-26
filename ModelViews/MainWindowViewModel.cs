@@ -76,6 +76,7 @@ namespace IndigoMovieManager.ModelViews
                     Text = NavigationMenuIds.RefreshAllFileInfo,
                     Id = NavigationMenuIds.RefreshAllFileInfo,
                     IconKind = PackIconKind.FileDocumentOutline,
+                    IsEnabled = SinkuMetadataFetcher.IsAvailable,
                 },
             ];
             ExitNavItems =

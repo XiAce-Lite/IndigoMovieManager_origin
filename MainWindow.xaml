@@ -115,6 +115,7 @@
             <Setter Property="HorizontalContentAlignment" Value="Left" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="IsEnabled" Value="{Binding IsEnabled, FallbackValue=True}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ListBoxItem">
@@ -133,6 +134,9 @@
                             </Trigger>
                             <Trigger Property="IsSelected" Value="True">
                                 <Setter TargetName="Border" Property="Background" Value="Transparent" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Border" Property="Opacity" Value="0.4" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -332,6 +336,7 @@
                 </MenuItem.Style>
             </MenuItem>
             <MenuItem
+                x:Name="RefreshFileInfo"
                 Click="RefreshFileInfo_Click"
                 Header="ファイル情報再取得(_F)"
                 Icon="{materialDesign:PackIcon Kind=InformationOutline}">

@@ -1528,13 +1528,6 @@ namespace IndigoMovieManager
                 return;
             }
 
-            if (!SinkuMetadataFetcher.IsAvailable
-                && !MainVM.MovieRecs.Any(rec => ZipMediaKind.IsZipRecord(rec) || ZipMediaKind.IsZipPath(rec.Movie_Path)))
-            {
-                ShowSinkuUnavailableMessage();
-                return;
-            }
-
             var dialogWindow = new MessageBoxEx(this)
             {
                 DlogTitle = "ファイル情報の再取得",
@@ -1554,7 +1547,8 @@ namespace IndigoMovieManager
 
         private async void RefreshFileInfo_Click(object sender, RoutedEventArgs e)
         {
-            if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
+            if (!SinkuMetadataFetcher.IsAvailable
+                || string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
             {
                 return;
             }
@@ -1565,42 +1559,14 @@ namespace IndigoMovieManager
                 return;
             }
 
-            if (!SinkuMetadataFetcher.IsAvailable
-                && targets.All(rec => !ZipMediaKind.IsZipRecord(rec) && !ZipMediaKind.IsZipPath(rec.Movie_Path)))
-            {
-                ShowSinkuUnavailableMessage();
-                return;
-            }
-
             string dbPath = MainVM.DbInfo.DBFullPath;
             await Task.Run(() =>
             {
                 foreach (MovieRecords rec in targets)
                 {
-                    if (!ZipMediaKind.IsZipRecord(rec)
-                        && !ZipMediaKind.IsZipPath(rec.Movie_Path)
-                        && !SinkuMetadataFetcher.IsAvailable)
-                    {
-                        continue;
-                    }
-
                     RefreshFileInfoCore(dbPath, rec);
                 }
             }).ConfigureAwait(true);
-        }
-
-        private void ShowSinkuUnavailableMessage()
-        {
-            MessageBox.Show(
-                "ファイル情報の再取得には sinku が必要です。\n\n" +
-                "次の 4 ファイルを IndigoMovieManager.exe と同じフォルダに配置してください。\n" +
-                "  ・sinku.exe\n" +
-                "  ・Sinku.dll\n" +
-                "  ・format.ini\n" +
-                "  ・codecs.ini",
-                Assembly.GetExecutingAssembly().GetName().Name,
-                MessageBoxButton.OK,
-                MessageBoxImage.Exclamation);
         }
 
         private async Task RefreshAllFileInfoAsync()
@@ -1610,7 +1576,8 @@ namespace IndigoMovieManager
                 return;
             }
 
-            if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
+            if (!SinkuMetadataFetcher.IsAvailable
+                || string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
             {
                 Interlocked.Exchange(ref _fileInfoRefreshRunning, 0);
                 return;
@@ -1618,14 +1585,6 @@ namespace IndigoMovieManager
 
             List<MovieRecords> targets = [.. MainVM.MovieRecs];
             if (targets.Count == 0)
-            {
-                Interlocked.Exchange(ref _fileInfoRefreshRunning, 0);
-                return;
-            }
-
-            bool sinkuAvailable = SinkuMetadataFetcher.IsAvailable;
-            if (!sinkuAvailable
-                && targets.All(rec => !ZipMediaKind.IsZipRecord(rec) && !ZipMediaKind.IsZipPath(rec.Movie_Path)))
             {
                 Interlocked.Exchange(ref _fileInfoRefreshRunning, 0);
                 return;
@@ -1645,12 +1604,6 @@ namespace IndigoMovieManager
                     foreach (MovieRecords rec in targets)
                     {
                         cancelToken.ThrowIfCancellationRequested();
-                        if (!ZipMediaKind.IsZipRecord(rec)
-                            && !ZipMediaKind.IsZipPath(rec.Movie_Path)
-                            && !sinkuAvailable)
-                        {
-                            continue;
-                        }
 
                         RefreshFileInfoCore(dbPath, rec);
                         done++;
@@ -1769,7 +1722,7 @@ namespace IndigoMovieManager
             }
 
             NavigationDrawerItem item = TryGetNavigationItem(e);
-            if (item == null || string.IsNullOrEmpty(item.Id))
+            if (item == null || string.IsNullOrEmpty(item.Id) || !item.IsEnabled)
             {
                 return;
             }
@@ -2390,6 +2343,7 @@ namespace IndigoMovieManager
             }
 
             bool isZip = ZipMediaKind.IsZipRecord(_contextMenuMovie);
+            bool sinkuAvailable = SinkuMetadataFetcher.IsAvailable;
             foreach (object item in menu.Items)
             {
                 if (item is not MenuItem menuItem)
@@ -2400,6 +2354,10 @@ namespace IndigoMovieManager
                 if (menuItem.Name == "ManualThumbnail" || menuItem.Name == "PlayFromThumb")
                 {
                     menuItem.IsEnabled = !isZip;
+                }
+                else if (menuItem.Name == "RefreshFileInfo")
+                {
+                    menuItem.IsEnabled = sinkuAvailable;
                 }
             }
         }

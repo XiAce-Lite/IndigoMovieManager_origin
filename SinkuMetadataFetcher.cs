@@ -16,7 +16,10 @@ namespace IndigoMovieManager
     /// </summary>
     internal static class SinkuMetadataFetcher
     {
-        public static bool IsAvailable => File.Exists(ResolveSinkuExePath());
+        private static readonly string[] RequiredFiles = ["sinku.exe", "Sinku.dll", "format.ini", "codecs.ini"];
+
+        public static bool IsAvailable => RequiredFiles.All(name =>
+            File.Exists(Path.Combine(AppContext.BaseDirectory, name)));
 
         public static bool TryFetch(string moviePath, out SinkuMetadata metadata)
         {
