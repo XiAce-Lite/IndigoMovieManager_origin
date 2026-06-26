@@ -16,6 +16,15 @@ namespace IndigoMovieManager.Thumbnail
             "errorBig.jpg",
         ];
 
+        private static readonly string[] NoFileFileNames =
+        [
+            "noFileSmall.jpg",
+            "noFileBig.jpg",
+            "noFileGrid.jpg",
+            "noFileList.jpg",
+            "noFileBig.jpg",
+        ];
+
         public string ImagesBasePath { get; private set; } = "";
         public string[] TabOutPaths { get; private set; } = [];
         public string DetailOutPath { get; private set; } = "";
@@ -57,6 +66,17 @@ namespace IndigoMovieManager.Thumbnail
             }
 
             return Path.Combine(ImagesBasePath, ErrorFileNames[errorIndex]);
+        }
+
+        public string GetNoFilePath(int tabIndex)
+        {
+            int noFileIndex = tabIndex == 99 ? 2 : tabIndex;
+            if (noFileIndex < 0 || noFileIndex >= NoFileFileNames.Length)
+            {
+                noFileIndex = 0;
+            }
+
+            return Path.Combine(ImagesBasePath, NoFileFileNames[noFileIndex]);
         }
 
         public string GetExpectedThumbPath(int tabIndex, string movieNameWithoutExt, string hash)

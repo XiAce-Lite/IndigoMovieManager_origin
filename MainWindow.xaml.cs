@@ -952,8 +952,14 @@ namespace IndigoMovieManager
             else
             {
                 List<MovieRecords> snapshot = [.. MainVM.MovieRecs];
+                int currentTabIndex = Tabs?.SelectedIndex ?? MainVM.DbInfo.CurrentTabIndex;
+                var filterContext = new MovieListFilterContext
+                {
+                    CurrentTabIndex = currentTabIndex,
+                    ThumbnailCache = _thumbLayoutCache,
+                };
                 result = await Task.Run(() =>
-                    MovieListCoordinator.ApplyFilter(snapshot, searchKeyword, id)).ConfigureAwait(true);
+                    MovieListCoordinator.ApplyFilter(snapshot, searchKeyword, id, filterContext)).ConfigureAwait(true);
 
                 if (showAll)
                 {

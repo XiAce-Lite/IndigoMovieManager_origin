@@ -1,5 +1,6 @@
 namespace IndigoMovieManager.Tests;
 
+using IndigoMovieManager.Thumbnail;
 using Xunit;
 
 public class MovieListFilterTests
@@ -121,6 +122,57 @@ public class MovieListFilterTests
 
     Assert.Single(result.Items);
     Assert.Equal("foo bar.mp4", result.Items[0].Movie_Name);
+  }
+
+  [Fact]
+  public void Build_Error_FiltersErrorThumbnailsForCurrentTab()
+  {
+    string moviePath = Path.Combine(Path.GetTempPath(), $"imm-movie-{Guid.NewGuid():N}.mp4");
+    string thumbRoot = Path.Combine(Path.GetTempPath(), $"imm-filter-err-{Guid.NewGuid():N}");
+    Directory.CreateDirectory(thumbRoot);
+    try
+    {
+      File.WriteAllText(moviePath, "movie");
+
+      var cache = new ThumbnailLayoutCache();
+      cache.Refresh("testdb", thumbRoot, 5);
+
+      var source = new[]
+      {
+        CreateRecord("error.mp4", moviePath, hash: "errhash"),
+        CreateRecord("ok.mp4", moviePath, hash: "okhash"),
+      };
+
+      string okThumb = cache.GetExpectedThumbPath(0, "ok", "okhash");
+      string directory = Path.GetDirectoryName(okThumb);
+      Directory.CreateDirectory(directory!);
+      byte[] composite = new byte[128];
+      BitConverter.GetBytes((ushort)1).CopyTo(composite, composite.Length - 60);
+      File.WriteAllBytes(okThumb, composite);
+
+      var context = new MovieListFilterContext
+      {
+        CurrentTabIndex = 0,
+        ThumbnailCache = cache,
+      };
+
+      var result = MovieListFilter.Build(source, "{error}", "1", context);
+
+      Assert.Single(result.Items);
+      Assert.Equal("error.mp4", result.Items[0].Movie_Name);
+    }
+    finally
+    {
+      if (File.Exists(moviePath))
+      {
+        File.Delete(moviePath);
+      }
+
+      if (Directory.Exists(thumbRoot))
+      {
+        Directory.Delete(thumbRoot, true);
+      }
+    }
   }
 
   [Fact]

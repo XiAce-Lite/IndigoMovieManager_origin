@@ -1,4 +1,5 @@
 using System.IO;
+using IndigoMovieManager.Thumbnail;
 
 namespace IndigoMovieManager
 {
@@ -10,7 +11,11 @@ namespace IndigoMovieManager
             public int SearchCount { get; init; }
         }
 
-        public static FilterResult Build(IReadOnlyList<MovieRecords> source, string searchKeyword, string sortId)
+        public static FilterResult Build(
+            IReadOnlyList<MovieRecords> source,
+            string searchKeyword,
+            string sortId,
+            MovieListFilterContext context = null)
         {
             IEnumerable<MovieRecords> filterList = source;
             int searchCount = source.Count;
@@ -51,6 +56,22 @@ namespace IndigoMovieManager
                     else if (inner.Equals("nofile", StringComparison.CurrentCultureIgnoreCase))
                     {
                         filterList = filterList.Where(x => !File.Exists(x.Movie_Path ?? ""));
+                        searchCount = filterList.Count();
+                    }
+                    else if (inner.Equals("error", StringComparison.CurrentCultureIgnoreCase))
+                    {
+                        int tabIndex = context?.CurrentTabIndex ?? -1;
+                        ThumbnailLayoutCache cache = context?.ThumbnailCache;
+                        if (tabIndex < 0 || cache == null)
+                        {
+                            filterList = filterList.Where(_ => false);
+                        }
+                        else
+                        {
+                            filterList = filterList.Where(x =>
+                                ThumbnailTabErrorDetector.IsErrorForTab(x, tabIndex, cache));
+                        }
+
                         searchCount = filterList.Count();
                     }
                     else if (inner.Equals("dup", StringComparison.CurrentCultureIgnoreCase))
