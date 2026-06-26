@@ -231,6 +231,11 @@ namespace IndigoMovieManager.Services
                     continue;
                 }
 
+                if (!File.Exists(item.Movie_Path))
+                {
+                    continue;
+                }
+
                 string fileBody = Path.GetFileNameWithoutExtension(item.Movie_Name ?? item.Movie_Path ?? string.Empty)
                     .ToLowerInvariant();
                 string hash = item.Hash;

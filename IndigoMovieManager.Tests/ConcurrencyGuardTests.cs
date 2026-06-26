@@ -76,9 +76,12 @@ public class ThumbnailJobCoordinatorTests
     {
         var scheduler = new ThumbnailQueueScheduler();
         string thumbRoot = Path.Combine(Path.GetTempPath(), $"imm-tab-{Guid.NewGuid():N}");
+        string moviePath = Path.Combine(Path.GetTempPath(), $"imm-movie-{Guid.NewGuid():N}.mod");
         Directory.CreateDirectory(thumbRoot);
         try
         {
+            await File.WriteAllTextAsync(moviePath, "test");
+
             var cache = new ThumbnailLayoutCache();
             cache.Refresh("testdb", thumbRoot, 5);
 
@@ -87,7 +90,7 @@ public class ThumbnailJobCoordinatorTests
                 new()
                 {
                     Movie_Id = 1,
-                    Movie_Path = @"C:\fake\movie.mod",
+                    Movie_Path = moviePath,
                     Movie_Name = "movie",
                     Hash = "abc123",
                 },
@@ -100,6 +103,46 @@ public class ThumbnailJobCoordinatorTests
             Assert.NotNull(item);
             Assert.NotEqual(ThumbnailJobCoordinator.SilentJobId, item.JobId);
             Assert.True(scheduler.JobCoordinator.ShouldProcess(item));
+        }
+        finally
+        {
+            if (File.Exists(moviePath))
+            {
+                File.Delete(moviePath);
+            }
+
+            if (Directory.Exists(thumbRoot))
+            {
+                Directory.Delete(thumbRoot, true);
+            }
+        }
+    }
+
+    [Fact]
+    public void BuildTabSwitchWork_skips_record_when_physical_file_missing()
+    {
+        var scheduler = new ThumbnailQueueScheduler();
+        string thumbRoot = Path.Combine(Path.GetTempPath(), $"imm-tab-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(thumbRoot);
+        try
+        {
+            var cache = new ThumbnailLayoutCache();
+            cache.Refresh("testdb", thumbRoot, 5);
+
+            var records = new List<MovieRecords>
+            {
+                new()
+                {
+                    Movie_Id = 1,
+                    Movie_Path = Path.Combine(Path.GetTempPath(), $"imm-missing-{Guid.NewGuid():N}.mod"),
+                    Movie_Name = "movie",
+                    Hash = "abc123",
+                },
+            };
+
+            List<QueueObj> work = scheduler.BuildTabSwitchWork(0, records, cache, @"C:\fake\db.wb", workGeneration: 1);
+
+            Assert.Empty(work);
         }
         finally
         {
