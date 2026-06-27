@@ -100,6 +100,8 @@ namespace IndigoMovieManager
         //private bool _searchBoxItemSelectedByMouse = false;
         private bool _isDeletingSearchHistory = false;
         private bool _isApplyingSearchKeyword = false;
+        // 検索履歴ドロップダウンのキーボードカーソル位置（SelectedIndex はTextバインドで-1にリセットされ得るため独自管理）。
+        private int _historyCursor = -1;
         private int _fileInfoRefreshRunning = 0;
 
         private const int SearchOverlayDelayMs = 400;
@@ -125,7 +127,8 @@ namespace IndigoMovieManager
             var version = Assembly.GetExecutingAssembly()
                 .GetCustomAttribute<AssemblyFileVersionAttribute>()?.Version;
 
-            this.Title = $"Indigo Movie Manager v{version}";
+            // ビルドの取り違え防止のため、実行ファイルのビルド時刻も表示する。
+            this.Title = $"Indigo Movie Manager v{version} build {GetBuildStamp()}";
 
             ContentRendered += MainWindow_ContentRendered;
             Closing += MainWindow_Closing;
@@ -167,6 +170,24 @@ namespace IndigoMovieManager
             uxPreviewImage.Visibility = Visibility.Collapsed;
             uxPreviewFallbackImage.Visibility = Visibility.Collapsed;
             #endregion
+        }
+
+        // 実行ファイルの最終更新時刻をビルド識別子として返す（単一ファイル発行でも取得可）。
+        private static string GetBuildStamp()
+        {
+            try
+            {
+                string path = Environment.ProcessPath ?? Assembly.GetExecutingAssembly().Location;
+                if (!string.IsNullOrEmpty(path) && File.Exists(path))
+                {
+                    return File.GetLastWriteTime(path).ToString("yyyyMMdd-HHmmss");
+                }
+            }
+            catch
+            {
+            }
+
+            return "unknown";
         }
 
         private void MainWindow_ContentRendered(object sender, EventArgs e)
@@ -872,8 +893,10 @@ namespace IndigoMovieManager
             SearchBox.Text = currentText;
         }
 
-        private void PromoteSearchHistory(string keyword) =>
+        private void PromoteSearchHistory(string keyword)
+        {
             HistoryService.PromoteSearchHistory(MainVM.HistoryRecs, keyword);
+        }
 
         private void GetSystemTable(string dbPath, SQLiteSession session = null)
         {
@@ -2222,6 +2245,9 @@ namespace IndigoMovieManager
             if (_isDeletingSearchHistory) { return; }
             if (_isApplyingSearchKeyword) { return; }
 
+            // 手動でテキスト編集したらキーボードカーソルはリセットする。
+            _historyCursor = -1;
+
             string text = SearchBox.Text;
             if (string.IsNullOrEmpty(text))
             {
@@ -2233,79 +2259,311 @@ namespace IndigoMovieManager
 
         private void SearchBox_DropDownClosed(object sender, EventArgs e)
         {
+            _historyCursor = -1;
+        }
+
+        private void SearchBox_DropDownOpened(object sender, EventArgs e)
+        {
+            _historyCursor = -1;
+
+            // 開いた直後はフォーカスがポップアップのコンテナ（項目以外）にあり、矢印・Enter が
+            // 本体側・項目側どちらの PreviewKeyDown にも届かない（最初のキーが WPF 既定動作になる）。
+            // 先頭項目へフォーカスを移して、最初から項目ハンドラでキーを拾えるようにする。
+            Dispatcher.BeginInvoke(
+                new Action(() =>
+                {
+                    if (SearchBox.IsDropDownOpen && SearchBox.Items.Count > 0)
+                    {
+                        FocusHistoryContainer(SearchBox, 0);
+                    }
+                }),
+                DispatcherPriority.Input);
+        }
+
+        // 矢印キーでドロップダウン内の選択を移動し、検索ボックスのテキストを候補に更新する（即時検索はしない）。
+        private void MoveSearchHistoryHighlight(ComboBox combo, int direction)
+        {
+            int count = combo.Items.Count;
+            if (count == 0)
+            {
+                return;
+            }
+
+            // 独自カーソルを基準に移動する（SelectedIndex は Text 設定で -1 に戻されるため使わない）。
+            int current = _historyCursor;
+            if (current < 0 || current >= count)
+            {
+                current = -1;
+            }
+
+            int next = current + direction;
+            if (next < 0)
+            {
+                next = count - 1;
+            }
+            else if (next >= count)
+            {
+                next = 0;
+            }
+
+            if (combo.Items[next] is not History target)
+            {
+                return;
+            }
+
+            _historyCursor = next;
+            string text = target.Find_Text ?? "";
+            _isApplyingSearchKeyword = true;
+            try
+            {
+                MainVM.DbInfo.SearchKeyword = text;
+                SearchBox.Text = text;
+                // 見た目のカーソルは SelectedIndex を最後に設定して反映する（IsSelected トリガー）。
+                combo.SelectedIndex = next;
+                BringSearchHistoryItemIntoView(combo, next);
+            }
+            finally
+            {
+                _isApplyingSearchKeyword = false;
+            }
+
+            // カーソル項目へフォーカスを移し、次のキーも項目側 PreviewKeyDown で確実に拾えるようにする。
+            if (combo.IsDropDownOpen)
+            {
+                FocusHistoryContainer(combo, next);
+            }
+        }
+
+        // 指定インデックスの ComboBoxItem を表示・フォーカスする（仮想化は無効化済みのため必ず取得できる）。
+        private static void FocusHistoryContainer(ComboBox combo, int index)
+        {
+            if (index < 0 || index >= combo.Items.Count)
+            {
+                return;
+            }
+
+            if (combo.ItemContainerGenerator.ContainerFromIndex(index) is ComboBoxItem container)
+            {
+                container.BringIntoView();
+                container.Focus();
+            }
+        }
+
+        // 指定インデックスの ComboBoxItem を表示範囲内へスクロールする。
+        private static void BringSearchHistoryItemIntoView(ComboBox combo, int index)
+        {
+            if (index < 0 || index >= combo.Items.Count)
+            {
+                return;
+            }
+
+            if (combo.ItemContainerGenerator.ContainerFromIndex(index) is ComboBoxItem container)
+            {
+                container.BringIntoView();
+            }
+        }
+
+        // 削除対象の履歴項目を返す。キーボードカーソル（_historyCursor）を優先し、無ければマウスホバー項目。
+        private History GetActiveSearchHistory(ComboBox combo)
+        {
+            if (_historyCursor >= 0
+                && _historyCursor < combo.Items.Count
+                && combo.Items[_historyCursor] is History current)
+            {
+                return current;
+            }
+
+            foreach (object obj in combo.Items)
+            {
+                if (combo.ItemContainerGenerator.ContainerFromItem(obj) is ComboBoxItem { IsMouseOver: true } container
+                    && container.DataContext is History hovered)
+                {
+                    return hovered;
+                }
+            }
+
+            return combo.SelectedItem as History;
         }
 
         // ドロップダウンリスト内でマウスクリック時に検索
         private async void SearchBoxItem_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
+            if (IsSearchHistoryDeleteButtonSource(e.OriginalSource as DependencyObject))
+            {
+                return;
+            }
+
             if (sender is not ComboBoxItem item)
             {
                 return;
             }
 
             e.Handled = true;
-            string keyword = item.Content?.ToString() ?? "";
             if (item.DataContext is History history)
             {
-                keyword = history.Find_Text ?? "";
+                SearchBox.IsDropDownOpen = false;
+                await SearchByKeywordAsync(history.Find_Text ?? "").ConfigureAwait(true);
+                return;
             }
 
+            string keyword = item.Content?.ToString() ?? "";
             SearchBox.IsDropDownOpen = false;
             await SearchByKeywordAsync(keyword).ConfigureAwait(true);
         }
 
+        private void SearchHistoryDeleteButton_Click(object sender, RoutedEventArgs e)
+        {
+            e.Handled = true;
+            if (sender is FrameworkElement element
+                && element.DataContext is History history)
+            {
+                RemoveSearchHistoryItem(history);
+            }
+        }
+
+        private void SearchHistoryDeleteMenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not MenuItem menuItem
+                || menuItem.Parent is not ContextMenu contextMenu
+                || contextMenu.PlacementTarget is not FrameworkElement target)
+            {
+                return;
+            }
+
+            if (target.DataContext is History history)
+            {
+                RemoveSearchHistoryItem(history);
+            }
+        }
+
+        private void RemoveSearchHistoryItem(History history)
+        {
+            if (history == null
+                || string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
+            {
+                return;
+            }
+
+            string keepText = SearchBox.Text ?? "";
+            long findId = history.Find_Id;
+            bool keepDropdownHighlight = SearchBox.IsDropDownOpen;
+            int removedIndex = MainVM.HistoryRecs.IndexOf(history);
+
+            // 削除位置と同じインデックス（末尾削除なら1つ上）を次のカーソル位置にする。
+            int nextIndex = -1;
+            if (keepDropdownHighlight && removedIndex >= 0 && MainVM.HistoryRecs.Count > 1)
+            {
+                nextIndex = Math.Min(removedIndex, MainVM.HistoryRecs.Count - 2);
+            }
+
+            _isDeletingSearchHistory = true;
+            try
+            {
+                MainVM.HistoryRecs.Remove(history);
+
+                // 入力テキストは消さずに残す。カーソルだけ次の項目へ。
+                _historyCursor = nextIndex;
+                SearchBox.SelectedIndex = nextIndex;
+                SearchBox.Text = keepText;
+                if (!string.Equals(MainVM.DbInfo.SearchKeyword, keepText, StringComparison.Ordinal))
+                {
+                    MainVM.DbInfo.SearchKeyword = keepText;
+                }
+            }
+            finally
+            {
+                _isDeletingSearchHistory = false;
+            }
+
+            if (keepDropdownHighlight && nextIndex >= 0)
+            {
+                // 削除後はカーソル項目へフォーカスを移し、続けて矢印・Enter を項目側で拾えるようにする。
+                SearchBox.Dispatcher.BeginInvoke(
+                    () => FocusHistoryContainer(SearchBox, nextIndex),
+                    DispatcherPriority.Loaded);
+            }
+
+            if (findId > 0)
+            {
+                _ = Task.Run(() => DeleteHistoryTable(MainVM.DbInfo.DBFullPath, findId));
+            }
+
+            _statusBarProgress.ShowIdleStatusMessage("検索履歴を削除しました");
+        }
+
+        private static bool IsSearchHistoryDeleteButtonSource(DependencyObject source)
+        {
+            while (source != null)
+            {
+                if (source is Button button && button.Content as string == "×")
+                {
+                    return true;
+                }
+
+                source = VisualTreeHelper.GetParent(source);
+            }
+
+            return false;
+        }
+
+        // ComboBox 本体（編集テキストボックスにフォーカスがある場合）からのキー入力。
         private async void SearchBox_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (sender is ComboBox combo)
+            {
+                await HandleSearchBoxKeyAsync(combo, e).ConfigureAwait(true);
+            }
+        }
+
+        // ドロップダウン項目（ポップアップ）にフォーカスがある場合のキー入力。
+        // ドロップダウンを開くとフォーカスがポップアップ側へ移るため、項目側でもキーを拾う必要がある。
+        private async void SearchBoxItem_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (sender is ComboBoxItem item
+                && ItemsControl.ItemsControlFromItemContainer(item) is ComboBox combo)
+            {
+                await HandleSearchBoxKeyAsync(combo, e).ConfigureAwait(true);
+            }
+        }
+
+        private async Task HandleSearchBoxKeyAsync(ComboBox combo, KeyEventArgs e)
         {
             if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath)) { return; }
             if (_imeFlag) { return; }
-            if (sender is not ComboBox combo)
+            if (e.Handled) { return; }
+
+            if (combo.IsDropDownOpen && (e.Key == Key.Down || e.Key == Key.Up))
             {
+                e.Handled = true;
+                MoveSearchHistoryHighlight(combo, e.Key == Key.Down ? 1 : -1);
                 return;
             }
 
             if (combo.IsDropDownOpen
-                && e.Key == Key.Enter
-                && combo.SelectedItem is History enterHistory)
+                && e.Key == Key.Delete
+                && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
             {
-                e.Handled = true;
-                combo.IsDropDownOpen = false;
-                await SearchByKeywordAsync(enterHistory.Find_Text ?? "").ConfigureAwait(true);
+                History deleteHistory = GetActiveSearchHistory(combo);
+                if (deleteHistory != null)
+                {
+                    e.Handled = true;
+                    RemoveSearchHistoryItem(deleteHistory);
+                }
+
                 return;
             }
 
-            // Deleteキーで履歴削除
-            if (e.Key == Key.Delete && combo.IsDropDownOpen && combo.SelectedItem is History deleteHistory)
-            {
-                e.Handled = true;
-
-                string keepText = combo.Text;
-                long findId = deleteHistory.Find_Id;
-
-                _isDeletingSearchHistory = true;
-                try
-                {
-                    MainVM.HistoryRecs.Remove(deleteHistory);
-                    combo.SelectedIndex = -1;
-                    combo.Text = keepText;
-                    if (!string.Equals(MainVM.DbInfo.SearchKeyword, keepText, StringComparison.Ordinal))
-                    {
-                        MainVM.DbInfo.SearchKeyword = keepText;
-                    }
-                }
-                finally
-                {
-                    _isDeletingSearchHistory = false;
-                }
-
-                _ = Task.Run(() => DeleteHistoryTable(MainVM.DbInfo.DBFullPath, findId));
-                return;
-            }
-
-            // Enterで検索
+            // Enter は常に入力テキストで検索する（古い選択項目に引きずられないように）。
             if (e.Key == Key.Enter)
             {
                 e.Handled = true;
-                await SearchByKeywordAsync(combo.Text ?? "").ConfigureAwait(true);
+                string keyword = combo.Text ?? "";
+                if (combo.IsDropDownOpen)
+                {
+                    combo.IsDropDownOpen = false;
+                }
+
+                await SearchByKeywordAsync(keyword).ConfigureAwait(true);
             }
         }
 
@@ -2318,6 +2576,7 @@ namespace IndigoMovieManager
             }
 
             string text = keyword ?? "";
+            _historyCursor = -1;
             _isApplyingSearchKeyword = true;
             try
             {

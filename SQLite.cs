@@ -465,7 +465,6 @@ namespace IndigoMovieManager
             }
         }
 
-
         public static async Task<bool> InsertMovieTable(string dbFullPath, MovieInfo mvi)
         {
             try

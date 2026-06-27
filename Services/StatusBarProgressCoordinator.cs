@@ -69,6 +69,40 @@ namespace IndigoMovieManager.Services
             fileInfo?.RequestCancel();
         }
 
+        public void ShowIdleStatusMessage(string message, int durationMs = 2500)
+        {
+            int generation = Interlocked.Increment(ref _transientStatusGeneration);
+            lock (_sync)
+            {
+                if (GetVisibleSlotLocked() != null)
+                {
+                    return;
+                }
+            }
+
+            RunOnUi(() => _viewModel.StatusText = string.IsNullOrWhiteSpace(message) ? "準備完了" : message);
+
+            _ = Task.Delay(durationMs).ContinueWith(_ =>
+            {
+                if (generation != _transientStatusGeneration)
+                {
+                    return;
+                }
+
+                lock (_sync)
+                {
+                    if (GetVisibleSlotLocked() != null)
+                    {
+                        return;
+                    }
+                }
+
+                RunOnUi(() => _viewModel.StatusText = "準備完了");
+            }, TaskScheduler.Default);
+        }
+
+        private int _transientStatusGeneration;
+
         private void ReleaseThumbnail(ThumbnailSlot slot)
         {
             lock (_sync)
