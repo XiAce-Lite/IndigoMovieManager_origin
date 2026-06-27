@@ -58,6 +58,7 @@ namespace IndigoMovieManager
         private DataTable historyData;
         private DataTable watchData;
         private DataTable bookmarkData;
+        private DataTable tagBarData;
         private readonly HashSet<string> _bookmarkThumbInFlight = new(StringComparer.OrdinalIgnoreCase);
 
         // MainWindow クラス内の MainVM フィールドまたはプロパティの宣言を public に変更
@@ -705,6 +706,7 @@ namespace IndigoMovieManager
                     }
 
                     GetBookmarkTable(session);
+                    GetTagBarTable(session);
                 }
 
                 CreateWatcher();
@@ -877,6 +879,20 @@ namespace IndigoMovieManager
                 MainVM.DbInfo.BookmarkFolder,
                 MainVM.DbInfo.DBName);
             EnsureMissingBookmarkThumbnails();
+        }
+
+        private void GetTagBarTable(SQLiteSession session = null)
+        {
+            if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
+            {
+                MainVM.TagBarRecs.Clear();
+                return;
+            }
+
+            EnsureTagBarTable(MainVM.DbInfo.DBFullPath);
+            EnsureBuiltInStarRatingItems(MainVM.DbInfo.DBFullPath);
+            tagBarData = QueryDb(MainVM.DbInfo.DBFullPath, TagBarService.SelectAllOrderedSql, session);
+            TagBarService.LoadInto(tagBarData, MainVM.TagBarRecs);
         }
 
         private void EnsureMissingBookmarkThumbnails()
@@ -1137,6 +1153,7 @@ namespace IndigoMovieManager
                     {
                         CurrentTabIndex = currentTabIndex,
                         ThumbnailCache = _thumbLayoutCache,
+                        DbFullPath = MainVM.DbInfo.DBFullPath,
                     };
                     result = await Task.Run(() =>
                         MovieListCoordinator.ApplyFilter(snapshot, searchKeyword, id, filterContext)).ConfigureAwait(true);
@@ -2158,6 +2175,8 @@ namespace IndigoMovieManager
             // ブックマーク・リスト等の再取得
             GetBookmarkTable();
             BookmarkList.Items.Refresh();
+            GetTagBarTable();
+            TagBarList.Items.Refresh();
             await FilterAndSortAsync(MainVM.DbInfo.Sort, true).ConfigureAwait(true);
             Refresh();
         }
@@ -2650,7 +2669,10 @@ namespace IndigoMovieManager
         }
 
         // 検索実行処理
-        public async Task SearchByKeywordAsync(string keyword)
+        public Task SearchByKeywordAsync(string keyword) =>
+            SearchByKeywordAsync(keyword, addToHistory: true);
+
+        public async Task SearchByKeywordAsync(string keyword, bool addToHistory)
         {
             if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
             {
@@ -2664,7 +2686,7 @@ namespace IndigoMovieManager
             {
                 // 履歴リストを先に更新してから ComboBox へ反映しないと、
                 // SelectedValue 不一致で Text が空になり全件表示へ戻ることがある。
-                if (!string.IsNullOrEmpty(text))
+                if (addToHistory && !string.IsNullOrEmpty(text))
                 {
                     PromoteSearchHistory(text);
                 }
@@ -2695,8 +2717,8 @@ namespace IndigoMovieManager
                 }
             }
 
-            // 特殊検索（例: {notag}）も通常検索と同様に履歴へ反映する。
-            if (!string.IsNullOrEmpty(text))
+            // 特殊検索（例: {::error} や {tag = ''}）も通常検索と同様に履歴へ反映する。
+            if (addToHistory && !string.IsNullOrEmpty(text))
             {
                 string dbPath = MainVM.DbInfo.DBFullPath;
                 _ = Task.Run(() => InsertHistoryTable(dbPath, text));
@@ -2707,6 +2729,296 @@ namespace IndigoMovieManager
         {
             await SearchByKeywordAsync(SearchBox.Text).ConfigureAwait(true);
         }
+
+        #region 保存済み検索条件（TagBar）
+
+        private void SaveSearchTagButton_Click(object sender, RoutedEventArgs e) =>
+            BeginAddTagBarItem(SearchBox.Text);
+
+        private void TagBarAdd_Click(object sender, RoutedEventArgs e) =>
+            BeginAddTagBarItem("");
+
+        private void BeginAddTagBarItem(string initialContents)
+        {
+            if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
+            {
+                MessageBox.Show(
+                    "管理ファイルが選択されていません。",
+                    Assembly.GetExecutingAssembly().GetName().Name,
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Exclamation);
+                return;
+            }
+
+            string contents = initialContents ?? "";
+            string initialTitle = string.IsNullOrEmpty(contents) ? "" : contents;
+            if (!TryShowTagBarEditDialog(initialTitle, contents, out string title, out string savedContents))
+            {
+                return;
+            }
+
+            long itemId = InsertTagBarItem(MainVM.DbInfo.DBFullPath, title, savedContents);
+            if (itemId <= 0)
+            {
+                return;
+            }
+
+            GetTagBarTable();
+            SelectTagBarItem(itemId);
+        }
+
+        private void TagBarEdit_Click(object sender, RoutedEventArgs e) =>
+            EditSelectedTagBarItem(focusContents: false);
+
+        private void TagBarRenameMenuItem_Click(object sender, RoutedEventArgs e) =>
+            EditSelectedTagBarItem(focusContents: false);
+
+        private void TagBarEditContentsMenuItem_Click(object sender, RoutedEventArgs e) =>
+            EditSelectedTagBarItem(focusContents: true);
+
+        private void TagBarDuplicateMenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            TagBarItem item = GetTagBarItemFromMenuSender(sender) ?? TagBarList.SelectedItem as TagBarItem;
+            if (item == null)
+            {
+                return;
+            }
+
+            string title = TagBarService.BuildDuplicateTitle(item.Title);
+            if (!TryShowTagBarEditDialog(title, item.Contents, out string savedTitle, out string savedContents))
+            {
+                return;
+            }
+
+            long itemId = InsertTagBarItem(MainVM.DbInfo.DBFullPath, savedTitle, savedContents);
+            if (itemId <= 0)
+            {
+                return;
+            }
+
+            GetTagBarTable();
+            SelectTagBarItem(itemId);
+        }
+
+        private void TagBarDelete_Click(object sender, RoutedEventArgs e) =>
+            DeleteSelectedTagBarItem();
+
+        private void TagBarDeleteMenuItem_Click(object sender, RoutedEventArgs e) =>
+            DeleteTagBarItemFromDb(GetTagBarItemFromMenuSender(sender));
+
+        private void EditSelectedTagBarItem(bool focusContents)
+        {
+            if (TagBarList.SelectedItem is not TagBarItem item)
+            {
+                MessageBox.Show(
+                    this,
+                    "編集する保存済み検索条件を選択してください。",
+                    Assembly.GetExecutingAssembly().GetName().Name,
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            if (!TryShowTagBarEditDialog(item.Title, item.Contents, out string title, out string contents, focusContents))
+            {
+                return;
+            }
+
+            UpdateTagBarItem(MainVM.DbInfo.DBFullPath, item.Item_Id, title, contents);
+            item.Title = title;
+            item.Contents = contents;
+            TagBarList.Items.Refresh();
+        }
+
+        private void DeleteSelectedTagBarItem()
+        {
+            if (TagBarList.SelectedItem is not TagBarItem item)
+            {
+                MessageBox.Show(
+                    this,
+                    "削除する保存済み検索条件を選択してください。",
+                    Assembly.GetExecutingAssembly().GetName().Name,
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            DeleteTagBarItemFromDb(item);
+        }
+
+        private void DeleteTagBarItemFromDb(TagBarItem item)
+        {
+            if (item == null)
+            {
+                return;
+            }
+
+            if (TagBarService.IsBuiltInStarRating(item))
+            {
+                MessageBox.Show(
+                    this,
+                    "★評価の保存済み検索条件は削除できません。",
+                    Assembly.GetExecutingAssembly().GetName().Name,
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            DeleteTagBarItem(MainVM.DbInfo.DBFullPath, item.Item_Id);
+            MainVM.TagBarRecs.Remove(item);
+            TagBarList.SelectedItem = null;
+            UpdateTagBarDeleteButtonState();
+        }
+
+        private void TagBarList_SelectionChanged(object sender, SelectionChangedEventArgs e) =>
+            UpdateTagBarDeleteButtonState();
+
+        private void UpdateTagBarDeleteButtonState()
+        {
+            TagBarDeleteButton.IsEnabled = TagBarList.SelectedItem is TagBarItem item
+                && !TagBarService.IsBuiltInStarRating(item);
+        }
+
+        private void TagBarItem_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+        {
+            if (sender is not ListBoxItem listItem || listItem.DataContext is not TagBarItem item)
+            {
+                return;
+            }
+
+            if (listItem.ContextMenu == null)
+            {
+                return;
+            }
+
+            bool canDelete = !TagBarService.IsBuiltInStarRating(item);
+            foreach (object child in listItem.ContextMenu.Items)
+            {
+                if (child is MenuItem menuItem && "TagBarDeleteMenuItem".Equals(menuItem.Tag))
+                {
+                    menuItem.IsEnabled = canDelete;
+                }
+            }
+        }
+
+        private async void TagBarItem_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.ClickCount != 1)
+            {
+                return;
+            }
+
+            if (sender is not ListBoxItem listItem || listItem.DataContext is not TagBarItem item)
+            {
+                return;
+            }
+
+            TagBarList.SelectedItem = item;
+            await SearchByKeywordAsync(item.EffectiveContents, addToHistory: false).ConfigureAwait(true);
+        }
+
+        private void TagBarItem_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.ChangedButton != MouseButton.Middle)
+            {
+                return;
+            }
+
+            e.Handled = true;
+
+            if (sender is not ListBoxItem listItem || listItem.DataContext is not TagBarItem item)
+            {
+                return;
+            }
+
+            TagBarList.SelectedItem = item;
+            AppendTagBarContentsToSelectedMovies(item);
+        }
+
+        private void AppendTagBarContentsToSelectedMovies(TagBarItem item)
+        {
+            if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
+            {
+                return;
+            }
+
+            List<MovieRecords> selected = GetSelectedItemsByTabIndex();
+            if (selected == null || selected.Count == 0)
+            {
+                MessageBox.Show(
+                    this,
+                    "タグを付けるレコードを選択してください。",
+                    Assembly.GetExecutingAssembly().GetName().Name,
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            string tagText = TagBarService.ExpandContentsForTagAppend(
+                TagBarService.GetEffectiveContents(item));
+            if (string.IsNullOrWhiteSpace(tagText))
+            {
+                return;
+            }
+
+            foreach (MovieRecords rec in selected)
+            {
+                TagMutationService.ApplyAdd(rec, tagText);
+                UpdateMovieSingleColumn(MainVM.DbInfo.DBFullPath, rec.Movie_Id, "tag", rec.Tags);
+            }
+
+            Refresh();
+        }
+
+        private bool TryShowTagBarEditDialog(
+            string initialTitle,
+            string initialContents,
+            out string title,
+            out string contents,
+            bool focusContents = false)
+        {
+            title = initialTitle ?? "";
+            contents = initialContents ?? "";
+
+            var dialog = new TagBarEditWindow
+            {
+                Owner = this,
+                DisplayTitle = title,
+                SearchContents = contents,
+                FocusSearchContentsOnOpen = focusContents,
+            };
+
+            if (dialog.ShowDialog() != true || dialog.CloseStatus() != MessageBoxResult.OK)
+            {
+                return false;
+            }
+
+            title = dialog.DisplayTitle.Trim();
+            contents = dialog.SearchContents.Trim();
+            return true;
+        }
+
+        private void SelectTagBarItem(long itemId)
+        {
+            TagBarItem item = MainVM.TagBarRecs.FirstOrDefault(x => x.Item_Id == itemId);
+            if (item != null)
+            {
+                TagBarList.SelectedItem = item;
+                TagBarList.ScrollIntoView(item);
+            }
+        }
+
+        private static TagBarItem GetTagBarItemFromMenuSender(object sender)
+        {
+            if (sender is not MenuItem menuItem)
+            {
+                return null;
+            }
+
+            return menuItem.DataContext as TagBarItem;
+        }
+
+        #endregion
 
         private void List_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {

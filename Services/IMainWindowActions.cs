@@ -11,7 +11,7 @@ namespace IndigoMovieManager.Services
     {
         ComboBox SearchBox { get; }
         TabControl Tabs { get; }
-        Task SearchByKeywordAsync(string keyword);
+        Task SearchByKeywordAsync(string keyword, bool addToHistory = true);
         void PlayMovie_Click(object sender, RoutedEventArgs e);
         void DeleteBookmark(object sender, RoutedEventArgs e);
         void RefreshActiveList(int tabIndex);
