@@ -16,6 +16,7 @@ namespace IndigoMovieManager.Services
         void DeleteBookmark(object sender, RoutedEventArgs e);
         void RefreshActiveList(int tabIndex);
         void RefreshExtDetail();
+        void RequestDetailThumbnailRecreate();
         string DbFullPath { get; }
         void UpdateMovieColumn(long movieId, Data.MovieColumn column, object value);
     }

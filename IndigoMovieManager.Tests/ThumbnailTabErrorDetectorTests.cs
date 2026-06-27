@@ -155,6 +155,33 @@ public class ThumbnailTabErrorDetectorTests
     }
 
     [Fact]
+    public void IsDetailThumbnailError_returns_true_when_detail_thumb_missing()
+    {
+        string moviePath = Path.Combine(Path.GetTempPath(), $"imm-movie-{Guid.NewGuid():N}.mp4");
+        var cache = CreateCache(out string thumbRoot);
+        try
+        {
+            File.WriteAllText(moviePath, "movie");
+            var record = CreateRecord("movie", moviePath);
+
+            Assert.True(ThumbnailTabErrorDetector.IsDetailThumbnailError(record, cache));
+            Assert.True(ThumbnailTabErrorDetector.IsErrorForTab(record, 99, cache));
+        }
+        finally
+        {
+            if (File.Exists(moviePath))
+            {
+                File.Delete(moviePath);
+            }
+
+            if (Directory.Exists(thumbRoot))
+            {
+                Directory.Delete(thumbRoot, true);
+            }
+        }
+    }
+
+    [Fact]
     public void IsErrorForTab_returns_false_when_valid_composite_thumb_exists()
     {
         string moviePath = Path.Combine(Path.GetTempPath(), $"imm-movie-{Guid.NewGuid():N}.mp4");

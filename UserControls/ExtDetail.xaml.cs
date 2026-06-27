@@ -28,6 +28,17 @@ namespace IndigoMovieManager.UserControls
             }
         }
 
+        private void ThumbnailImage_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.ClickCount != 1)
+            {
+                return;
+            }
+
+            IMainWindowActions actions = MainWindowActionsHelper.GetActions(this);
+            actions?.RequestDetailThumbnailRecreate();
+        }
+
         public void Refresh()
         {
             ExtDetailTags.Items.Refresh();

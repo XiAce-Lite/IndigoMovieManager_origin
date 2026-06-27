@@ -9,11 +9,48 @@ namespace IndigoMovieManager.Thumbnail
     {
         public static bool IsErrorForTab(MovieRecords item, int tabIndex, ThumbnailLayoutCache cache)
         {
-            if (item == null || cache == null || tabIndex < 0 || tabIndex >= cache.TabOutPaths.Length)
+            if (item == null || cache == null)
             {
                 return false;
             }
 
+            if (tabIndex == 99)
+            {
+                return IsDetailThumbnailError(item, cache);
+            }
+
+            if (tabIndex < 0 || tabIndex >= cache.TabOutPaths.Length)
+            {
+                return false;
+            }
+
+            return IsErrorThumbnailState(
+                item,
+                cache.GetExpectedThumbPath(tabIndex, GetMovieBody(item), item.Hash),
+                cache.GetErrorPath(tabIndex),
+                cache.GetNoFilePath(tabIndex));
+        }
+
+        public static bool IsDetailThumbnailError(MovieRecords item, ThumbnailLayoutCache cache)
+        {
+            if (item == null || cache == null)
+            {
+                return false;
+            }
+
+            return IsErrorThumbnailState(
+                item,
+                cache.GetExpectedThumbPath(99, GetMovieBody(item), item.Hash),
+                cache.GetErrorPath(99),
+                cache.GetNoFilePath(99));
+        }
+
+        private static bool IsErrorThumbnailState(
+            MovieRecords item,
+            string expectedThumb,
+            string errorTemplate,
+            string noFileTemplate)
+        {
             string moviePath = item.Movie_Path ?? "";
             if (string.IsNullOrWhiteSpace(moviePath) || !File.Exists(moviePath))
             {
@@ -25,15 +62,10 @@ namespace IndigoMovieManager.Thumbnail
                 return false;
             }
 
-            string fileBody = Path.GetFileNameWithoutExtension(item.Movie_Name ?? moviePath).ToLowerInvariant();
-            if (string.IsNullOrWhiteSpace(fileBody))
+            if (string.IsNullOrWhiteSpace(expectedThumb))
             {
                 return false;
             }
-
-            string expectedThumb = cache.GetExpectedThumbPath(tabIndex, fileBody, item.Hash);
-            string errorTemplate = cache.GetErrorPath(tabIndex);
-            string noFileTemplate = cache.GetNoFilePath(tabIndex);
 
             if (!File.Exists(expectedThumb))
             {
@@ -51,6 +83,12 @@ namespace IndigoMovieManager.Thumbnail
             }
 
             return !ThumbnailValidityHelper.LooksLikeCompositeThumbnail(expectedThumb);
+        }
+
+        private static string GetMovieBody(MovieRecords item)
+        {
+            string moviePath = item.Movie_Path ?? "";
+            return Path.GetFileNameWithoutExtension(item.Movie_Name ?? moviePath).ToLowerInvariant();
         }
 
         private static bool PlaceholderFilesMatch(string filePath, string templatePath)

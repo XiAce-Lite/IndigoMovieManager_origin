@@ -58,6 +58,7 @@ namespace IndigoMovieManager
         private DataTable historyData;
         private DataTable watchData;
         private DataTable bookmarkData;
+        private readonly HashSet<string> _bookmarkThumbInFlight = new(StringComparer.OrdinalIgnoreCase);
 
         // MainWindow クラス内の MainVM フィールドまたはプロパティの宣言を public に変更
         public readonly MainWindowViewModel MainVM;
@@ -381,8 +382,6 @@ namespace IndigoMovieManager
 
             mv.ThumbDetail = _thumbLayoutCache.BuildThumbPath(99, thumbFile, checkExists: true);
 
-            bool detailMissing = !File.Exists(expectedDetailPath);
-
             if (ZipMediaKind.IsZipRecord(mv) || ZipMediaKind.IsZipPath(mv.Movie_Path))
             {
                 if (ZipDetailThumbnailMaterializer.TryCopyFromExistingTabThumbs(
@@ -396,7 +395,8 @@ namespace IndigoMovieManager
                 }
             }
 
-            if (!detailMissing || _thumbnailScheduler.JobCoordinator.IsInFlight(mv.Movie_Id, 99))
+            if (!ThumbnailTabErrorDetector.IsDetailThumbnailError(mv, _thumbLayoutCache)
+                || _thumbnailScheduler.JobCoordinator.IsInFlight(mv.Movie_Id, 99))
             {
                 return;
             }
@@ -876,6 +876,45 @@ namespace IndigoMovieManager
                 MainVM.BookmarkRecs,
                 MainVM.DbInfo.BookmarkFolder,
                 MainVM.DbInfo.DBName);
+            EnsureMissingBookmarkThumbnails();
+        }
+
+        private void EnsureMissingBookmarkThumbnails()
+        {
+            foreach (MovieRecords bookmark in MainVM.BookmarkRecs)
+            {
+                if (!BookmarkThumbnailRestoreService.TryPrepareRestore(
+                        bookmark,
+                        MainVM.MovieRecs,
+                        out string sourceMoviePath,
+                        out string saveThumbPath,
+                        out int capturePosSeconds))
+                {
+                    continue;
+                }
+
+                if (!_bookmarkThumbInFlight.Add(saveThumbPath))
+                {
+                    continue;
+                }
+
+                _ = CreateBookmarkThumbAsync(sourceMoviePath, saveThumbPath, capturePosSeconds);
+            }
+        }
+
+        public void RequestDetailThumbnailRecreate()
+        {
+            if (viewExtDetail.DataContext is not MovieRecords mv)
+            {
+                return;
+            }
+
+            if (!ThumbnailTabErrorDetector.IsDetailThumbnailError(mv, _thumbLayoutCache))
+            {
+                return;
+            }
+
+            EnsureDetailThumbnail(mv);
         }
 
         private void GetHistoryTable(string dbFullPath, SQLiteSession session = null)
@@ -3291,8 +3330,15 @@ namespace IndigoMovieManager
 
         private async Task CreateBookmarkThumbAsync(string movieFullPath, string saveThumbPath, int capturePos)
         {
-            await BookmarkThumbnailCreator.CreateAsync(movieFullPath, saveThumbPath, capturePos).ConfigureAwait(true);
-            BookmarkList.Items.Refresh();
+            try
+            {
+                await BookmarkThumbnailCreator.CreateAsync(movieFullPath, saveThumbPath, capturePos).ConfigureAwait(true);
+            }
+            finally
+            {
+                _bookmarkThumbInFlight.Remove(saveThumbPath);
+                BookmarkList.Items.Refresh();
+            }
         }
 
         private ThumbnailCreationHost CreateThumbnailHost(QueueObj queueObj)
@@ -3932,6 +3978,8 @@ namespace IndigoMovieManager
         ListView IMainWindowListViews.BigList10 => BigList10;
 
         void IMainWindowActions.RefreshExtDetail() => viewExtDetail.Refresh();
+
+        void IMainWindowActions.RequestDetailThumbnailRecreate() => RequestDetailThumbnailRecreate();
 
         void IMainWindowActions.RefreshActiveList(int tabIndex) =>
             TabListRefreshHelper.RefreshListByTabIndex(tabIndex, this);
