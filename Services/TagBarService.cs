@@ -42,7 +42,9 @@ namespace IndigoMovieManager.Services
         }
 
         /// <summary>
-        /// 新規 DB 作成時に挿入する既定の★評価ボタンかどうか（削除不可）。
+        /// 新規 DB 作成時に挿入する既定の★評価ボタンかどうか（編集・削除不可）。
+        /// タイトル・空の contents・order_id が既定位置と一致するもののみ対象。
+        /// ユーザーが同名タイトルで追加した項目は order_id が異なるため除外される。
         /// </summary>
         public static bool IsBuiltInStarRating(TagBarItem item)
         {
@@ -51,7 +53,18 @@ namespace IndigoMovieManager.Services
                 return false;
             }
 
-            return IsBuiltInStarRatingTitle(item.Title);
+            return IsBuiltInStarRatingRow(item.Order_Id, item.Title, item.Contents);
+        }
+
+        public static bool IsBuiltInStarRatingRow(long orderId, string title, string contents)
+        {
+            if (string.IsNullOrWhiteSpace(title) || !string.IsNullOrWhiteSpace(contents))
+            {
+                return false;
+            }
+
+            int index = Array.IndexOf(BuiltInStarRatingTitles, title.Trim());
+            return index >= 0 && orderId == index;
         }
 
         public static bool IsBuiltInStarRatingTitle(string title)

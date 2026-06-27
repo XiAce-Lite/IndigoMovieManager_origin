@@ -61,8 +61,8 @@
         </ContextMenu>
 
         <ContextMenu x:Key="TagBarItemContextMenu">
-            <MenuItem Click="TagBarRenameMenuItem_Click" Header="名前を変更" />
-            <MenuItem Click="TagBarEditContentsMenuItem_Click" Header="検索条件を編集" />
+            <MenuItem Click="TagBarRenameMenuItem_Click" Header="名前を変更" Tag="TagBarRenameMenuItem" />
+            <MenuItem Click="TagBarEditContentsMenuItem_Click" Header="検索条件を編集" Tag="TagBarEditContentsMenuItem" />
             <MenuItem Click="TagBarDuplicateMenuItem_Click" Header="複製" />
             <Separator />
             <MenuItem Click="TagBarDeleteMenuItem_Click" Header="削除" Tag="TagBarDeleteMenuItem" />
@@ -1231,9 +1231,11 @@
                                         Click="TagBarAdd_Click"
                                         Content="＋ 追加" />
                                     <Button
+                                        x:Name="TagBarEditButton"
                                         Margin="0,0,6,0"
                                         Click="TagBarEdit_Click"
-                                        Content="編集" />
+                                        Content="編集"
+                                        IsEnabled="False" />
                                     <Button
                                         x:Name="TagBarDeleteButton"
                                         Click="TagBarDelete_Click"

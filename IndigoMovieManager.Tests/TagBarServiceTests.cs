@@ -97,24 +97,38 @@ public class TagBarServiceTests
     }
 
     [Theory]
-    [InlineData("★")]
-    [InlineData("★★")]
-    [InlineData("★★★")]
-    [InlineData("★★★★")]
-    [InlineData("★★★★★")]
-    public void IsBuiltInStarRating_recognizes_default_star_buttons(string title)
+    [InlineData("★★★★★", 0)]
+    [InlineData("★★★★", 1)]
+    [InlineData("★★★", 2)]
+    [InlineData("★★", 3)]
+    [InlineData("★", 4)]
+    public void IsBuiltInStarRating_recognizes_default_star_buttons(string title, long orderId)
     {
-        var item = new TagBarItem { Title = title };
+        var item = new TagBarItem { Title = title, Order_Id = orderId, Contents = "" };
         Assert.True(TagBarService.IsBuiltInStarRating(item));
     }
 
-    [Theory]
-    [InlineData("★★★ (コピー)")]
-    [InlineData("未視聴")]
-    [InlineData("")]
-    public void IsBuiltInStarRating_rejects_other_titles(string title)
+    [Fact]
+    public void IsBuiltInStarRating_rejects_user_created_star_title_with_wrong_order_id()
     {
-        var item = new TagBarItem { Title = title };
+        var item = new TagBarItem { Title = "★★★", Order_Id = 99, Contents = "" };
+        Assert.False(TagBarService.IsBuiltInStarRating(item));
+    }
+
+    [Fact]
+    public void IsBuiltInStarRating_rejects_star_title_with_contents()
+    {
+        var item = new TagBarItem { Title = "★★★", Order_Id = 2, Contents = "custom" };
+        Assert.False(TagBarService.IsBuiltInStarRating(item));
+    }
+
+    [Theory]
+    [InlineData("★★★ (コピー)", 2)]
+    [InlineData("未視聴", 0)]
+    [InlineData("", 0)]
+    public void IsBuiltInStarRating_rejects_other_titles(string title, long orderId)
+    {
+        var item = new TagBarItem { Title = title, Order_Id = orderId };
         Assert.False(TagBarService.IsBuiltInStarRating(item));
     }
 

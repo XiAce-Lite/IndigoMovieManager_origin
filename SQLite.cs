@@ -846,6 +846,23 @@ namespace IndigoMovieManager
                 using SQLiteConnection connection = new($"Data Source={dbFullPath}");
                 connection.Open();
                 using var transaction = connection.BeginTransaction();
+                using (SQLiteCommand selectCmd = connection.CreateCommand())
+                {
+                    selectCmd.Transaction = transaction;
+                    selectCmd.CommandText =
+                        "select order_id, title, contents from tagbar where item_id = @item_id";
+                    selectCmd.Parameters.Add(new SQLiteParameter("@item_id", itemId));
+                    using SQLiteDataReader reader = selectCmd.ExecuteReader();
+                    if (reader.Read()
+                        && TagBarService.IsBuiltInStarRatingRow(
+                            Convert.ToInt64(reader["order_id"]),
+                            reader["title"]?.ToString(),
+                            reader["contents"]?.ToString()))
+                    {
+                        return;
+                    }
+                }
+
                 using (SQLiteCommand cmd = connection.CreateCommand())
                 {
                     cmd.CommandText =
@@ -880,11 +897,16 @@ namespace IndigoMovieManager
                 using var transaction = connection.BeginTransaction();
                 using (SQLiteCommand selectCmd = connection.CreateCommand())
                 {
-                    selectCmd.CommandText = "select title from tagbar where item_id = @item_id";
+                    selectCmd.Transaction = transaction;
+                    selectCmd.CommandText =
+                        "select order_id, title, contents from tagbar where item_id = @item_id";
                     selectCmd.Parameters.Add(new SQLiteParameter("@item_id", itemId));
-                    object titleValue = selectCmd.ExecuteScalar();
-                    if (titleValue != null
-                        && TagBarService.IsBuiltInStarRatingTitle(titleValue.ToString()))
+                    using SQLiteDataReader reader = selectCmd.ExecuteReader();
+                    if (reader.Read()
+                        && TagBarService.IsBuiltInStarRatingRow(
+                            Convert.ToInt64(reader["order_id"]),
+                            reader["title"]?.ToString(),
+                            reader["contents"]?.ToString()))
                     {
                         return;
                     }

@@ -2819,6 +2819,17 @@ namespace IndigoMovieManager
                 return;
             }
 
+            if (TagBarService.IsBuiltInStarRating(item))
+            {
+                MessageBox.Show(
+                    this,
+                    "★評価の保存済み検索条件は編集できません。",
+                    Assembly.GetExecutingAssembly().GetName().Name,
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
             if (!TryShowTagBarEditDialog(item.Title, item.Contents, out string title, out string contents, focusContents))
             {
                 return;
@@ -2867,16 +2878,20 @@ namespace IndigoMovieManager
             DeleteTagBarItem(MainVM.DbInfo.DBFullPath, item.Item_Id);
             MainVM.TagBarRecs.Remove(item);
             TagBarList.SelectedItem = null;
-            UpdateTagBarDeleteButtonState();
+            UpdateTagBarCommandButtonState();
         }
 
         private void TagBarList_SelectionChanged(object sender, SelectionChangedEventArgs e) =>
-            UpdateTagBarDeleteButtonState();
+            UpdateTagBarCommandButtonState();
 
-        private void UpdateTagBarDeleteButtonState()
+        private void UpdateTagBarCommandButtonState()
         {
-            TagBarDeleteButton.IsEnabled = TagBarList.SelectedItem is TagBarItem item
-                && !TagBarService.IsBuiltInStarRating(item);
+            bool isBuiltIn = TagBarList.SelectedItem is TagBarItem item
+                && TagBarService.IsBuiltInStarRating(item);
+            bool hasSelection = TagBarList.SelectedItem is TagBarItem;
+
+            TagBarEditButton.IsEnabled = hasSelection && !isBuiltIn;
+            TagBarDeleteButton.IsEnabled = hasSelection && !isBuiltIn;
         }
 
         private void TagBarItem_ContextMenuOpening(object sender, ContextMenuEventArgs e)
@@ -2891,12 +2906,19 @@ namespace IndigoMovieManager
                 return;
             }
 
-            bool canDelete = !TagBarService.IsBuiltInStarRating(item);
+            bool canModify = !TagBarService.IsBuiltInStarRating(item);
             foreach (object child in listItem.ContextMenu.Items)
             {
-                if (child is MenuItem menuItem && "TagBarDeleteMenuItem".Equals(menuItem.Tag))
+                if (child is not MenuItem menuItem)
                 {
-                    menuItem.IsEnabled = canDelete;
+                    continue;
+                }
+
+                if ("TagBarDeleteMenuItem".Equals(menuItem.Tag)
+                    || "TagBarRenameMenuItem".Equals(menuItem.Tag)
+                    || "TagBarEditContentsMenuItem".Equals(menuItem.Tag))
+                {
+                    menuItem.IsEnabled = canModify;
                 }
             }
         }
