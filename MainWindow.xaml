@@ -1300,6 +1300,7 @@
                             DockPanel.Dock="Top"
                             DropDownClosed="SearchBox_DropDownClosed"
                             DropDownOpened="SearchBox_DropDownOpened"
+                            Loaded="ComboBoxArrow_Loaded"
                             FontSize="14"
                             Foreground="Black"
                             IsEditable="True"
@@ -1361,6 +1362,7 @@
                             DisplayMemberPath="Name"
                             Foreground="Black"
                             ItemsSource="{Binding SortLists}"
+                            Loaded="ComboBoxArrow_Loaded"
                             SelectedValue="{Binding DbInfo.Sort}"
                             SelectedValuePath="Id"
                             SelectionChanged="ComboSort_SelectionChanged" />

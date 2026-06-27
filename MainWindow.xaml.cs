@@ -2301,6 +2301,49 @@ namespace IndigoMovieManager
             _historyCursor = -1;
         }
 
+        // MaterialDesign の ComboBox 既定テンプレート内のドロップダウン矢印（名前付き Path "arrow"）が
+        // 右端に寄りすぎるため、右側に少し余白を足す。テンプレート外からは直接指定できないため、
+        // Loaded 後に視覚ツリーから拾ってマージンを上書きする（右=4px 固定で多重適用しても安全）。
+        private void ComboBoxArrow_Loaded(object sender, RoutedEventArgs e)
+        {
+            if (sender is not ComboBox combo)
+            {
+                return;
+            }
+
+            if (FindDescendantByName(combo, "arrow") is FrameworkElement arrow)
+            {
+                Thickness m = arrow.Margin;
+                arrow.Margin = new Thickness(m.Left, m.Top, 4, m.Bottom);
+            }
+        }
+
+        private static FrameworkElement FindDescendantByName(DependencyObject root, string name)
+        {
+            if (root == null)
+            {
+                return null;
+            }
+
+            int childCount = VisualTreeHelper.GetChildrenCount(root);
+            for (int i = 0; i < childCount; i++)
+            {
+                DependencyObject child = VisualTreeHelper.GetChild(root, i);
+                if (child is FrameworkElement fe && fe.Name == name)
+                {
+                    return fe;
+                }
+
+                FrameworkElement nested = FindDescendantByName(child, name);
+                if (nested != null)
+                {
+                    return nested;
+                }
+            }
+
+            return null;
+        }
+
         private void SearchBox_DropDownOpened(object sender, EventArgs e)
         {
             _historyCursor = -1;
