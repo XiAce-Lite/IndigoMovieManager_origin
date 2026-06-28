@@ -959,63 +959,32 @@ namespace IndigoMovieManager
 
         public static void InsertFindFactTable(string dbFullPath, string find_text)
         {
+            if (string.IsNullOrEmpty(dbFullPath) || string.IsNullOrEmpty(find_text))
+            {
+                return;
+            }
+
             try
             {
                 using SQLiteConnection connection = new($"Data Source={dbFullPath}");
                 connection.Open();
-
-                // データベースから既存レコードを取得
-                string sql = $"select * from findfact where find_text = '{find_text}'";
-                using SQLiteCommand selectCmd = connection.CreateCommand();
-                selectCmd.CommandText = sql;
-
-                // DataAdapterの生成
-                SQLiteDataAdapter da = new(selectCmd);
-
-                long find_count = 0;
-                DataTable dt = new();
-                da.Fill(dt);
-                bool existFlg = false;
-                if (dt.Rows.Count < 1) 
-                {
-                    //新規レコード
-                    find_count = 1;
-                    existFlg = false;
-                }
-                else
-                {
-                    if (dt.Rows[0][0].ToString() != "")
-                    {
-                        //既にある。
-                        find_count = (long)dt.Rows[0][1] + 1;
-                        existFlg = true;
-                    }
-                    else
-                    {
-                        //新規レコード
-                        find_count = 1;
-                        existFlg = false;
-                    }
-                }
 
                 var now = DateTime.Now;
                 var result = now.AddTicks(-(now.Ticks % TimeSpan.TicksPerSecond));
 
                 using var transaction = connection.BeginTransaction();
 
+                // 存在判定とINSERT/UPDATEを1文のUPSERTにまとめる。
+                // SELECTを文字列補間していたためキーワードにシングルクオートが含まれると
+                // 存在判定が壊れ、UNIQUE制約違反(find_text)になっていた。
                 using SQLiteCommand cmd = connection.CreateCommand();
-                if (existFlg == false)
-                {
-                    cmd.CommandText =
-                        "insert into findfact (find_text,find_count,last_date) values (@find_text,@find_count, @last_date)";
-                }
-                else
-                {
-                    cmd.CommandText = 
-                        "update findfact set find_count = @find_count , last_date = @last_date where find_text = @find_text";
-                }
+                cmd.Transaction = transaction;
+                cmd.CommandText =
+                    "insert into findfact (find_text, find_count, last_date) " +
+                    "values (@find_text, 1, @last_date) " +
+                    "on conflict(find_text) do update set " +
+                    "find_count = find_count + 1, last_date = @last_date";
                 cmd.Parameters.Add(new SQLiteParameter("@find_text", find_text));
-                cmd.Parameters.Add(new SQLiteParameter("@find_count", find_count));
                 cmd.Parameters.Add(new SQLiteParameter("@last_date", result));
                 cmd.ExecuteNonQuery();
                 transaction.Commit();
