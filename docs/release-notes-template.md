@@ -3,7 +3,7 @@
 ### 動作要件
 
 - Windows 10 以降（x64）
-- [.NET 8 Desktop Runtime（x64）](https://dotnet.microsoft.com/download/dotnet/8.0) が必要です（Framework 依存配布）
+- .NET ランタイムのインストールは不要です（.NET 8 ランタイムを同梱した自己完結型の単一 exe 配布）
 
 ### 同梱されていないもの（必要に応じて各自で配置）
 
