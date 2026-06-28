@@ -5,7 +5,6 @@ using IndigoMovieManager.Services;
 using IndigoMovieManager.Data;
 using Microsoft.VisualBasic.FileIO;
 using Microsoft.Win32;
-using Notification.Wpf;
 using OpenCvSharp;
 using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
@@ -41,6 +40,7 @@ namespace IndigoMovieManager
         private readonly ThumbnailQueueProcessor _thumbnailQueueProcessor = new();
         private readonly ThumbnailQueueScheduler _thumbnailScheduler = new();
         private readonly FileWatcherManager _fileWatcherManager = new();
+        private readonly DiscoveredFileRegistrationGate _discoveredFileRegistrationGate = new();
         private readonly SemaphoreSlim _folderCheckGate = new(1, 1);
         private bool _openingDatabase;
 
@@ -58,6 +58,8 @@ namespace IndigoMovieManager
         private DataTable historyData;
         private DataTable watchData;
         private DataTable bookmarkData;
+        private DataTable tagBarData;
+        private readonly HashSet<string> _bookmarkThumbInFlight = new(StringComparer.OrdinalIgnoreCase);
 
         // MainWindow クラス内の MainVM フィールドまたはプロパティの宣言を public に変更
         public readonly MainWindowViewModel MainVM;
@@ -95,11 +97,19 @@ namespace IndigoMovieManager
 
         private readonly ThumbnailLayoutCache _thumbLayoutCache = new();
         private readonly MainWindowSessionState _sessionState = new();
+        private readonly StatusBarProgressCoordinator _statusBarProgress;
 
         //private bool _searchBoxItemSelectedByMouse = false;
         private bool _isDeletingSearchHistory = false;
         private bool _isApplyingSearchKeyword = false;
+        // 検索履歴ドロップダウンのキーボードカーソル位置（SelectedIndex はTextバインドで-1にリセットされ得るため独自管理）。
+        private int _historyCursor = -1;
         private int _fileInfoRefreshRunning = 0;
+
+        private const int SearchOverlayDelayMs = 400;
+        private int _loadingOverlayDepth;
+        private CancellationTokenSource _searchOverlayDelayCts;
+        private bool _searchOverlayPushed;
 
         public MainWindow()
         {
@@ -111,11 +121,16 @@ namespace IndigoMovieManager
 
             InitializeComponent();
 
+            _statusBarProgress = new StatusBarProgressCoordinator(Dispatcher);
+            StatusBarProgressHost.Attach(_statusBarProgress);
+            OperationStatusBar.DataContext = _statusBarProgress.ViewModel;
+
             // アセンブリのファイルバージョンを取得
             var version = Assembly.GetExecutingAssembly()
                 .GetCustomAttribute<AssemblyFileVersionAttribute>()?.Version;
 
-            this.Title = $"Indigo Movie Manager v{version}";
+            // ビルドの取り違え防止のため、実行ファイルのビルド時刻も表示する。
+            this.Title = $"Indigo Movie Manager v{version} build {GetBuildStamp()}";
 
             ContentRendered += MainWindow_ContentRendered;
             Closing += MainWindow_Closing;
@@ -157,6 +172,24 @@ namespace IndigoMovieManager
             uxPreviewImage.Visibility = Visibility.Collapsed;
             uxPreviewFallbackImage.Visibility = Visibility.Collapsed;
             #endregion
+        }
+
+        // 実行ファイルの最終更新時刻をビルド識別子として返す（単一ファイル発行でも取得可）。
+        private static string GetBuildStamp()
+        {
+            try
+            {
+                string path = Environment.ProcessPath ?? Assembly.GetExecutingAssembly().Location;
+                if (!string.IsNullOrEmpty(path) && File.Exists(path))
+                {
+                    return File.GetLastWriteTime(path).ToString("yyyyMMdd-HHmmss");
+                }
+            }
+            catch
+            {
+            }
+
+            return "unknown";
         }
 
         private void MainWindow_ContentRendered(object sender, EventArgs e)
@@ -350,8 +383,6 @@ namespace IndigoMovieManager
 
             mv.ThumbDetail = _thumbLayoutCache.BuildThumbPath(99, thumbFile, checkExists: true);
 
-            bool detailMissing = !File.Exists(expectedDetailPath);
-
             if (ZipMediaKind.IsZipRecord(mv) || ZipMediaKind.IsZipPath(mv.Movie_Path))
             {
                 if (ZipDetailThumbnailMaterializer.TryCopyFromExistingTabThumbs(
@@ -365,7 +396,8 @@ namespace IndigoMovieManager
                 }
             }
 
-            if (!detailMissing || _thumbnailScheduler.JobCoordinator.IsInFlight(mv.Movie_Id, 99))
+            if (!ThumbnailTabErrorDetector.IsDetailThumbnailError(mv, _thumbLayoutCache)
+                || _thumbnailScheduler.JobCoordinator.IsInFlight(mv.Movie_Id, 99))
             {
                 return;
             }
@@ -445,7 +477,7 @@ namespace IndigoMovieManager
                     }
 
                     string path = MainVM.DbInfo.DBFullPath;
-                    return (string.IsNullOrWhiteSpace(path) ? false : true, path);
+                    return (!string.IsNullOrWhiteSpace(path), path);
                 }).Task.ConfigureAwait(false);
 
                 if (!shouldProcess || string.IsNullOrWhiteSpace(dbPath))
@@ -484,52 +516,74 @@ namespace IndigoMovieManager
                     return;
                 }
 
-                bool alreadyRegistered = await Dispatcher.InvokeAsync(() =>
-                {
-                    if (!_fileWatcherManager.IsSessionActive(watcherSession))
-                    {
-                        return true;
-                    }
-
-                    return !FolderCheckService.ShouldRegisterDiscoveredFile(dbPath, e.FullPath);
-                }).Task.ConfigureAwait(false);
-
-                if (alreadyRegistered)
+                string normalizedPath = MediaPathNormalizer.Normalize(e.FullPath);
+                if (string.IsNullOrWhiteSpace(normalizedPath))
                 {
                     return;
                 }
 
-                MovieInfo mvi = await MovieRegistrationHelper
-                    .TryRegisterDiscoveredFileAsync(dbPath, e.FullPath)
-                    .ConfigureAwait(false);
-                if (mvi == null)
+                if (!_discoveredFileRegistrationGate.TryEnter(normalizedPath))
                 {
+#if DEBUG
+                    Debug.WriteLine(
+                        $"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : [watcher] skip duplicate in-flight: {normalizedPath}");
+#endif
                     return;
                 }
 
-                await Dispatcher.InvokeAsync(async () =>
+                try
                 {
-                    if (!_fileWatcherManager.IsSessionActive(watcherSession))
+                    bool alreadyRegistered = await Dispatcher.InvokeAsync(() =>
+                    {
+                        if (!_fileWatcherManager.IsSessionActive(watcherSession))
+                        {
+                            return true;
+                        }
+
+                        return !FolderCheckService.ShouldRegisterDiscoveredFile(dbPath, e.FullPath);
+                    }).Task.ConfigureAwait(false);
+
+                    if (alreadyRegistered)
                     {
                         return;
                     }
 
-                    string sortId = MainVM.DbInfo.Sort ?? "1";
-                    await FilterAndSortAsync(sortId, true).ConfigureAwait(true);
-
-                    if (!_fileWatcherManager.IsSessionActive(watcherSession))
+                    MovieInfo mvi = await MovieRegistrationHelper
+                        .TryRegisterDiscoveredFileAsync(dbPath, e.FullPath)
+                        .ConfigureAwait(false);
+                    if (mvi == null)
                     {
                         return;
                     }
 
-                    int tabIndex = MainVM.DbInfo.CurrentTabIndex;
-                    if (tabIndex < 0)
+                    await Dispatcher.InvokeAsync(async () =>
                     {
-                        return;
-                    }
+                        if (!_fileWatcherManager.IsSessionActive(watcherSession))
+                        {
+                            return;
+                        }
 
-                    EnqueueDiscoveredFileThumbnails(mvi, tabIndex, dbPath);
-                }).Task.Unwrap().ConfigureAwait(false);
+                        string sortId = MainVM.DbInfo.Sort ?? "1";
+                        await FilterAndSortAsync(sortId, true).ConfigureAwait(true);
+
+                        if (!_fileWatcherManager.IsSessionActive(watcherSession))
+                        {
+                            return;
+                        }
+
+                        int tabIndex = MainVM.DbInfo.CurrentTabIndex;
+                        if (tabIndex < 0)
+                        {
+                            return;
+                        }
+
+                        EnqueueDiscoveredFileThumbnails(mvi, tabIndex, dbPath);
+                    }).Task.Unwrap().ConfigureAwait(false);
+                }
+                finally
+                {
+                    _discoveredFileRegistrationGate.Exit(normalizedPath);
+                }
             }
             catch (Exception ex)
             {
@@ -625,6 +679,7 @@ namespace IndigoMovieManager
                 Tabs.SelectedIndex = -1;
                 CancelActiveThumbnailWork();
                 _fileWatcherManager.Clear();
+                _discoveredFileRegistrationGate.Clear();
                 watchData?.Clear();
                 MainVM.DbInfo.SearchKeyword = "";
                 _movieRecordsLoaded = false;
@@ -651,6 +706,7 @@ namespace IndigoMovieManager
                     }
 
                     GetBookmarkTable(session);
+                    GetTagBarTable(session);
                 }
 
                 CreateWatcher();
@@ -662,9 +718,90 @@ namespace IndigoMovieManager
             }
         }
 
-        private void SetLoadingOverlayVisible(bool visible)
+        private void SetLoadingOverlayMessage(string message)
         {
-            LoadingOverlay.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+            if (LoadingOverlayMessage != null)
+            {
+                LoadingOverlayMessage.Text = message;
+            }
+        }
+
+        private void PushLoadingOverlay(string message, bool cancelPendingSearchOverlay = true)
+        {
+            if (cancelPendingSearchOverlay)
+            {
+                CancelPendingSearchOverlay();
+            }
+
+            SetLoadingOverlayMessage(message);
+            _loadingOverlayDepth++;
+            LoadingOverlay.Visibility = Visibility.Visible;
+        }
+
+        private void PopLoadingOverlay()
+        {
+            _loadingOverlayDepth = Math.Max(0, _loadingOverlayDepth - 1);
+            if (_loadingOverlayDepth == 0)
+            {
+                LoadingOverlay.Visibility = Visibility.Collapsed;
+            }
+        }
+
+        private void CancelPendingSearchOverlay()
+        {
+            if (_searchOverlayDelayCts == null)
+            {
+                return;
+            }
+
+            _searchOverlayDelayCts.Cancel();
+            _searchOverlayDelayCts.Dispose();
+            _searchOverlayDelayCts = null;
+        }
+
+        private void BeginSearchOverlayDelayed()
+        {
+            CancelPendingSearchOverlay();
+            _searchOverlayPushed = false;
+            var cts = new CancellationTokenSource();
+            _searchOverlayDelayCts = cts;
+            _ = RunSearchOverlayDelayAsync(cts);
+        }
+
+        private async Task RunSearchOverlayDelayAsync(CancellationTokenSource cts)
+        {
+            try
+            {
+                await Task.Delay(SearchOverlayDelayMs, cts.Token).ConfigureAwait(true);
+                if (cts.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    if (cts.IsCancellationRequested || !ReferenceEquals(_searchOverlayDelayCts, cts))
+                    {
+                        return;
+                    }
+
+                    PushLoadingOverlay("検索中...", cancelPendingSearchOverlay: false);
+                    _searchOverlayPushed = true;
+                });
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }
+
+        private void EndSearchOverlayDelayed()
+        {
+            CancelPendingSearchOverlay();
+            if (_searchOverlayPushed)
+            {
+                _searchOverlayPushed = false;
+                PopLoadingOverlay();
+            }
         }
 
         private int GetDefaultResolveTabIndex()
@@ -681,7 +818,7 @@ namespace IndigoMovieManager
                 return;
             }
 
-            SetLoadingOverlayVisible(true);
+            PushLoadingOverlay("読み込み中...");
             try
             {
                 _sessionState.BumpFilterGeneration();
@@ -700,7 +837,7 @@ namespace IndigoMovieManager
             }
             finally
             {
-                SetLoadingOverlayVisible(false);
+                PopLoadingOverlay();
             }
         }
 
@@ -741,6 +878,59 @@ namespace IndigoMovieManager
                 MainVM.BookmarkRecs,
                 MainVM.DbInfo.BookmarkFolder,
                 MainVM.DbInfo.DBName);
+            EnsureMissingBookmarkThumbnails();
+        }
+
+        private void GetTagBarTable(SQLiteSession session = null)
+        {
+            if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
+            {
+                MainVM.TagBarRecs.Clear();
+                return;
+            }
+
+            EnsureTagBarTable(MainVM.DbInfo.DBFullPath);
+            EnsureBuiltInStarRatingItems(MainVM.DbInfo.DBFullPath);
+            tagBarData = QueryDb(MainVM.DbInfo.DBFullPath, TagBarService.SelectAllOrderedSql, session);
+            TagBarService.LoadInto(tagBarData, MainVM.TagBarRecs);
+        }
+
+        private void EnsureMissingBookmarkThumbnails()
+        {
+            foreach (MovieRecords bookmark in MainVM.BookmarkRecs)
+            {
+                if (!BookmarkThumbnailRestoreService.TryPrepareRestore(
+                        bookmark,
+                        MainVM.MovieRecs,
+                        out string sourceMoviePath,
+                        out string saveThumbPath,
+                        out int capturePosSeconds))
+                {
+                    continue;
+                }
+
+                if (!_bookmarkThumbInFlight.Add(saveThumbPath))
+                {
+                    continue;
+                }
+
+                _ = CreateBookmarkThumbAsync(sourceMoviePath, saveThumbPath, capturePosSeconds);
+            }
+        }
+
+        public void RequestDetailThumbnailRecreate()
+        {
+            if (viewExtDetail.DataContext is not MovieRecords mv)
+            {
+                return;
+            }
+
+            if (!ThumbnailTabErrorDetector.IsDetailThumbnailError(mv, _thumbLayoutCache))
+            {
+                return;
+            }
+
+            EnsureDetailThumbnail(mv);
         }
 
         private void GetHistoryTable(string dbFullPath, SQLiteSession session = null)
@@ -758,8 +948,10 @@ namespace IndigoMovieManager
             SearchBox.Text = currentText;
         }
 
-        private void PromoteSearchHistory(string keyword) =>
+        private void PromoteSearchHistory(string keyword)
+        {
             HistoryService.PromoteSearchHistory(MainVM.HistoryRecs, keyword);
+        }
 
         private void GetSystemTable(string dbPath, SQLiteSession session = null)
         {
@@ -943,21 +1135,37 @@ namespace IndigoMovieManager
             bool showAll = string.IsNullOrEmpty(searchKeyword);
 
             MovieListCoordinator.FilterApplyResult result;
-            if (showAll && TryGetCachedAllItemsFilter(id, out result))
+            if (showAll && TryGetCachedAllItemsFilter(id, out MovieListCoordinator.FilterApplyResult cachedResult))
             {
+                result = cachedResult;
 #if DEBUG
                 cacheHit = true;
 #endif
             }
             else
             {
-                List<MovieRecords> snapshot = [.. MainVM.MovieRecs];
-                result = await Task.Run(() =>
-                    MovieListCoordinator.ApplyFilter(snapshot, searchKeyword, id)).ConfigureAwait(true);
-
-                if (showAll)
+                BeginSearchOverlayDelayed();
+                try
                 {
-                    StoreAllItemsFilterCache(id, result.Items);
+                    List<MovieRecords> snapshot = [.. MainVM.MovieRecs];
+                    int currentTabIndex = Tabs?.SelectedIndex ?? MainVM.DbInfo.CurrentTabIndex;
+                    var filterContext = new MovieListFilterContext
+                    {
+                        CurrentTabIndex = currentTabIndex,
+                        ThumbnailCache = _thumbLayoutCache,
+                        DbFullPath = MainVM.DbInfo.DBFullPath,
+                    };
+                    result = await Task.Run(() =>
+                        MovieListCoordinator.ApplyFilter(snapshot, searchKeyword, id, filterContext)).ConfigureAwait(true);
+
+                    if (showAll)
+                    {
+                        StoreAllItemsFilterCache(id, result.Items);
+                    }
+                }
+                finally
+                {
+                    EndSearchOverlayDelayed();
                 }
             }
 
@@ -1528,13 +1736,6 @@ namespace IndigoMovieManager
                 return;
             }
 
-            if (!SinkuMetadataFetcher.IsAvailable
-                && !MainVM.MovieRecs.Any(rec => ZipMediaKind.IsZipRecord(rec) || ZipMediaKind.IsZipPath(rec.Movie_Path)))
-            {
-                ShowSinkuUnavailableMessage();
-                return;
-            }
-
             var dialogWindow = new MessageBoxEx(this)
             {
                 DlogTitle = "ファイル情報の再取得",
@@ -1554,7 +1755,8 @@ namespace IndigoMovieManager
 
         private async void RefreshFileInfo_Click(object sender, RoutedEventArgs e)
         {
-            if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
+            if (!SinkuMetadataFetcher.IsAvailable
+                || string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
             {
                 return;
             }
@@ -1565,42 +1767,14 @@ namespace IndigoMovieManager
                 return;
             }
 
-            if (!SinkuMetadataFetcher.IsAvailable
-                && targets.All(rec => !ZipMediaKind.IsZipRecord(rec) && !ZipMediaKind.IsZipPath(rec.Movie_Path)))
-            {
-                ShowSinkuUnavailableMessage();
-                return;
-            }
-
             string dbPath = MainVM.DbInfo.DBFullPath;
             await Task.Run(() =>
             {
                 foreach (MovieRecords rec in targets)
                 {
-                    if (!ZipMediaKind.IsZipRecord(rec)
-                        && !ZipMediaKind.IsZipPath(rec.Movie_Path)
-                        && !SinkuMetadataFetcher.IsAvailable)
-                    {
-                        continue;
-                    }
-
                     RefreshFileInfoCore(dbPath, rec);
                 }
             }).ConfigureAwait(true);
-        }
-
-        private void ShowSinkuUnavailableMessage()
-        {
-            MessageBox.Show(
-                "ファイル情報の再取得には sinku が必要です。\n\n" +
-                "次の 4 ファイルを IndigoMovieManager.exe と同じフォルダに配置してください。\n" +
-                "  ・sinku.exe\n" +
-                "  ・Sinku.dll\n" +
-                "  ・format.ini\n" +
-                "  ・codecs.ini",
-                Assembly.GetExecutingAssembly().GetName().Name,
-                MessageBoxButton.OK,
-                MessageBoxImage.Exclamation);
         }
 
         private async Task RefreshAllFileInfoAsync()
@@ -1610,7 +1784,8 @@ namespace IndigoMovieManager
                 return;
             }
 
-            if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
+            if (!SinkuMetadataFetcher.IsAvailable
+                || string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
             {
                 Interlocked.Exchange(ref _fileInfoRefreshRunning, 0);
                 return;
@@ -1618,14 +1793,6 @@ namespace IndigoMovieManager
 
             List<MovieRecords> targets = [.. MainVM.MovieRecs];
             if (targets.Count == 0)
-            {
-                Interlocked.Exchange(ref _fileInfoRefreshRunning, 0);
-                return;
-            }
-
-            bool sinkuAvailable = SinkuMetadataFetcher.IsAvailable;
-            if (!sinkuAvailable
-                && targets.All(rec => !ZipMediaKind.IsZipRecord(rec) && !ZipMediaKind.IsZipPath(rec.Movie_Path)))
             {
                 Interlocked.Exchange(ref _fileInfoRefreshRunning, 0);
                 return;
@@ -1645,12 +1812,6 @@ namespace IndigoMovieManager
                     foreach (MovieRecords rec in targets)
                     {
                         cancelToken.ThrowIfCancellationRequested();
-                        if (!ZipMediaKind.IsZipRecord(rec)
-                            && !ZipMediaKind.IsZipPath(rec.Movie_Path)
-                            && !sinkuAvailable)
-                        {
-                            continue;
-                        }
 
                         RefreshFileInfoCore(dbPath, rec);
                         done++;
@@ -1684,6 +1845,11 @@ namespace IndigoMovieManager
         private void BtnExit_Click(object sender, RoutedEventArgs e)
         {
             Close();
+        }
+
+        private void OperationStatusCancel_Click(object sender, RoutedEventArgs e)
+        {
+            _statusBarProgress.RequestCancelActive();
         }
 
         private void BtnNew_Click(object sender, RoutedEventArgs e)
@@ -1769,7 +1935,7 @@ namespace IndigoMovieManager
             }
 
             NavigationDrawerItem item = TryGetNavigationItem(e);
-            if (item == null || string.IsNullOrEmpty(item.Id))
+            if (item == null || string.IsNullOrEmpty(item.Id) || !item.IsEnabled)
             {
                 return;
             }
@@ -2009,6 +2175,8 @@ namespace IndigoMovieManager
             // ブックマーク・リスト等の再取得
             GetBookmarkTable();
             BookmarkList.Items.Refresh();
+            GetTagBarTable();
+            TagBarList.Items.Refresh();
             await FilterAndSortAsync(MainVM.DbInfo.Sort, true).ConfigureAwait(true);
             Refresh();
         }
@@ -2057,11 +2225,7 @@ namespace IndigoMovieManager
 
                 if (sender is MenuItem senderObj && senderObj.Name == "PlayFromThumb")
                 {
-                    if (TryResolvePlayPositionFromThumb(mv, Tabs.SelectedIndex, out int panelIndex, out msec))
-                    {
-                        secPos = panelIndex;
-                    }
-                    else
+                    if (!TryResolvePlayPositionFromThumb(mv, Tabs.SelectedIndex, out _, out msec))
                     {
                         msec = GetPlayPosition(Tabs.SelectedIndex, mv, ref secPos);
                     }
@@ -2139,6 +2303,9 @@ namespace IndigoMovieManager
             if (_isDeletingSearchHistory) { return; }
             if (_isApplyingSearchKeyword) { return; }
 
+            // 手動でテキスト編集したらキーボードカーソルはリセットする。
+            _historyCursor = -1;
+
             string text = SearchBox.Text;
             if (string.IsNullOrEmpty(text))
             {
@@ -2150,84 +2317,362 @@ namespace IndigoMovieManager
 
         private void SearchBox_DropDownClosed(object sender, EventArgs e)
         {
+            _historyCursor = -1;
+        }
+
+        // MaterialDesign の ComboBox 既定テンプレート内のドロップダウン矢印（名前付き Path "arrow"）が
+        // 右端に寄りすぎるため、右側に少し余白を足す。テンプレート外からは直接指定できないため、
+        // Loaded 後に視覚ツリーから拾ってマージンを上書きする（右=4px 固定で多重適用しても安全）。
+        private void ComboBoxArrow_Loaded(object sender, RoutedEventArgs e)
+        {
+            if (sender is not ComboBox combo)
+            {
+                return;
+            }
+
+            if (FindDescendantByName(combo, "arrow") is FrameworkElement arrow)
+            {
+                Thickness m = arrow.Margin;
+                arrow.Margin = new Thickness(m.Left, m.Top, 4, m.Bottom);
+            }
+        }
+
+        private static FrameworkElement FindDescendantByName(DependencyObject root, string name)
+        {
+            if (root == null)
+            {
+                return null;
+            }
+
+            int childCount = VisualTreeHelper.GetChildrenCount(root);
+            for (int i = 0; i < childCount; i++)
+            {
+                DependencyObject child = VisualTreeHelper.GetChild(root, i);
+                if (child is FrameworkElement fe && fe.Name == name)
+                {
+                    return fe;
+                }
+
+                FrameworkElement nested = FindDescendantByName(child, name);
+                if (nested != null)
+                {
+                    return nested;
+                }
+            }
+
+            return null;
+        }
+
+        private void SearchBox_DropDownOpened(object sender, EventArgs e)
+        {
+            _historyCursor = -1;
+
+            // 開いた直後はフォーカスがポップアップのコンテナ（項目以外）にあり、矢印・Enter が
+            // 本体側・項目側どちらの PreviewKeyDown にも届かない（最初のキーが WPF 既定動作になる）。
+            // 先頭項目へフォーカスを移して、最初から項目ハンドラでキーを拾えるようにする。
+            Dispatcher.BeginInvoke(
+                new Action(() =>
+                {
+                    if (SearchBox.IsDropDownOpen && SearchBox.Items.Count > 0)
+                    {
+                        FocusHistoryContainer(SearchBox, 0);
+                    }
+                }),
+                DispatcherPriority.Input);
+        }
+
+        // 矢印キーでドロップダウン内の選択を移動し、検索ボックスのテキストを候補に更新する（即時検索はしない）。
+        private void MoveSearchHistoryHighlight(ComboBox combo, int direction)
+        {
+            int count = combo.Items.Count;
+            if (count == 0)
+            {
+                return;
+            }
+
+            // 独自カーソルを基準に移動する（SelectedIndex は Text 設定で -1 に戻されるため使わない）。
+            int current = _historyCursor;
+            if (current < 0 || current >= count)
+            {
+                current = -1;
+            }
+
+            int next = current + direction;
+            if (next < 0)
+            {
+                next = count - 1;
+            }
+            else if (next >= count)
+            {
+                next = 0;
+            }
+
+            if (combo.Items[next] is not History target)
+            {
+                return;
+            }
+
+            _historyCursor = next;
+            string text = target.Find_Text ?? "";
+            _isApplyingSearchKeyword = true;
+            try
+            {
+                MainVM.DbInfo.SearchKeyword = text;
+                SearchBox.Text = text;
+                // 見た目のカーソルは SelectedIndex を最後に設定して反映する（IsSelected トリガー）。
+                combo.SelectedIndex = next;
+                BringSearchHistoryItemIntoView(combo, next);
+            }
+            finally
+            {
+                _isApplyingSearchKeyword = false;
+            }
+
+            // カーソル項目へフォーカスを移し、次のキーも項目側 PreviewKeyDown で確実に拾えるようにする。
+            if (combo.IsDropDownOpen)
+            {
+                FocusHistoryContainer(combo, next);
+            }
+        }
+
+        // 指定インデックスの ComboBoxItem を表示・フォーカスする（仮想化は無効化済みのため必ず取得できる）。
+        private static void FocusHistoryContainer(ComboBox combo, int index)
+        {
+            if (index < 0 || index >= combo.Items.Count)
+            {
+                return;
+            }
+
+            if (combo.ItemContainerGenerator.ContainerFromIndex(index) is ComboBoxItem container)
+            {
+                container.BringIntoView();
+                container.Focus();
+            }
+        }
+
+        // 指定インデックスの ComboBoxItem を表示範囲内へスクロールする。
+        private static void BringSearchHistoryItemIntoView(ComboBox combo, int index)
+        {
+            if (index < 0 || index >= combo.Items.Count)
+            {
+                return;
+            }
+
+            if (combo.ItemContainerGenerator.ContainerFromIndex(index) is ComboBoxItem container)
+            {
+                container.BringIntoView();
+            }
+        }
+
+        // 削除対象の履歴項目を返す。キーボードカーソル（_historyCursor）を優先し、無ければマウスホバー項目。
+        private History GetActiveSearchHistory(ComboBox combo)
+        {
+            if (_historyCursor >= 0
+                && _historyCursor < combo.Items.Count
+                && combo.Items[_historyCursor] is History current)
+            {
+                return current;
+            }
+
+            foreach (object obj in combo.Items)
+            {
+                if (combo.ItemContainerGenerator.ContainerFromItem(obj) is ComboBoxItem { IsMouseOver: true } container
+                    && container.DataContext is History hovered)
+                {
+                    return hovered;
+                }
+            }
+
+            return combo.SelectedItem as History;
         }
 
         // ドロップダウンリスト内でマウスクリック時に検索
         private async void SearchBoxItem_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
+            if (IsSearchHistoryDeleteButtonSource(e.OriginalSource as DependencyObject))
+            {
+                return;
+            }
+
             if (sender is not ComboBoxItem item)
             {
                 return;
             }
 
             e.Handled = true;
-            string keyword = item.Content?.ToString() ?? "";
             if (item.DataContext is History history)
             {
-                keyword = history.Find_Text ?? "";
+                SearchBox.IsDropDownOpen = false;
+                await SearchByKeywordAsync(history.Find_Text ?? "").ConfigureAwait(true);
+                return;
             }
 
+            string keyword = item.Content?.ToString() ?? "";
             SearchBox.IsDropDownOpen = false;
             await SearchByKeywordAsync(keyword).ConfigureAwait(true);
         }
 
+        private void SearchHistoryDeleteButton_Click(object sender, RoutedEventArgs e)
+        {
+            e.Handled = true;
+            if (sender is FrameworkElement element
+                && element.DataContext is History history)
+            {
+                RemoveSearchHistoryItem(history);
+            }
+        }
+
+        private void SearchHistoryDeleteMenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not MenuItem menuItem
+                || menuItem.Parent is not ContextMenu contextMenu
+                || contextMenu.PlacementTarget is not FrameworkElement target)
+            {
+                return;
+            }
+
+            if (target.DataContext is History history)
+            {
+                RemoveSearchHistoryItem(history);
+            }
+        }
+
+        private void RemoveSearchHistoryItem(History history)
+        {
+            if (history == null
+                || string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
+            {
+                return;
+            }
+
+            string keepText = SearchBox.Text ?? "";
+            long findId = history.Find_Id;
+            bool keepDropdownHighlight = SearchBox.IsDropDownOpen;
+            int removedIndex = MainVM.HistoryRecs.IndexOf(history);
+
+            // 削除位置と同じインデックス（末尾削除なら1つ上）を次のカーソル位置にする。
+            int nextIndex = -1;
+            if (keepDropdownHighlight && removedIndex >= 0 && MainVM.HistoryRecs.Count > 1)
+            {
+                nextIndex = Math.Min(removedIndex, MainVM.HistoryRecs.Count - 2);
+            }
+
+            _isDeletingSearchHistory = true;
+            try
+            {
+                MainVM.HistoryRecs.Remove(history);
+
+                // 入力テキストは消さずに残す。カーソルだけ次の項目へ。
+                _historyCursor = nextIndex;
+                SearchBox.SelectedIndex = nextIndex;
+                SearchBox.Text = keepText;
+                if (!string.Equals(MainVM.DbInfo.SearchKeyword, keepText, StringComparison.Ordinal))
+                {
+                    MainVM.DbInfo.SearchKeyword = keepText;
+                }
+            }
+            finally
+            {
+                _isDeletingSearchHistory = false;
+            }
+
+            if (keepDropdownHighlight && nextIndex >= 0)
+            {
+                // 削除後はカーソル項目へフォーカスを移し、続けて矢印・Enter を項目側で拾えるようにする。
+                SearchBox.Dispatcher.BeginInvoke(
+                    () => FocusHistoryContainer(SearchBox, nextIndex),
+                    DispatcherPriority.Loaded);
+            }
+
+            if (findId > 0)
+            {
+                _ = Task.Run(() => DeleteHistoryTable(MainVM.DbInfo.DBFullPath, findId));
+            }
+
+            _statusBarProgress.ShowIdleStatusMessage("検索履歴を削除しました");
+        }
+
+        private static bool IsSearchHistoryDeleteButtonSource(DependencyObject source)
+        {
+            while (source != null)
+            {
+                if (source is Button button && button.Content as string == "×")
+                {
+                    return true;
+                }
+
+                source = VisualTreeHelper.GetParent(source);
+            }
+
+            return false;
+        }
+
+        // ComboBox 本体（編集テキストボックスにフォーカスがある場合）からのキー入力。
         private async void SearchBox_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (sender is ComboBox combo)
+            {
+                await HandleSearchBoxKeyAsync(combo, e).ConfigureAwait(true);
+            }
+        }
+
+        // ドロップダウン項目（ポップアップ）にフォーカスがある場合のキー入力。
+        // ドロップダウンを開くとフォーカスがポップアップ側へ移るため、項目側でもキーを拾う必要がある。
+        private async void SearchBoxItem_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (sender is ComboBoxItem item
+                && ItemsControl.ItemsControlFromItemContainer(item) is ComboBox combo)
+            {
+                await HandleSearchBoxKeyAsync(combo, e).ConfigureAwait(true);
+            }
+        }
+
+        private async Task HandleSearchBoxKeyAsync(ComboBox combo, KeyEventArgs e)
         {
             if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath)) { return; }
             if (_imeFlag) { return; }
-            if (sender is not ComboBox combo)
+            if (e.Handled) { return; }
+
+            if (combo.IsDropDownOpen && (e.Key == Key.Down || e.Key == Key.Up))
             {
+                e.Handled = true;
+                MoveSearchHistoryHighlight(combo, e.Key == Key.Down ? 1 : -1);
                 return;
             }
 
             if (combo.IsDropDownOpen
-                && e.Key == Key.Enter
-                && combo.SelectedItem is History enterHistory)
+                && e.Key == Key.Delete
+                && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
             {
-                e.Handled = true;
-                combo.IsDropDownOpen = false;
-                await SearchByKeywordAsync(enterHistory.Find_Text ?? "").ConfigureAwait(true);
+                History deleteHistory = GetActiveSearchHistory(combo);
+                if (deleteHistory != null)
+                {
+                    e.Handled = true;
+                    RemoveSearchHistoryItem(deleteHistory);
+                }
+
                 return;
             }
 
-            // Deleteキーで履歴削除
-            if (e.Key == Key.Delete && combo.IsDropDownOpen && combo.SelectedItem is History deleteHistory)
-            {
-                e.Handled = true;
-
-                string keepText = combo.Text;
-                long findId = deleteHistory.Find_Id;
-
-                _isDeletingSearchHistory = true;
-                try
-                {
-                    MainVM.HistoryRecs.Remove(deleteHistory);
-                    combo.SelectedIndex = -1;
-                    combo.Text = keepText;
-                    if (!string.Equals(MainVM.DbInfo.SearchKeyword, keepText, StringComparison.Ordinal))
-                    {
-                        MainVM.DbInfo.SearchKeyword = keepText;
-                    }
-                }
-                finally
-                {
-                    _isDeletingSearchHistory = false;
-                }
-
-                _ = Task.Run(() => DeleteHistoryTable(MainVM.DbInfo.DBFullPath, findId));
-                return;
-            }
-
-            // Enterで検索
+            // Enter は常に入力テキストで検索する（古い選択項目に引きずられないように）。
             if (e.Key == Key.Enter)
             {
                 e.Handled = true;
-                await SearchByKeywordAsync(combo.Text ?? "").ConfigureAwait(true);
+                string keyword = combo.Text ?? "";
+                if (combo.IsDropDownOpen)
+                {
+                    combo.IsDropDownOpen = false;
+                }
+
+                await SearchByKeywordAsync(keyword).ConfigureAwait(true);
             }
         }
 
         // 検索実行処理
-        public async Task SearchByKeywordAsync(string keyword)
+        public Task SearchByKeywordAsync(string keyword) =>
+            SearchByKeywordAsync(keyword, addToHistory: true);
+
+        public async Task SearchByKeywordAsync(string keyword, bool addToHistory)
         {
             if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
             {
@@ -2235,12 +2680,13 @@ namespace IndigoMovieManager
             }
 
             string text = keyword ?? "";
+            _historyCursor = -1;
             _isApplyingSearchKeyword = true;
             try
             {
                 // 履歴リストを先に更新してから ComboBox へ反映しないと、
                 // SelectedValue 不一致で Text が空になり全件表示へ戻ることがある。
-                if (!string.IsNullOrEmpty(text))
+                if (addToHistory && !string.IsNullOrEmpty(text))
                 {
                     PromoteSearchHistory(text);
                 }
@@ -2271,8 +2717,8 @@ namespace IndigoMovieManager
                 }
             }
 
-            // 特殊検索（例: {notag}）も通常検索と同様に履歴へ反映する。
-            if (!string.IsNullOrEmpty(text))
+            // 特殊検索（例: {::error} や {tag = ''}）も通常検索と同様に履歴へ反映する。
+            if (addToHistory && !string.IsNullOrEmpty(text))
             {
                 string dbPath = MainVM.DbInfo.DBFullPath;
                 _ = Task.Run(() => InsertHistoryTable(dbPath, text));
@@ -2283,6 +2729,318 @@ namespace IndigoMovieManager
         {
             await SearchByKeywordAsync(SearchBox.Text).ConfigureAwait(true);
         }
+
+        #region 保存済み検索条件（TagBar）
+
+        private void SaveSearchTagButton_Click(object sender, RoutedEventArgs e) =>
+            BeginAddTagBarItem(SearchBox.Text);
+
+        private void TagBarAdd_Click(object sender, RoutedEventArgs e) =>
+            BeginAddTagBarItem("");
+
+        private void BeginAddTagBarItem(string initialContents)
+        {
+            if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
+            {
+                MessageBox.Show(
+                    "管理ファイルが選択されていません。",
+                    Assembly.GetExecutingAssembly().GetName().Name,
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Exclamation);
+                return;
+            }
+
+            string contents = initialContents ?? "";
+            string initialTitle = string.IsNullOrEmpty(contents) ? "" : contents;
+            if (!TryShowTagBarEditDialog(initialTitle, contents, out string title, out string savedContents))
+            {
+                return;
+            }
+
+            long itemId = InsertTagBarItem(MainVM.DbInfo.DBFullPath, title, savedContents);
+            if (itemId <= 0)
+            {
+                return;
+            }
+
+            GetTagBarTable();
+            SelectTagBarItem(itemId);
+        }
+
+        private void TagBarEdit_Click(object sender, RoutedEventArgs e) =>
+            EditSelectedTagBarItem(focusContents: false);
+
+        private void TagBarRenameMenuItem_Click(object sender, RoutedEventArgs e) =>
+            EditSelectedTagBarItem(focusContents: false);
+
+        private void TagBarEditContentsMenuItem_Click(object sender, RoutedEventArgs e) =>
+            EditSelectedTagBarItem(focusContents: true);
+
+        private void TagBarDuplicateMenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            TagBarItem item = GetTagBarItemFromMenuSender(sender) ?? TagBarList.SelectedItem as TagBarItem;
+            if (item == null)
+            {
+                return;
+            }
+
+            string title = TagBarService.BuildDuplicateTitle(item.Title);
+            if (!TryShowTagBarEditDialog(title, item.Contents, out string savedTitle, out string savedContents))
+            {
+                return;
+            }
+
+            long itemId = InsertTagBarItem(MainVM.DbInfo.DBFullPath, savedTitle, savedContents);
+            if (itemId <= 0)
+            {
+                return;
+            }
+
+            GetTagBarTable();
+            SelectTagBarItem(itemId);
+        }
+
+        private void TagBarDelete_Click(object sender, RoutedEventArgs e) =>
+            DeleteSelectedTagBarItem();
+
+        private void TagBarDeleteMenuItem_Click(object sender, RoutedEventArgs e) =>
+            DeleteTagBarItemFromDb(GetTagBarItemFromMenuSender(sender));
+
+        private void EditSelectedTagBarItem(bool focusContents)
+        {
+            if (TagBarList.SelectedItem is not TagBarItem item)
+            {
+                MessageBox.Show(
+                    this,
+                    "編集する保存済み検索条件を選択してください。",
+                    Assembly.GetExecutingAssembly().GetName().Name,
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            if (TagBarService.IsBuiltInStarRating(item))
+            {
+                MessageBox.Show(
+                    this,
+                    "★評価の保存済み検索条件は編集できません。",
+                    Assembly.GetExecutingAssembly().GetName().Name,
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            if (!TryShowTagBarEditDialog(item.Title, item.Contents, out string title, out string contents, focusContents))
+            {
+                return;
+            }
+
+            UpdateTagBarItem(MainVM.DbInfo.DBFullPath, item.Item_Id, title, contents);
+            item.Title = title;
+            item.Contents = contents;
+            TagBarList.Items.Refresh();
+        }
+
+        private void DeleteSelectedTagBarItem()
+        {
+            if (TagBarList.SelectedItem is not TagBarItem item)
+            {
+                MessageBox.Show(
+                    this,
+                    "削除する保存済み検索条件を選択してください。",
+                    Assembly.GetExecutingAssembly().GetName().Name,
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            DeleteTagBarItemFromDb(item);
+        }
+
+        private void DeleteTagBarItemFromDb(TagBarItem item)
+        {
+            if (item == null)
+            {
+                return;
+            }
+
+            if (TagBarService.IsBuiltInStarRating(item))
+            {
+                MessageBox.Show(
+                    this,
+                    "★評価の保存済み検索条件は削除できません。",
+                    Assembly.GetExecutingAssembly().GetName().Name,
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            DeleteTagBarItem(MainVM.DbInfo.DBFullPath, item.Item_Id);
+            MainVM.TagBarRecs.Remove(item);
+            TagBarList.SelectedItem = null;
+            UpdateTagBarCommandButtonState();
+        }
+
+        private void TagBarList_SelectionChanged(object sender, SelectionChangedEventArgs e) =>
+            UpdateTagBarCommandButtonState();
+
+        private void UpdateTagBarCommandButtonState()
+        {
+            bool isBuiltIn = TagBarList.SelectedItem is TagBarItem item
+                && TagBarService.IsBuiltInStarRating(item);
+            bool hasSelection = TagBarList.SelectedItem is TagBarItem;
+
+            TagBarEditButton.IsEnabled = hasSelection && !isBuiltIn;
+            TagBarDeleteButton.IsEnabled = hasSelection && !isBuiltIn;
+        }
+
+        private void TagBarItem_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+        {
+            if (sender is not ListBoxItem listItem || listItem.DataContext is not TagBarItem item)
+            {
+                return;
+            }
+
+            if (listItem.ContextMenu == null)
+            {
+                return;
+            }
+
+            bool canModify = !TagBarService.IsBuiltInStarRating(item);
+            foreach (object child in listItem.ContextMenu.Items)
+            {
+                if (child is not MenuItem menuItem)
+                {
+                    continue;
+                }
+
+                if ("TagBarDeleteMenuItem".Equals(menuItem.Tag)
+                    || "TagBarRenameMenuItem".Equals(menuItem.Tag)
+                    || "TagBarEditContentsMenuItem".Equals(menuItem.Tag))
+                {
+                    menuItem.IsEnabled = canModify;
+                }
+            }
+        }
+
+        private async void TagBarItem_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.ClickCount != 1)
+            {
+                return;
+            }
+
+            if (sender is not ListBoxItem listItem || listItem.DataContext is not TagBarItem item)
+            {
+                return;
+            }
+
+            TagBarList.SelectedItem = item;
+            await SearchByKeywordAsync(item.EffectiveContents, addToHistory: false).ConfigureAwait(true);
+        }
+
+        private void TagBarItem_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.ChangedButton != MouseButton.Middle)
+            {
+                return;
+            }
+
+            e.Handled = true;
+
+            if (sender is not ListBoxItem listItem || listItem.DataContext is not TagBarItem item)
+            {
+                return;
+            }
+
+            TagBarList.SelectedItem = item;
+            AppendTagBarContentsToSelectedMovies(item);
+        }
+
+        private void AppendTagBarContentsToSelectedMovies(TagBarItem item)
+        {
+            if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
+            {
+                return;
+            }
+
+            List<MovieRecords> selected = GetSelectedItemsByTabIndex();
+            if (selected == null || selected.Count == 0)
+            {
+                MessageBox.Show(
+                    this,
+                    "タグを付けるレコードを選択してください。",
+                    Assembly.GetExecutingAssembly().GetName().Name,
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            string tagText = TagBarService.ExpandContentsForTagAppend(
+                TagBarService.GetEffectiveContents(item));
+            if (string.IsNullOrWhiteSpace(tagText))
+            {
+                return;
+            }
+
+            foreach (MovieRecords rec in selected)
+            {
+                TagMutationService.ApplyAdd(rec, tagText);
+                UpdateMovieSingleColumn(MainVM.DbInfo.DBFullPath, rec.Movie_Id, "tag", rec.Tags);
+            }
+
+            Refresh();
+        }
+
+        private bool TryShowTagBarEditDialog(
+            string initialTitle,
+            string initialContents,
+            out string title,
+            out string contents,
+            bool focusContents = false)
+        {
+            title = initialTitle ?? "";
+            contents = initialContents ?? "";
+
+            var dialog = new TagBarEditWindow
+            {
+                Owner = this,
+                DisplayTitle = title,
+                SearchContents = contents,
+                FocusSearchContentsOnOpen = focusContents,
+            };
+
+            if (dialog.ShowDialog() != true || dialog.CloseStatus() != MessageBoxResult.OK)
+            {
+                return false;
+            }
+
+            title = dialog.DisplayTitle.Trim();
+            contents = dialog.SearchContents.Trim();
+            return true;
+        }
+
+        private void SelectTagBarItem(long itemId)
+        {
+            TagBarItem item = MainVM.TagBarRecs.FirstOrDefault(x => x.Item_Id == itemId);
+            if (item != null)
+            {
+                TagBarList.SelectedItem = item;
+                TagBarList.ScrollIntoView(item);
+            }
+        }
+
+        private static TagBarItem GetTagBarItemFromMenuSender(object sender)
+        {
+            if (sender is not MenuItem menuItem)
+            {
+                return null;
+            }
+
+            return menuItem.DataContext as TagBarItem;
+        }
+
+        #endregion
 
         private void List_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
@@ -2390,6 +3148,7 @@ namespace IndigoMovieManager
             }
 
             bool isZip = ZipMediaKind.IsZipRecord(_contextMenuMovie);
+            bool sinkuAvailable = SinkuMetadataFetcher.IsAvailable;
             foreach (object item in menu.Items)
             {
                 if (item is not MenuItem menuItem)
@@ -2400,6 +3159,10 @@ namespace IndigoMovieManager
                 if (menuItem.Name == "ManualThumbnail" || menuItem.Name == "PlayFromThumb")
                 {
                     menuItem.IsEnabled = !isZip;
+                }
+                else if (menuItem.Name == "RefreshFileInfo")
+                {
+                    menuItem.IsEnabled = sinkuAvailable;
                 }
             }
         }
@@ -2730,7 +3493,7 @@ namespace IndigoMovieManager
                     string dbPath = MainVM.DbInfo.DBFullPath;
                     if (string.IsNullOrWhiteSpace(dbPath))
                     {
-                        return (generation, dbPath, "", new List<(string Folder, bool Sub)>());
+                        return (generation, dbPath, "", []);
                     }
 
                     MediaExtensionSettings.EnsureRequiredExtensions();
@@ -2817,34 +3580,48 @@ namespace IndigoMovieManager
 
                         try
                         {
-                            MovieInfo mvi = await MovieRegistrationHelper
-                                .TryRegisterDiscoveredFileAsync(dbFullPath, fileFullPath)
-                                .ConfigureAwait(false);
-                            if (mvi == null)
+                            string normalizedPath = MediaPathNormalizer.Normalize(fileFullPath);
+                            if (string.IsNullOrWhiteSpace(normalizedPath)
+                                || !_discoveredFileRegistrationGate.TryEnter(normalizedPath))
                             {
                                 continue;
                             }
 
-                            pathIndex.Register(mvi.MoviePath);
-                            FolderCheckflg = true;
-
-                            int tabIndex = await Dispatcher.InvokeAsync(() => MainVM.DbInfo.CurrentTabIndex);
-
-                            CancelThumbnailWorkForMovie(mvi.MovieId);
-                            addFiles.Add(new QueueObj
+                            try
                             {
-                                MovieId = mvi.MovieId,
-                                MovieFullPath = mvi.MoviePath,
-                                Tabindex = tabIndex,
-                                DbFullPath = dbFullPath,
-                            });
-                            addFiles.Add(new QueueObj
+                                MovieInfo mvi = await MovieRegistrationHelper
+                                    .TryRegisterDiscoveredFileAsync(dbFullPath, fileFullPath)
+                                    .ConfigureAwait(false);
+                                if (mvi == null)
+                                {
+                                    continue;
+                                }
+
+                                pathIndex.Register(mvi.MoviePath);
+                                FolderCheckflg = true;
+
+                                int tabIndex = await Dispatcher.InvokeAsync(() => MainVM.DbInfo.CurrentTabIndex);
+
+                                CancelThumbnailWorkForMovie(mvi.MovieId);
+                                addFiles.Add(new QueueObj
+                                {
+                                    MovieId = mvi.MovieId,
+                                    MovieFullPath = mvi.MoviePath,
+                                    Tabindex = tabIndex,
+                                    DbFullPath = dbFullPath,
+                                });
+                                addFiles.Add(new QueueObj
+                                {
+                                    MovieId = mvi.MovieId,
+                                    MovieFullPath = mvi.MoviePath,
+                                    Tabindex = 99,
+                                    DbFullPath = dbFullPath,
+                                });
+                            }
+                            finally
                             {
-                                MovieId = mvi.MovieId,
-                                MovieFullPath = mvi.MoviePath,
-                                Tabindex = 99,
-                                DbFullPath = dbFullPath,
-                            });
+                                _discoveredFileRegistrationGate.Exit(normalizedPath);
+                            }
                         }
                         catch (Exception)
                         {
@@ -2930,8 +3707,15 @@ namespace IndigoMovieManager
 
         private async Task CreateBookmarkThumbAsync(string movieFullPath, string saveThumbPath, int capturePos)
         {
-            await BookmarkThumbnailCreator.CreateAsync(movieFullPath, saveThumbPath, capturePos).ConfigureAwait(true);
-            BookmarkList.Items.Refresh();
+            try
+            {
+                await BookmarkThumbnailCreator.CreateAsync(movieFullPath, saveThumbPath, capturePos).ConfigureAwait(true);
+            }
+            finally
+            {
+                _bookmarkThumbInFlight.Remove(saveThumbPath);
+                BookmarkList.Items.Refresh();
+            }
         }
 
         private ThumbnailCreationHost CreateThumbnailHost(QueueObj queueObj)
@@ -3571,6 +4355,8 @@ namespace IndigoMovieManager
         ListView IMainWindowListViews.BigList10 => BigList10;
 
         void IMainWindowActions.RefreshExtDetail() => viewExtDetail.Refresh();
+
+        void IMainWindowActions.RequestDetailThumbnailRecreate() => RequestDetailThumbnailRecreate();
 
         void IMainWindowActions.RefreshActiveList(int tabIndex) =>
             TabListRefreshHelper.RefreshListByTabIndex(tabIndex, this);

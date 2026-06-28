@@ -15,6 +15,7 @@ namespace IndigoMovieManager.ModelViews
         public ObservableCollection<MovieRecords> MovieRecs { get; set; }
         public ObservableCollection<MovieRecords> BookmarkRecs { get; set; }
         public ObservableCollection<History> HistoryRecs { get; set; }
+        public ObservableCollection<TagBarItem> TagBarRecs { get; set; }
         public ObservableCollection<SortItem> SortLists { get; set; }
 
         public MainWindowViewModel()
@@ -76,6 +77,7 @@ namespace IndigoMovieManager.ModelViews
                     Text = NavigationMenuIds.RefreshAllFileInfo,
                     Id = NavigationMenuIds.RefreshAllFileInfo,
                     IconKind = PackIconKind.FileDocumentOutline,
+                    IsEnabled = SinkuMetadataFetcher.IsAvailable,
                 },
             ];
             ExitNavItems =
@@ -90,6 +92,7 @@ namespace IndigoMovieManager.ModelViews
             MovieRecs = [];
             BookmarkRecs = [];
             HistoryRecs = [];
+            TagBarRecs = [];
             BindingOperations.EnableCollectionSynchronization(MovieRecs, new object());
 
             SortLists =

@@ -1,4 +1,4 @@
-using System.IO;
+using IndigoMovieManager.Services;
 
 namespace IndigoMovieManager
 {
@@ -8,9 +8,14 @@ namespace IndigoMovieManager
         {
             public IReadOnlyList<MovieRecords> Items { get; init; }
             public int SearchCount { get; init; }
+            public string OverrideSortId { get; init; }
         }
 
-        public static FilterResult Build(IReadOnlyList<MovieRecords> source, string searchKeyword, string sortId)
+        public static FilterResult Build(
+            IReadOnlyList<MovieRecords> source,
+            string searchKeyword,
+            string sortId,
+            MovieListFilterContext context = null)
         {
             IEnumerable<MovieRecords> filterList = source;
             int searchCount = source.Count;
@@ -37,32 +42,30 @@ namespace IndigoMovieManager
                 else if (searchText.StartsWith('{') && searchText.EndsWith('}'))
                 {
                     string inner = searchText[1..^1].Trim();
+                    string effectiveSortId = sortId;
+                    if (WhiteBrowserBraceSearch.TryApply(
+                            source,
+                            inner,
+                            context,
+                            out IReadOnlyList<MovieRecords> braceFiltered,
+                            out string overrideSortId))
+                    {
+                        filterList = braceFiltered;
+                        searchCount = filterList.Count();
+                        if (!string.IsNullOrEmpty(overrideSortId))
+                        {
+                            effectiveSortId = overrideSortId;
+                        }
+                    }
 
-                    if (inner.Equals("notag", StringComparison.CurrentCultureIgnoreCase))
+                    filterList = SortDefinitions.Apply(effectiveSortId, filterList);
+                    List<MovieRecords> braceItems = [.. filterList];
+                    return new FilterResult
                     {
-                        filterList = filterList.Where(x => string.IsNullOrWhiteSpace(x.Tags));
-                        searchCount = filterList.Count();
-                    }
-                    else if (inner.Equals("tag", StringComparison.CurrentCultureIgnoreCase))
-                    {
-                        filterList = filterList.Where(x => !string.IsNullOrWhiteSpace(x.Tags));
-                        searchCount = filterList.Count();
-                    }
-                    else if (inner.Equals("nofile", StringComparison.CurrentCultureIgnoreCase))
-                    {
-                        filterList = filterList.Where(x => !File.Exists(x.Movie_Path ?? ""));
-                        searchCount = filterList.Count();
-                    }
-                    else if (inner.Equals("dup", StringComparison.CurrentCultureIgnoreCase))
-                    {
-                        HashSet<string> dupHashes = [.. filterList
-                            .GroupBy(x => x.Hash)
-                            .Where(g => !string.IsNullOrEmpty(g.Key) && g.Count() > 1)
-                            .Select(g => g.Key)];
-
-                        filterList = filterList.Where(x => dupHashes.Contains(x.Hash));
-                        searchCount = filterList.Count();
-                    }
+                        Items = braceItems,
+                        SearchCount = searchCount,
+                        OverrideSortId = effectiveSortId,
+                    };
                 }
                 else
                 {
@@ -76,23 +79,19 @@ namespace IndigoMovieManager
 
                             return andTerms.All(term =>
                             {
-                                string[] fields =
-                                [
-                                    item.Movie_Name ?? "",
-                                    item.Movie_Path ?? "",
-                                    item.Tags ?? "",
-                                    item.Comment1 ?? "",
-                                    item.Comment2 ?? "",
-                                    item.Comment3 ?? ""
-                                ];
+                                if (term.StartsWith('!'))
+                                {
+                                    // WhiteBrowser 準拠のタグ検索（タグ単位で完全一致）。
+                                    return MatchesTagExact(item, term[1..]);
+                                }
 
                                 if (term.StartsWith('-'))
                                 {
                                     string keyword = term[1..];
-                                    return fields.All(f => !f.Contains(keyword, StringComparison.CurrentCultureIgnoreCase));
+                                    return !MatchesTerm(item, keyword);
                                 }
 
-                                return fields.Any(f => f.Contains(term, StringComparison.CurrentCultureIgnoreCase));
+                                return MatchesTerm(item, term);
                             });
                         });
                     });
@@ -108,6 +107,53 @@ namespace IndigoMovieManager
                 Items = items,
                 SearchCount = searchCount
             };
+        }
+
+        // ファイル名・パス・コメントは部分一致、タグはタグ単位で完全一致（WhiteBrowser 準拠）。
+        private static bool MatchesTerm(MovieRecords item, string term)
+        {
+            if (string.IsNullOrEmpty(term))
+            {
+                return false;
+            }
+
+            string[] textFields =
+            [
+                item.Movie_Name ?? "",
+                item.Movie_Path ?? "",
+                item.Comment1 ?? "",
+                item.Comment2 ?? "",
+                item.Comment3 ?? ""
+            ];
+
+            if (textFields.Any(f => f.Contains(term, StringComparison.CurrentCultureIgnoreCase)))
+            {
+                return true;
+            }
+
+            return MatchesTagExact(item, term);
+        }
+
+        // タグ単位の完全一致。「★」で「★★」がヒットしないようにする。
+        private static bool MatchesTagExact(MovieRecords item, string tag)
+        {
+            if (string.IsNullOrEmpty(tag))
+            {
+                return false;
+            }
+
+            if (item.Tag is { } tagList)
+            {
+                foreach (string t in tagList)
+                {
+                    if (string.Equals(t?.Trim(), tag, StringComparison.CurrentCultureIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
         }
     }
 }

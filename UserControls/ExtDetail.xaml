@@ -38,6 +38,7 @@
                     <Image
                         d:Source="../Images/errorGrid.jpg"
                         ContextMenu="{DynamicResource menuContext}"
+                        PreviewMouseLeftButtonDown="ThumbnailImage_PreviewMouseLeftButtonDown"
                         VirtualizingPanel.IsVirtualizing="True"
                         VirtualizingPanel.ScrollUnit="Pixel"
                         VirtualizingPanel.VirtualizationMode="Recycling">

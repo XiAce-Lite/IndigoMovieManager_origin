@@ -15,25 +15,29 @@
     <Grid>
         <materialDesign:ColorZone Width="Auto">
             <StackPanel Height="NaN" Orientation="Vertical">
-                <StackPanel
+                <Grid
                     x:Name="messageArea"
-                    Margin="15,21,7,10"
-                    Orientation="Horizontal">
+                    Margin="15,21,15,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
                     <materialDesign:PackIcon
                         x:Name="dlogIcon"
+                        Grid.Column="0"
                         Width="40"
                         Height="40"
                         VerticalAlignment="Center"
                         Kind="QuestionBoxOutline" />
                     <TextBlock
                         x:Name="dlogMessage"
-                        Width="325"
+                        Grid.Column="1"
                         Margin="8,0,0,0"
                         VerticalAlignment="Center"
                         d:Text="テストメッセージです。長いメッセージの場合どうなりますでしょうか？ラップする縦幅が必要ってことね。"
                         FontSize="18"
                         TextWrapping="Wrap" />
-                </StackPanel>
+                </Grid>
                 <StackPanel
                     x:Name="radioArea"
                     Margin="40,17,20,20"

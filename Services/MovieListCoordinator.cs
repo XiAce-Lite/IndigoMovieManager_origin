@@ -44,9 +44,10 @@ namespace IndigoMovieManager.Services
         public static FilterApplyResult ApplyFilter(
             IReadOnlyList<MovieRecords> source,
             string searchKeyword,
-            string sortId)
+            string sortId,
+            MovieListFilterContext context = null)
         {
-            MovieListFilter.FilterResult result = MovieListFilter.Build(source, searchKeyword, sortId);
+            MovieListFilter.FilterResult result = MovieListFilter.Build(source, searchKeyword, sortId, context);
             return new FilterApplyResult
             {
                 Items = result.Items,
