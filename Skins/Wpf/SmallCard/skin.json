@@ -4,7 +4,7 @@
   "type": "card",
 
   "surface": {
-    "background": "#FFFFFF"
+    "background": ""
   },
 
   "styles": {
@@ -20,8 +20,8 @@
   },
 
   "card": {
-    "width": 680,
-    "padding": 6,
+    "width": 550,
+    "padding": 2,
     "background": "",
 
     "layout": {
@@ -36,7 +36,7 @@
           "columns": ["360", "1*"],
           "rows": ["auto"],
           "children": [
-            { "type": "thumbnail", "col": 0, "valign": "top" },
+            { "type": "thumbnail", "col": 0, "valign": "top", "width": 360, "height": 68 },
             {
               "stack": "vertical",
               "col": 1,
@@ -51,7 +51,7 @@
             }
           ]
         },
-        { "type": "tags", "row": 1, "col": 0, "width": 660 }
+        { "type": "tags", "row": 1, "col": 0, "width": 550 }
       ]
     }
   }

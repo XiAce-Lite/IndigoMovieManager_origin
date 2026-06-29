@@ -670,7 +670,7 @@ namespace IndigoMovieManager
             // 切替先に未生成分が無い場合でも確実に旧ジョブを放棄するため、ここで明示的に行う。
             // （従来は新規ジョブ投入時しか旧ジョブを放棄できず、切替先が生成済みだと
             //   旧タブの生成が走り続けてステータスバーが更新され続けていた）
-            CancelActiveThumbnailWork(thumbTab);
+            AbandonTabThumbnailWork(thumbTab);
 
             _thumbnailScheduler.StartTabSwitchJob(
                 thumbTab,
@@ -678,6 +678,22 @@ namespace IndigoMovieManager
                 _thumbLayoutCache,
                 MainVM.DbInfo.DBFullPath,
                 _sessionState.ThumbnailWorkGeneration);
+        }
+
+        /// <summary>
+        /// タブ/スキン切替用の放棄。直前タブのジョブを放棄し、キューと当該タブの追跡を解除する。
+        /// DB 切替と違い、作業世代（generation）は進めず、共有バッチもキャンセルしない。
+        /// 世代を進めると、まだキューに残っている手動・詳細(silent)サムネや、別タブの生成中
+        /// アイテムまで <see cref="ThumbnailCreationHost.IsSessionActive"/> で一律無効化され、
+        /// 生成が一切走らなくなる（=切替を繰り返すと全サムネが作られない不具合）。
+        /// </summary>
+        private void AbandonTabThumbnailWork(int primaryTabIndex)
+        {
+            _thumbnailScheduler.AbandonAndClearQueue(primaryTabIndex);
+            // 当該タブの追跡（tracked/in-flight）を解除し、再開時に全件を登録し直せるようにする。
+            // WPF スキンは全スキンで同一スロット(5)を共有するため、これが無いと旧スキン分の
+            // 追跡が残って新スキンの分母・生成対象がずれる。
+            _thumbnailScheduler.ClearTrackingForTab(primaryTabIndex);
         }
 
         private static int GetThumbnailQueueMaxParallelism() => ThumbnailQueueScheduler.GetMaxParallelism();
