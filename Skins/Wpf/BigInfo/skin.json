@@ -1,0 +1,67 @@
+{
+  "$schema": "../skin.schema.json",
+  "name": "BigInfo",
+  "type": "card",
+
+  "surface": {
+    "background": "#FFFFFF"
+  },
+
+  "styles": {
+    "title": { "fontSize": 15, "foreground": "#000000", "bold": true, "wrap": true },
+    "meta":  { "fontSize": 12, "foreground": "#555555" },
+    "path":  { "fontSize": 11, "foreground": "#888888", "wrap": true }
+  },
+
+  "thumbnail": {
+    "width": 360,
+    "height": 203,
+    "columns": 1,
+    "rows": 1
+  },
+
+  "card": {
+    "width": 600,
+    "height": 0,
+    "padding": 8,
+    "background": "",
+
+    "layout": {
+      "panel": "grid",
+      "columns": ["360", "1*"],
+      "rows": ["auto", "1*"],
+      "children": [
+        {
+          "type": "thumbnail",
+          "col": 0,
+          "row": 0,
+          "rowSpan": 2,
+          "valign": "stretch",
+          "width": 360
+        },
+        {
+          "type": "text",
+          "field": "title",
+          "col": 1,
+          "row": 0,
+          "style": "title",
+          "margin": 4
+        },
+        {
+          "stack": "vertical",
+          "col": 1,
+          "row": 1,
+          "margin": 4,
+          "children": [
+            { "type": "text", "field": "length",   "label": "尺: ",     "style": "meta" },
+            { "type": "text", "field": "size",      "label": "サイズ: ", "format": "filesize", "style": "meta" },
+            { "type": "text", "field": "fileDate",  "label": "更新: ",   "style": "meta" },
+            { "type": "text", "field": "video",     "label": "映像: ",   "style": "meta" },
+            { "type": "text", "field": "audio",     "label": "音声: ",   "style": "meta" },
+            { "type": "text", "field": "path",      "style": "path" }
+          ]
+        }
+      ]
+    }
+  }
+}

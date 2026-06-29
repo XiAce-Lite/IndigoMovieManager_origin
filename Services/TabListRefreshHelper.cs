@@ -1,4 +1,5 @@
 using System.Windows.Controls;
+using IndigoMovieManager.UserControls;
 
 namespace IndigoMovieManager.Services
 {
@@ -13,6 +14,12 @@ namespace IndigoMovieManager.Services
                 case 2: views.GridList.Items.Refresh(); break;
                 case 3: views.ListDataGrid.Items.Refresh(); break;
                 case 4: views.BigList10.Items.Refresh(); break;
+                case SkinTabIndexHelper.WpfSkinTabIndex:
+                    views.WpfSkinList.Items.Refresh();
+                    break;
+                case SkinTabIndexHelper.WbSkinTabIndex:
+                    views.SkinViewGridWb.RenderItems(views.SkinViewGridWb.Tag as IEnumerable<MovieRecords>);
+                    break;
             }
         }
     }
@@ -24,5 +31,7 @@ namespace IndigoMovieManager.Services
         ListView GridList { get; }
         DataGrid ListDataGrid { get; }
         ListView BigList10 { get; }
+        ListView WpfSkinList { get; }
+        SkinView SkinViewGridWb { get; }
     }
 }

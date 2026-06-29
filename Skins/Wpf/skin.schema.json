@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "IndigoMovieManager WPF skin",
+  "type": "object",
+  "properties": {
+    "name": { "type": "string" },
+    "type": { "type": "string" },
+    "surface": {
+      "type": "object",
+      "properties": {
+        "background": { "$ref": "#/definitions/color" }
+      },
+      "additionalProperties": true
+    },
+    "styles": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "foreground": { "$ref": "#/definitions/color" },
+          "background": { "$ref": "#/definitions/color" }
+        },
+        "additionalProperties": true
+      }
+    },
+    "thumbnail": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "card": {
+      "type": "object",
+      "properties": {
+        "background": { "$ref": "#/definitions/color" },
+        "layout": { "$ref": "#/definitions/layoutNode" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "definitions": {
+    "color": {
+      "type": "string",
+      "format": "color",
+      "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$"
+    },
+    "layoutNode": {
+      "type": "object",
+      "properties": {
+        "foreground": { "$ref": "#/definitions/color" },
+        "background": { "$ref": "#/definitions/color" },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/layoutNode" }
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

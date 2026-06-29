@@ -3,6 +3,11 @@
 WhiteBrowser 互換を目指した、Windows 向けの動画管理ツールです。  
 WPF / .NET 8 ベースで、WhiteBrowser の SQLite データベースやサムネイル資産をなるべくそのまま使える方向で作っています。
 
+以下のレポジトリは、より高機能なバージョンです。
+<https://github.com/XiAce-Lite/IndigoMovieManager>
+
+本レポジトリのバージョンは、高機能バージョンにフォークする前の版からの改良となります。
+
 ## 対応環境
 
 - Windows 専用

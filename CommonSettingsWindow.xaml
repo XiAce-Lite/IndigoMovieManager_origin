@@ -162,21 +162,6 @@
                     <Label
                         Width="300"
                         Margin="5"
-                        Content="サムネイルを縮小する"
-                        FontSize="14"
-                        ToolTip="※縮小する＝WBのサムネサイズに準拠。縮小しない＝1枚辺り上限320x240です。" />
-                    <CheckBox
-                        x:Name="IsResizeThumb"
-                        Width="Auto"
-                        FontSize="14"
-                        IsChecked="{Binding IsResizeThumb, Source={x:Static prop:Settings.Default}}"
-                        ToolTip="※縮小する＝WBのサムネサイズに準拠。縮小しない＝1枚辺り上限320x240です。" />
-                </StackPanel>
-
-                <StackPanel Orientation="Horizontal">
-                    <Label
-                        Width="300"
-                        Margin="5"
                         Content="サムネイル作成の並列数"
                         FontSize="14"
                         ToolTip="同時に作成するサムネイル数。多いほど速くなりますが、PC負荷も上がります。" />

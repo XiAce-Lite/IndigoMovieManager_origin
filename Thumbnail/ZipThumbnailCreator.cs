@@ -50,7 +50,6 @@ namespace IndigoMovieManager.Thumbnail
                                 panelPath,
                                 ctx.TabInfo.Width,
                                 ctx.TabInfo.Height,
-                                ctx.IsResizeThumb,
                                 cts))
                         {
                             throw new InvalidOperationException($"zip: decode failed {entryName}");
@@ -112,7 +111,6 @@ namespace IndigoMovieManager.Thumbnail
             string destPath,
             int targetWidth,
             int targetHeight,
-            bool isResizeThumb,
             CancellationToken cts)
         {
             ZipArchiveEntry entry = ZipArchiveEntryResolver.FindEntry(archive, entryName);
@@ -121,7 +119,7 @@ namespace IndigoMovieManager.Thumbnail
                 return false;
             }
 
-            ResolvePanelSize(targetWidth, targetHeight, isResizeThumb, out int panelWidth, out int panelHeight);
+            ResolvePanelSize(targetWidth, targetHeight, out int panelWidth, out int panelHeight);
 
             using Stream stream = entry.Open();
             if (ZipImageCatalog.IsWebpEntry(entryName))
@@ -220,10 +218,10 @@ namespace IndigoMovieManager.Thumbnail
             return buffer.ToArray();
         }
 
-        private static void ResolvePanelSize(int targetWidth, int targetHeight, bool isResizeThumb, out int panelWidth, out int panelHeight)
+        private static void ResolvePanelSize(int targetWidth, int targetHeight, out int panelWidth, out int panelHeight)
         {
-            panelWidth = isResizeThumb && targetWidth > 0 ? targetWidth : 320;
-            panelHeight = isResizeThumb && targetHeight > 0 ? targetHeight : 240;
+            panelWidth = targetWidth > 0 ? targetWidth : 160;
+            panelHeight = targetHeight > 0 ? targetHeight : 120;
 
             if (panelWidth < 1)
             {

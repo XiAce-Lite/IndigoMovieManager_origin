@@ -1,0 +1,104 @@
+
+body
+{
+	background-color : #444;
+	color : #AAA;
+	overflow : hidden;
+}
+
+*
+{
+	margin : 0;
+	padding: 0;
+	font-weight : normal;
+}
+
+a { color : #7DA; }
+
+a.a_remove
+{
+	color : #5A8;
+	margin-left : 5px;
+}
+
+/* ビュー */
+div#view
+{
+	width : 100%;
+	height : 100%;
+	padding : 8px;
+	overflow-y : scroll;
+}
+
+/* タイトル */
+h3
+{
+	font-size : 80%;
+	margin : 4px;
+}
+
+/* スコア */
+h4
+{
+	font-size : 80%;
+	display : inline;
+}
+
+/* タグ */
+ul
+{
+	display : inline;
+}
+
+li
+{
+	display : inline;
+	margin-right : 1em;
+	font-size : 70%;
+}
+
+/* サムネイル */
+div.thum
+{
+	overflow : hidden;
+	float : left;
+	width : 620px;
+	height : 108px;
+	padding-top : 6px;
+	padding-left : 6px;
+}
+
+div.thum_select
+{
+	overflow : hidden;
+	float : left;
+	width : 620px;
+	height : 108px;
+	padding-top : 6px;
+	padding-left : 6px;
+	background-color : #064560;
+}
+
+img.img_thum
+{
+	float : left;
+	width : 360px;
+	height : 90px;
+	background : #000;
+	border-top : 2px solid #999;
+	border-left : 2px solid #999;
+	border-right : 2px solid #666;
+	border-bottom : 2px solid #666;
+}
+
+img.img_focus
+{
+	float : left;
+	width : 360px;
+	height : 90px;
+	background : #000;
+	border-top : 2px solid #2AF;
+	border-left : 2px solid #2AF;
+	border-right : 2px solid #18F;
+	border-bottom : 2px solid #18F;
+}

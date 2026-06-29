@@ -109,6 +109,8 @@ namespace IndigoMovieManager
       {
         while (true)
         {
+          try
+          {
           await Task.Delay(safePollIntervalMs, cts).ConfigureAwait(false);
 
           int switchToken = jobCoordinator.JobSwitchToken;
@@ -235,6 +237,13 @@ namespace IndigoMovieManager
               try
               {
                 await createThumbAsync(item, token).ConfigureAwait(false);
+              }
+              catch (Exception ex) when (ex is not OperationCanceledException)
+              {
+                // 1 件のサムネ生成失敗でバッチ全体（ひいてはプロセッサ）を巻き込まない。
+                // 失敗アイテムはログに残し、finally で完了扱いにしてループを継続する。
+                Debug.WriteLine(
+                  $"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : [thumb] item failed: {ex.Message}");
               }
               finally
               {
@@ -378,6 +387,26 @@ namespace IndigoMovieManager
             jobId => activeProgressJobId = jobId,
             utc => lastReportUtc = utc,
             ReplaceProgressShowCts).ConfigureAwait(false);
+          }
+          catch (OperationCanceledException) when (cts.IsCancellationRequested)
+          {
+            // プロセッサ自体の終了要求。外側で後始末する。
+            throw;
+          }
+          catch (OperationCanceledException)
+          {
+            // バッチ単位のキャンセル（DB 切替など）。プロセッサループは生かしたまま継続する。
+            CancelPendingProgressShow();
+            Debug.WriteLine(
+              $"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : サムネイル作成バッチをキャンセルしました。");
+          }
+          catch (Exception ex)
+          {
+            // 予期せぬ例外でもプロセッサを停止させない（1 件の失敗で全体が止まるのを防ぐ）。
+            string itemMsg = $"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : [thumb-loop] {ex.Message}";
+            Debug.WriteLine(itemMsg);
+            log?.Invoke(itemMsg);
+          }
         }
       }
       catch (OperationCanceledException)

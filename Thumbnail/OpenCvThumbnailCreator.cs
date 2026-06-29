@@ -37,7 +37,6 @@ namespace IndigoMovieManager.Thumbnail
             DeleteOldTempFiles(ctx);
 
             List<string> paths = [];
-            OpenCvSharp.Size sz = new(0, 0);
             Stopwatch sw = new();
 
             try
@@ -48,7 +47,7 @@ namespace IndigoMovieManager.Thumbnail
                     {
                         if (freshCapturePerPanel)
                         {
-                            CaptureAllPanelsWithFreshCapture(ctx, thumbInfo, paths, ref sz, ref isSuccess, sw);
+                            CaptureAllPanelsWithFreshCapture(ctx, thumbInfo, paths, ref isSuccess, sw);
                         }
                         else
                         {
@@ -60,7 +59,7 @@ namespace IndigoMovieManager.Thumbnail
                                 return;
                             }
 
-                            CaptureAllPanels(sharedCapture, ctx, thumbInfo, paths, ref sz, ref isSuccess, sw);
+                            CaptureAllPanels(sharedCapture, ctx, thumbInfo, paths, ref isSuccess, sw);
                         }
                     },
                     cts
@@ -88,14 +87,13 @@ namespace IndigoMovieManager.Thumbnail
             ThumbnailJobContext ctx,
             ThumbInfo thumbInfo,
             List<string> paths,
-            ref OpenCvSharp.Size sz,
             ref bool isSuccess,
             Stopwatch sw
         )
         {
             for (int i = 0; i < thumbInfo.ThumbSec.Count; i++)
             {
-                if (!CaptureSinglePanel(ctx, thumbInfo, paths, ref sz, ref isSuccess, sw, i, null))
+                if (!CaptureSinglePanel(ctx, thumbInfo, paths, ref isSuccess, sw, i, null))
                 {
                     return;
                 }
@@ -107,14 +105,13 @@ namespace IndigoMovieManager.Thumbnail
             ThumbnailJobContext ctx,
             ThumbInfo thumbInfo,
             List<string> paths,
-            ref OpenCvSharp.Size sz,
             ref bool isSuccess,
             Stopwatch sw
         )
         {
             for (int i = 0; i < thumbInfo.ThumbSec.Count; i++)
             {
-                if (!CaptureSinglePanel(ctx, thumbInfo, paths, ref sz, ref isSuccess, sw, i, sharedCapture))
+                if (!CaptureSinglePanel(ctx, thumbInfo, paths, ref isSuccess, sw, i, sharedCapture))
                 {
                     return;
                 }
@@ -125,7 +122,6 @@ namespace IndigoMovieManager.Thumbnail
             ThumbnailJobContext ctx,
             ThumbInfo thumbInfo,
             List<string> paths,
-            ref OpenCvSharp.Size sz,
             ref bool isSuccess,
             Stopwatch sw,
             int panelIndex,
@@ -154,9 +150,8 @@ namespace IndigoMovieManager.Thumbnail
                 if (!TryCapturePanelAtSec(
                         capture,
                         thumbInfo.ThumbSec[panelIndex],
-                        out Mat dst,
-                        ref sz,
-                        ctx))
+                        ctx,
+                        out Mat dst))
                 {
                     dst?.Dispose();
                     isSuccess = false;
@@ -186,9 +181,8 @@ namespace IndigoMovieManager.Thumbnail
         private static bool TryCapturePanelAtSec(
             VideoCapture capture,
             int sec,
-            out Mat dst,
-            ref OpenCvSharp.Size sz,
-            ThumbnailJobContext ctx
+            ThumbnailJobContext ctx,
+            out Mat dst
         )
         {
             dst = null;
@@ -212,28 +206,10 @@ namespace IndigoMovieManager.Thumbnail
                 return false;
             }
 
-            using Mat temp = new(img, ThumbnailImageGeometry.GetAspect(img.Width, img.Height));
-
-            if (ctx.IsResizeThumb)
-            {
-                sz = new OpenCvSharp.Size
-                {
-                    Width = ctx.TabInfo.Width,
-                    Height = ctx.TabInfo.Height,
-                };
-            }
-            else if (sz.Width == 0)
-            {
-                sz = new OpenCvSharp.Size
-                {
-                    Width = temp.Width < 320 ? temp.Width : 320,
-                    Height = temp.Height < 240 ? temp.Height : 240,
-                };
-            }
-
-            dst = new Mat();
-            Cv2.Resize(temp, dst, sz);
-            return true;
+            int panelWidth = Math.Max(1, ctx.TabInfo.Width);
+            int panelHeight = Math.Max(1, ctx.TabInfo.Height);
+            dst = ThumbnailImageGeometry.FitFrameToPanel(img, panelWidth, panelHeight);
+            return dst != null && !dst.Empty();
         }
 
         private static ThumbnailCreateResult FinalizeThumbnail(

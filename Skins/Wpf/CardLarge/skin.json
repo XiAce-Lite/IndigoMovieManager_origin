@@ -1,0 +1,34 @@
+{
+  "$schema": "../skin.schema.json",
+  "name": "CardLarge",
+  "type": "card",
+
+  "surface": {
+    "background": "#FFFFFF"
+  },
+
+  "styles": {
+    "title": { "fontSize": 13, "foreground": "#000000", "bold": true }
+  },
+
+  "thumbnail": {
+    "width": 400,
+    "height": 225,
+    "columns": 1,
+    "rows": 1
+  },
+
+  "card": {
+    "width": 600,
+    "padding": 15,
+    "background": "",
+
+    "layout": {
+      "stack": "vertical",
+      "children": [
+        { "type": "text", "field": "title", "style": "title" },
+        { "type": "thumbnail" }
+      ]
+    }
+  }
+}

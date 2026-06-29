@@ -72,7 +72,6 @@ public class ZipRealFileDiagnosticTests
                 TempFileBody = "realzip3_temp",
                 TempPath = tempPath,
                 TabInfo = tabInfo,
-                IsResizeThumb = true,
             };
 
             ThumbnailCreateResult result = await ZipThumbnailCreator.TryCreateAsync(ctx, thumbInfo, entries);
@@ -118,7 +117,6 @@ public class ZipRealFileDiagnosticTests
                 TempFileBody = "realzip_temp",
                 TempPath = tempPath,
                 TabInfo = tabInfo,
-                IsResizeThumb = true,
             };
 
             var thumbInfo = new ThumbInfo

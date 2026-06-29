@@ -11,6 +11,7 @@
         private int? _thumbPanelPos = null;
         private int? _thumbTimePos = null;
         private bool _isManual;
+        private Thumbnail.ThumbnailLayoutSpec _thumbnailLayout;
 
         public int JobId { get { return _jobId; } set { _jobId = value; } }
         public bool IsManual { get { return _isManual; } set { _isManual = value; } }
@@ -22,5 +23,10 @@
         public int WorkGeneration { get { return _workGeneration; } set { _workGeneration = value; } }
         public int? ThumbPanelPos { get { return _thumbPanelPos; } set { _thumbPanelPos = value; } }
         public int? ThumbTimePos { get { return _thumbTimePos; } set { _thumbTimePos = value; } }
+        public Thumbnail.ThumbnailLayoutSpec ThumbnailLayout
+        {
+            get => _thumbnailLayout;
+            set => _thumbnailLayout = value;
+        }
     }
 }

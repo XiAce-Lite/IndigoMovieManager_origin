@@ -1,5 +1,6 @@
 using System.IO;
 using System.Windows;
+using IndigoMovieManager.Services;
 using IndigoMovieManager.Thumbnail;
 
 namespace IndigoMovieManager.Services
@@ -44,15 +45,24 @@ namespace IndigoMovieManager.Services
             return 0;
         }
 
-        public static string GetThumbPathForTab(MovieRecords mv, int tabIndex) =>
-            tabIndex switch
+        public static string GetThumbPathForTab(MovieRecords mv, int tabIndex)
+        {
+            if (SkinTabIndexHelper.IsWpfSkinTab(tabIndex))
+            {
+                return mv.ThumbPathWpfSkin;
+            }
+
+            int resolvedTab = SkinTabIndexHelper.GetThumbnailTabIndex(tabIndex);
+            return resolvedTab switch
             {
                 0 => mv.ThumbPathSmall,
                 1 => mv.ThumbPathBig,
                 2 => mv.ThumbPathGrid,
                 3 => mv.ThumbPathList,
                 4 => mv.ThumbPathBig10,
+                SkinTabIndexHelper.WpfSkinThumbnailSlotIndex => mv.ThumbPathWpfSkin,
                 _ => null,
             };
+        }
     }
 }

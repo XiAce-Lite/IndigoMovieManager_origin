@@ -135,18 +135,6 @@ namespace IndigoMovieManager.Properties {
         
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("True")]
-        public bool IsResizeThumb {
-            get {
-                return ((bool)(this["IsResizeThumb"]));
-            }
-            set {
-                this["IsResizeThumb"] = value;
-            }
-        }
-        
-        [global::System.Configuration.UserScopedSettingAttribute()]
-        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
         [global::System.Configuration.DefaultSettingValueAttribute("4")]
         public int ThumbnailParallelism {
             get {

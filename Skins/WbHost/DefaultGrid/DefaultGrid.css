@@ -1,0 +1,76 @@
+
+body
+{
+	background-color : #444;
+	color : #AAA;
+	overflow : hidden;
+}
+
+*
+{
+	margin : 0;
+	padding: 0;
+	font-weight : normal;
+}
+
+/* ビュー */
+div#view
+{
+	width : 100%;
+	height : 100%;
+	padding : 5px;
+	overflow-y : scroll;
+}
+
+/* タイトル */
+h3
+{
+	clear : both;
+	font-size : 80%;
+	margin-top : 7px;
+}
+
+/* サムネイル */
+div.thum
+{
+	overflow : hidden;
+	margin : 10px;
+	padding : 5px;
+	float : left;
+	width : 180px;
+	height : 180px;
+	border : 1px solid AAA;
+}
+
+div.thum_select
+{
+	overflow : hidden;
+	margin : 10px;
+	padding : 5px;
+	float : left;
+	width : 180px;
+	height : 180px;
+	border : 1px solid AAA;
+	background-color : #064560;
+}
+
+img.img_thum
+{
+	float : left;
+	width : 160px;
+	height : 120px;
+	background : #000;
+	border-top : 2px solid #999;
+	border-left : 2px solid #999;
+	border-right : 2px solid #666;
+	border-bottom : 2px solid #666;
+}
+
+img.img_focus
+{
+	float : left;
+	width : 160px;
+	height : 120px;
+	background : #000;
+    border : 2px solid #2AF;
+}

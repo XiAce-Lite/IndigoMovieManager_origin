@@ -192,7 +192,7 @@ namespace IndigoMovieManager.Thumbnail
                     "-q:v",
                     jpegQuality.ToString(CultureInfo.InvariantCulture),
                     "-vf",
-                    BuildAspectFitScaleAndPadFilter(targetWidth, targetHeight),
+                    BuildAspectFillCropFilter(targetWidth, targetHeight),
                     tempFile,
                 ];
 
@@ -291,12 +291,14 @@ namespace IndigoMovieManager.Thumbnail
 
         private static (int width, int height) ResolveTargetSize(ThumbnailJobContext ctx)
         {
-            if (ctx.IsResizeThumb && ctx.TabInfo.Width > 0 && ctx.TabInfo.Height > 0)
+            int w = ctx.TabInfo?.Width ?? 0;
+            int h = ctx.TabInfo?.Height ?? 0;
+            if (w > 0 && h > 0)
             {
-                return (ctx.TabInfo.Width, ctx.TabInfo.Height);
+                return (w, h);
             }
 
-            return (320, 240);
+            return (160, 120);
         }
 
         private static double ResolveFrameIntervalSec(
@@ -348,26 +350,21 @@ namespace IndigoMovieManager.Thumbnail
             }
 
             vf.Append($"fps=1/{intervalText},");
-            vf.Append(BuildAspectFitScaleAndPadFilter(width, height));
+            vf.Append(BuildAspectFillCropFilter(width, height));
             vf.Append(',');
             vf.Append($"tile={cols}x{rows}");
             return vf.ToString();
         }
 
-        private static string BuildAspectFitScaleAndPadFilter(int width, int height)
+        /// <summary>
+        /// パネル比へセンタークロップして全面を埋める（黒帯を焼き込まない）。
+        /// 4:3 パネルなら 4:3、16:9 パネルなら 16:9 を維持する。
+        /// </summary>
+        private static string BuildAspectFillCropFilter(int width, int height)
         {
-            string targetAspectText = ((double)width / height).ToString(
-                "0.############",
-                CultureInfo.InvariantCulture
-            );
-
-            string scaleWidthExpr =
-                $"if(lte(abs(dar-{targetAspectText}),0.01),{width},if(gte(dar-{targetAspectText}),{width},-2))";
-            string scaleHeightExpr =
-                $"if(lte(abs(dar-{targetAspectText}),0.01),{height},if(gte(dar,{targetAspectText}),-2,{height}))";
-
             return
-                $"scale='{scaleWidthExpr}':'{scaleHeightExpr}':flags=lanczos,setsar=1,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black";
+                $"scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,"
+                + $"crop={width}:{height},setsar=1";
         }
 
         private static int ResolveJpegQuality()

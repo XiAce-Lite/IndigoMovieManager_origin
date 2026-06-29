@@ -86,7 +86,6 @@ public class ZipThumbnailCreatorTests
                 TempFileBody = "sample_hash_tab2_temp",
                 TempPath = tempPath,
                 TabInfo = tabInfo,
-                IsResizeThumb = true,
             };
 
             var thumbInfo = new ThumbInfo
@@ -167,7 +166,6 @@ public class ZipThumbnailCreatorTests
                 TempFileBody = "sample_hash_tab2_temp",
                 TempPath = tempPath,
                 TabInfo = tabInfo,
-                IsResizeThumb = true,
             };
 
             var thumbInfo = new ThumbInfo

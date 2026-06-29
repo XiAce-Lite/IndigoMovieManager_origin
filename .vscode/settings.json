@@ -1,0 +1,8 @@
+{
+  "json.schemas": [
+    {
+      "fileMatch": ["**/Skins/Wpf/**/skin.json"],
+      "url": "./Skins/Wpf/skin.schema.json"
+    }
+  ]
+}
