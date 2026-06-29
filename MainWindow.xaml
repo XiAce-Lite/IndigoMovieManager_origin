@@ -1450,28 +1450,35 @@
                 </DockPanel>
             </materialDesign:DrawerHost.LeftDrawerContent>
 
-            <materialDesign:ColorZone
-                x:Name="HeaderZone"
-                Padding="16"
-                Mode="PrimaryDark"
-                SizeChanged="HeaderZone_SizeChanged">
-                <DockPanel>
-                    <VirtualizingStackPanel
-                        Orientation="Horizontal"
-                        VirtualizingPanel.IsVirtualizing="true"
-                        VirtualizingPanel.VirtualizationMode="Recycling">
-                        <ToggleButton
-                            x:Name="MenuToggleButton"
-                            AutomationProperties.Name="HamburgerToggleButton"
-                            Style="{DynamicResource MaterialDesignHamburgerToggleButton}" />
+            <Grid Background="Transparent" IsHitTestVisible="False">
+                <materialDesign:ColorZone
+                    x:Name="HeaderZone"
+                    HorizontalAlignment="Stretch"
+                    IsHitTestVisible="True"
+                    Padding="16,2"
+                    VerticalAlignment="Top"
+                    Mode="PrimaryDark"
+                    SizeChanged="HeaderZone_SizeChanged">
+                    <DockPanel>
+                        <VirtualizingStackPanel
+                            Orientation="Horizontal"
+                            VerticalAlignment="Center"
+                            VirtualizingPanel.IsVirtualizing="true"
+                            VirtualizingPanel.VirtualizationMode="Recycling">
+                            <ToggleButton
+                                x:Name="MenuToggleButton"
+                                VerticalAlignment="Center"
+                                AutomationProperties.Name="HamburgerToggleButton"
+                                Style="{DynamicResource MaterialDesignHamburgerToggleButton}" />
 
-                        <ComboBox
-                            x:Name="SearchBox"
-                            Width="326"
-                            Height="Auto"
-                            Margin="30,4,4,4"
-                            Padding="4,4,0,4"
-                            HorizontalContentAlignment="Stretch"
+                            <ComboBox
+                                x:Name="SearchBox"
+                                Width="326"
+                                Height="Auto"
+                                Margin="30,0,4,0"
+                                Padding="4,2,0,2"
+                                VerticalAlignment="Center"
+                                HorizontalContentAlignment="Stretch"
                             materialDesign:HintAssist.Hint="検索キーワードを入れて下さい。"
                             materialDesign:HintAssist.IsFloating="True"
                             materialDesign:TextFieldAssist.DecorationVisibility="Hidden"
@@ -1481,7 +1488,6 @@
                             materialDesign:TextFieldAssist.UnderlineBrush="Black"
                             Background="White"
                             Cursor=""
-                            DockPanel.Dock="Top"
                             DropDownClosed="SearchBox_DropDownClosed"
                             DropDownOpened="SearchBox_DropDownOpened"
                             Loaded="ComboBoxArrow_Loaded"
@@ -1529,7 +1535,7 @@
                         </ComboBox>
                         <Button
                             x:Name="SaveSearchTagButton"
-                            Margin="0,4,12,4"
+                            Margin="0,0,12,0"
                             VerticalAlignment="Center"
                             Click="SaveSearchTagButton_Click"
                             Style="{StaticResource MaterialDesignIconButton}"
@@ -1538,6 +1544,7 @@
                         </Button>
                         <Button
                             x:Name="ReloadButton"
+                            VerticalAlignment="Center"
                             Click="ReloadButton_Click"
                             Content="Reload"
                             IsDefault="True" />
@@ -1551,6 +1558,7 @@
                             x:Name="ComboSort"
                             Width="200"
                             Margin="4,0,4,0"
+                            VerticalAlignment="Center"
                             Background="White"
                             DisplayMemberPath="Name"
                             Foreground="Black"
@@ -1584,7 +1592,8 @@
                             Foreground="White" />
                     </VirtualizingStackPanel>
                 </DockPanel>
-            </materialDesign:ColorZone>
+                </materialDesign:ColorZone>
+            </Grid>
         </materialDesign:DrawerHost>
             </Grid>
 
