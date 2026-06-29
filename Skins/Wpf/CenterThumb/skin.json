@@ -1,0 +1,87 @@
+{
+  "$schema": "../skin.schema.json",
+  "name": "CenterThumb",
+  "type": "card",
+
+  "surface": {
+    "background": "#FFFFFF"
+  },
+
+  "styles": {
+    "title": { "fontSize": 12, "foreground": "#000000", "bold": true, "align": "center" },
+    "side":  { "fontSize": 10, "foreground": "#555555", "align": "center" },
+    "foot":  { "fontSize": 10, "foreground": "#888888", "align": "center" }
+  },
+
+  "thumbnail": {
+    "width": 320,
+    "height": 180,
+    "columns": 1,
+    "rows": 1
+  },
+
+  "card": {
+    "width": 600,
+    "padding": 4,
+    "background": "",
+
+    "layout": {
+      "panel": "grid",
+      "columns": ["1*", "2*", "1*"],
+      "rows": ["auto", "2*", "auto", "auto"],
+      "children": [
+        {
+          "type": "text",
+          "field": "title",
+          "col": 0,
+          "row": 0,
+          "colSpan": 3,
+          "style": "title"
+        },
+        {
+          "type": "text",
+          "field": "length",
+          "label": "尺\n",
+          "col": 0,
+          "row": 1,
+          "style": "side",
+          "valign": "center",
+          "halign": "center"
+        },
+        {
+          "type": "thumbnail",
+          "col": 1,
+          "row": 1,
+          "valign": "stretch",
+          "halign": "stretch"
+        },
+        {
+          "type": "text",
+          "field": "size",
+          "format": "filesize",
+          "col": 2,
+          "row": 1,
+          "style": "side",
+          "valign": "center",
+          "halign": "center"
+        },
+        {
+          "type": "tags",
+          "col": 0,
+          "row": 2,
+          "colSpan": 3
+        },
+        {
+          "type": "text",
+          "field": "ext",
+          "label": "種類: ",
+          "col": 0,
+          "row": 3,
+          "colSpan": 3,
+          "style": "foot",
+          "margin": 4
+        }
+      ]
+    }
+  }
+}

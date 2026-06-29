@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
 using System.IO;
+using IndigoMovieManager.Services;
+using IndigoMovieManager.Services.WpfSkin;
 using IndigoMovieManager.Thumbnail;
 using static IndigoMovieManager.Tools;
 
@@ -211,6 +213,9 @@ namespace IndigoMovieManager.Services
         public void CancelTrackedForMovie(long movieId) =>
             _jobCoordinator.CancelTrackedForMovie(movieId);
 
+        public void ClearTrackingForTab(int tabIndex) =>
+            _jobCoordinator.ClearTrackingForTab(tabIndex);
+
         public List<QueueObj> BuildTabSwitchWork(
             int tabIndex,
             IEnumerable<MovieRecords> filterList,
@@ -218,6 +223,11 @@ namespace IndigoMovieManager.Services
             string dbFullPath,
             int workGeneration)
         {
+            if (tabIndex == SkinTabIndexHelper.WpfSkinThumbnailSlotIndex)
+            {
+                return BuildWpfSkinTabSwitchWork(filterList, cache, dbFullPath, workGeneration);
+            }
+
             List<QueueObj> work = [];
             if (tabIndex < 0 || tabIndex >= ThumbPathPropertyNames.Length)
             {
@@ -252,6 +262,57 @@ namespace IndigoMovieManager.Services
                         MovieId = item.Movie_Id,
                         MovieFullPath = item.Movie_Path,
                         Tabindex = tabIndex,
+                        DbFullPath = dbFullPath,
+                        WorkGeneration = workGeneration,
+                    });
+                }
+            }
+
+            return work;
+        }
+
+        private List<QueueObj> BuildWpfSkinTabSwitchWork(
+            IEnumerable<MovieRecords> filterList,
+            ThumbnailLayoutCache cache,
+            string dbFullPath,
+            int workGeneration)
+        {
+            List<QueueObj> work = [];
+            ThumbnailLayoutSpec spec = WpfSkinSettings.CurrentThumbnailLayout;
+            if (spec == null || cache == null)
+            {
+                return work;
+            }
+
+            int tabIndex = SkinTabIndexHelper.WpfSkinThumbnailSlotIndex;
+            foreach (MovieRecords item in filterList)
+            {
+                if (string.IsNullOrWhiteSpace(item.Movie_Path) || string.IsNullOrWhiteSpace(item.Hash))
+                {
+                    continue;
+                }
+
+                if (!File.Exists(item.Movie_Path))
+                {
+                    continue;
+                }
+
+                string fileBody = Path.GetFileNameWithoutExtension(item.Movie_Name ?? item.Movie_Path ?? string.Empty)
+                    .ToLowerInvariant();
+                string expectedPath = cache.GetExpectedThumbPath(spec, fileBody, item.Hash);
+                if (File.Exists(expectedPath))
+                {
+                    continue;
+                }
+
+                if (!_jobCoordinator.IsTracked(item.Movie_Id, tabIndex))
+                {
+                    work.Add(new QueueObj
+                    {
+                        MovieId = item.Movie_Id,
+                        MovieFullPath = item.Movie_Path,
+                        Tabindex = tabIndex,
+                        ThumbnailLayout = spec,
                         DbFullPath = dbFullPath,
                         WorkGeneration = workGeneration,
                     });

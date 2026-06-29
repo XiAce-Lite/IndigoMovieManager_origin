@@ -568,6 +568,8 @@
                                 <TabControl
                                     x:Name="Tabs"
                                     Margin="0,0,0,0"
+                                    KeyboardNavigation.DirectionalNavigation="None"
+                                    KeyboardNavigation.TabNavigation="None"
                                     PreviewKeyDown="Tab_PreviewKeyDown"
                                     SelectionChanged="Tabs_SelectionChangedAsync">
 
@@ -1143,6 +1145,88 @@
                                         </ListView>
                                     </TabItem>
 
+                                    <TabItem
+                                        x:Name="TabSkinWpf"
+                                        Background="DarkBlue"
+                                        Header="スキン(WPF)"
+                                        Tag="400x225x1x1">
+                                        <DockPanel>
+                                            <StackPanel
+                                                Background="#333333"
+                                                DockPanel.Dock="Top"
+                                                Orientation="Horizontal">
+                                                <TextBlock
+                                                    Margin="8,6,0,6"
+                                                    VerticalAlignment="Center"
+                                                    Foreground="#CCCCCC"
+                                                    Text="WPFスキン:" />
+                                                <ComboBox
+                                                    x:Name="ComboWpfSkin"
+                                                    Width="180"
+                                                    Margin="8,4,8,4"
+                                                    Background="White"
+                                                    Foreground="Black"
+                                                    SelectionChanged="ComboWpfSkin_SelectionChanged" />
+                                                <Button
+                                                    Margin="0,4,8,4"
+                                                    Padding="10,0"
+                                                    Click="ReloadWpfSkin_Click"
+                                                    Content="Reload" />
+                                            </StackPanel>
+                                            <ListView
+                                                x:Name="WpfSkinList"
+                                                Background="White"
+                                                BorderThickness="0"
+                                                ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                                ScrollViewer.IsDeferredScrollingEnabled="True"
+                                                SelectionChanged="List_SelectionChanged"
+                                                SelectionMode="Extended"
+                                                VirtualizingPanel.IsVirtualizing="True"
+                                                VirtualizingPanel.ScrollUnit="Pixel"
+                                                VirtualizingPanel.VirtualizationMode="Recycling">
+                                                <ListView.ItemContainerStyle>
+                                                    <Style TargetType="ListViewItem">
+                                                        <Setter Property="HorizontalAlignment" Value="Left" />
+                                                        <Setter Property="HorizontalContentAlignment" Value="Left" />
+                                                        <Setter Property="VerticalContentAlignment" Value="Top" />
+                                                        <EventSetter Event="PreviewMouseLeftButtonDown" Handler="WpfSkinItem_PreviewMouseLeftButtonDown" />
+                                                    </Style>
+                                                </ListView.ItemContainerStyle>
+                                            </ListView>
+                                        </DockPanel>
+                                    </TabItem>
+
+                                    <TabItem
+                                        x:Name="TabGridWb"
+                                        Background="DarkBlue"
+                                        Header="スキン(WB)"
+                                        Tag="160x120x1x1">
+                                        <DockPanel>
+                                            <StackPanel
+                                                DockPanel.Dock="Top"
+                                                Background="#333333"
+                                                Orientation="Horizontal"
+                                                Visibility="Visible">
+                                                <TextBlock
+                                                    Margin="8,6,0,6"
+                                                    VerticalAlignment="Center"
+                                                    Foreground="#CCCCCC"
+                                                    Text="WBスキン:" />
+                                                <ComboBox
+                                                    x:Name="ComboWbSkin"
+                                                    Width="180"
+                                                    Margin="8,4,8,4"
+                                                    Background="White"
+                                                    Foreground="Black"
+                                                    SelectionChanged="ComboWbSkin_SelectionChanged" />
+                                            </StackPanel>
+                                            <view:SkinView
+                                                x:Name="SkinViewGridWb"
+                                                SelectionChanged="SkinView_SelectionChanged"
+                                                SkinTabIndex="6" />
+                                        </DockPanel>
+                                    </TabItem>
+
                                 </TabControl>
 
                             </avalonDock:LayoutDocument>
@@ -1366,7 +1450,11 @@
                 </DockPanel>
             </materialDesign:DrawerHost.LeftDrawerContent>
 
-            <materialDesign:ColorZone Padding="16" Mode="PrimaryDark">
+            <materialDesign:ColorZone
+                x:Name="HeaderZone"
+                Padding="16"
+                Mode="PrimaryDark"
+                SizeChanged="HeaderZone_SizeChanged">
                 <DockPanel>
                     <VirtualizingStackPanel
                         Orientation="Horizontal"

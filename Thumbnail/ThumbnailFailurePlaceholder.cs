@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using IndigoMovieManager.Services;
 
 namespace IndigoMovieManager.Thumbnail
 {
@@ -17,7 +18,8 @@ namespace IndigoMovieManager.Thumbnail
 
             try
             {
-                string errorSource = cache.GetErrorPath(tabIndex);
+                int errorIndex = tabIndex == SkinTabIndexHelper.WpfSkinThumbnailSlotIndex ? 2 : tabIndex;
+                string errorSource = cache.GetErrorPath(errorIndex);
                 if (!File.Exists(errorSource))
                 {
                     return false;

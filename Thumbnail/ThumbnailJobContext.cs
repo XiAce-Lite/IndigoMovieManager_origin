@@ -10,6 +10,5 @@ namespace IndigoMovieManager.Thumbnail
         public string TempPath { get; init; } = "";
         public string Hash { get; init; } = "";
         public bool IsManual { get; init; }
-        public bool IsResizeThumb { get; init; }
     }
 }

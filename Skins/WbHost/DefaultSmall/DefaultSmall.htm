@@ -1,0 +1,55 @@
+<html>
+
+<head>
+	<meta http-equiv="Content-Type" content="text/html; charset=Shift_JIS">
+	<link type="text/css" rel="stylesheet" href="./DefaultSmall.css">
+	
+	<!-- 以下の２つのjsは必須 -->
+	<script type="text/javascript" src="../prototype.js"></script>
+	<script type="text/javascript" src="../wblib.js"></script>
+</head>
+
+<body>
+	<!-- サムネイル作成 -->
+	<script type="text/javascript">
+		wb.onCreateThum = function(mv, dir)
+		{
+			var tags = "";
+			
+			for(var i=0;i<mv.tags.length;i++){
+				tags += "<li><a href=\"javascript:wb.find('" + wb.htmlDecode(mv.tags[i]) + "')\">" + mv.tags[i] + "</a>";
+				tags += "<a href=\"javascript:wb.removeTag(" + mv.id + ",'" + wb.htmlDecode(mv.tags[i]) + "')\" class=\"a_remove\">[x]</a>";
+			}
+			
+			var exist = (mv.exist == false) ? " style=\"filter:Gray\"" : "";
+			var select = (mv.select == 1) ? "thum_select" : "thum";
+			var insert = (dir < 0) ? Insertion.Top : Insertion.Bottom;
+			
+			new insert($("view"), ' \
+				<div class="' + select + '" id="thum' + mv.id + '"> \
+					<img class="img_thum" id="img' + mv.id + '" src="' + mv.thum + '"' + exist + '> \
+					<h3 id="title' + mv.id + '" style="color:#DDD">' + mv.title + mv.ext + '</h3> \
+					<h4>SCORE : <span id="score' + mv.id + '">' + mv.score + '</span></h4> \
+					<h3>' + mv.fileDate + '</h3> \
+					<ul id="tag' + mv.id + '">' + tags + '</ul> \
+				</div>'
+			);
+		};
+	</script>
+	
+	<!-- サムネイル表示エリア -->
+	<div id="view"></div>
+	
+	<!-- コンフィグ -->
+	<div id="config">
+		skin-version :		1;
+		multi-select :		1;
+		seamless-scroll :	2;
+		thum-width : 		120;
+		thum-height : 		90;
+		thum-column : 		3;
+		thum-row : 			1;
+	</div>
+</body>
+
+</html>

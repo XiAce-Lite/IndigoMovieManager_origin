@@ -28,9 +28,13 @@ namespace IndigoMovieManager.Thumbnail
         public string ImagesBasePath { get; private set; } = "";
         public string[] TabOutPaths { get; private set; } = [];
         public string DetailOutPath { get; private set; } = "";
+        public string DbName { get; private set; } = "";
+        public string ThumbFolder { get; private set; } = "";
 
         public void Refresh(string dbName, string thumbFolder, int tabCount)
         {
+            DbName = dbName ?? "";
+            ThumbFolder = thumbFolder ?? "";
             ImagesBasePath = ApplicationPaths.ImagesDirectory;
             TabOutPaths = new string[tabCount];
             for (int i = 0; i < tabCount; i++)
@@ -93,6 +97,28 @@ namespace IndigoMovieManager.Thumbnail
             }
 
             return Path.Combine(TabOutPaths[tabIndex], thumbFileName);
+        }
+
+        public string BuildThumbPath(ThumbnailLayoutSpec spec, string thumbFileName, bool checkExists)
+        {
+            if (spec == null)
+            {
+                return GetErrorPath(2);
+            }
+
+            string fullPath = Path.Combine(spec.GetOutPath(DbName, ThumbFolder), thumbFileName);
+            if (!checkExists)
+            {
+                return GetErrorPath(2);
+            }
+
+            return File.Exists(fullPath) ? fullPath : GetErrorPath(2);
+        }
+
+        public string GetExpectedThumbPath(ThumbnailLayoutSpec spec, string movieNameWithoutExt, string hash)
+        {
+            string thumbFileName = GetThumbFileName(movieNameWithoutExt, hash);
+            return Path.Combine(spec.GetOutPath(DbName, ThumbFolder), thumbFileName);
         }
 
         public static int GetTabIndexFromSkin(string skin)

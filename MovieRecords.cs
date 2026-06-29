@@ -44,6 +44,7 @@ namespace IndigoMovieManager
         private string thumbPathGrid = "";
         private string thumbPathList = "";
         private string thumbPathBig10 = "";
+        private string thumbPathWpfSkin = "";
         private string thumbDetail = "";
         private string drive = "";
         private string dir = "";
@@ -267,7 +268,13 @@ namespace IndigoMovieManager
         public string ThumbPathBig10
         {
             get { return thumbPathBig10; }
-            set { thumbPathBig10 = value; OnPropertyChanged(nameof(thumbPathBig10)); }
+            set { thumbPathBig10 = value; OnPropertyChanged(nameof(ThumbPathBig10)); }
+        }
+
+        public string ThumbPathWpfSkin
+        {
+            get { return thumbPathWpfSkin; }
+            set { thumbPathWpfSkin = value; OnPropertyChanged(nameof(ThumbPathWpfSkin)); }
         }
 
         public string ThumbDetail

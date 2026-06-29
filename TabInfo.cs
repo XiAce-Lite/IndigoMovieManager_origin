@@ -1,16 +1,15 @@
-﻿using System.IO;
-using IndigoMovieManager.Thumbnail;
+﻿using IndigoMovieManager.Thumbnail;
 
 namespace IndigoMovieManager
 {
     public class TabInfo
     {
-        private readonly int columns = 3;
-        private readonly int rows = 1;
-        private readonly int width = 120;
-        private readonly int height = 90;
-        private readonly int divCount = 0;
-        private readonly string outPath = "";
+        private int columns = 3;
+        private int rows = 1;
+        private int width = 120;
+        private int height = 90;
+        private int divCount;
+        private string outPath = "";
 
         public int Columns => columns;
         public int Rows => rows;
@@ -20,51 +19,19 @@ namespace IndigoMovieManager
         public string OutPath => outPath;
 
         public TabInfo(int tabIndex, string dbName, string thumbFolder = "")
+            : this(ThumbnailLayoutSpec.FromTabIndex(tabIndex), dbName, thumbFolder)
         {
-            switch (tabIndex)
-            {
-                case 0:
-                    width = 120;
-                    height = 90;
-                    columns = 3;
-                    rows = 1;
-                    break;
-                case 1:
-                    width = 200;
-                    height = 150;
-                    columns = 3;
-                    rows = 1;
-                    break;
-                case 2:
-                    width = 160;
-                    height = 120;
-                    columns = 1;
-                    rows = 1;
-                    break;
-                case 3:
-                    width = 56;
-                    height = 42;
-                    columns = 5;
-                    rows = 1;
-                    break;
-                case 4:
-                    width = 120;
-                    height = 90;
-                    columns = 5;
-                    rows = 2;
-                    break;
-                case 99:
-                    width = 120;
-                    height = 90;
-                    columns = 1;
-                    rows = 1;
-                    break;
-                default:
-                    break;
-            }
-            divCount = columns * rows;
-            string thumbRoot = ApplicationPaths.ResolveThumbRoot(dbName, thumbFolder);
-            outPath = Path.Combine(thumbRoot, $"{width}x{height}x{columns}x{rows}");
+        }
+
+        public TabInfo(ThumbnailLayoutSpec spec, string dbName, string thumbFolder = "")
+        {
+            ThumbnailLayoutSpec resolved = spec ?? ThumbnailLayoutSpec.FromTabIndex(2);
+            width = resolved.Width;
+            height = resolved.Height;
+            columns = resolved.Columns;
+            rows = resolved.Rows;
+            divCount = resolved.DivCount;
+            outPath = resolved.GetOutPath(dbName, thumbFolder);
         }
     }
 }

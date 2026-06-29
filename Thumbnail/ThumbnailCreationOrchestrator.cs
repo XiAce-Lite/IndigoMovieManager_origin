@@ -15,7 +15,6 @@ namespace IndigoMovieManager.Thumbnail
         public Action<Action> RunOnUi { get; init; }
         public Action<QueueObj, string> ApplyThumbPathsOnUi { get; init; }
         public Action<QueueObj, string> ApplyFailurePlaceholder { get; init; }
-        public bool IsResizeThumb { get; init; }
         public Action<string, long, object> UpdateMovieColumn { get; init; }
         public Func<bool> IsSessionActive { get; init; }
         public Func<long, MovieRecords> FindMovieRecord { get; init; }
@@ -34,13 +33,17 @@ namespace IndigoMovieManager.Thumbnail
                 return;
             }
 
-            TabInfo tbi = new(queueObj.Tabindex, host.DbName, host.ThumbFolder);
+            TabInfo tbi = queueObj.ThumbnailLayout != null
+                ? new TabInfo(queueObj.ThumbnailLayout, host.DbName, host.ThumbFolder)
+                : new TabInfo(queueObj.Tabindex, host.DbName, host.ThumbFolder);
             string movieFullPath = MediaPathNormalizer.Normalize(queueObj.MovieFullPath);
             string hash = GetHashCRC32(movieFullPath);
             string fileBody = Path.GetFileNameWithoutExtension(movieFullPath).ToLowerInvariant();
-            string saveThumbFileName = host.LayoutCache != null
-                ? host.LayoutCache.GetExpectedThumbPath(queueObj.Tabindex, fileBody, hash)
-                : Path.Combine(tbi.OutPath, ThumbnailLayoutCache.GetThumbFileName(fileBody, hash));
+            string saveThumbFileName = queueObj.ThumbnailLayout != null && host.LayoutCache != null
+                ? host.LayoutCache.GetExpectedThumbPath(queueObj.ThumbnailLayout, fileBody, hash)
+                : host.LayoutCache != null
+                    ? host.LayoutCache.GetExpectedThumbPath(queueObj.Tabindex, fileBody, hash)
+                    : Path.Combine(tbi.OutPath, ThumbnailLayoutCache.GetThumbFileName(fileBody, hash));
 
             if (isManual && !Path.Exists(saveThumbFileName))
             {
@@ -81,6 +84,7 @@ namespace IndigoMovieManager.Thumbnail
                         2 => Path.Combine(noFileJpeg, "noFileGrid.jpg"),
                         3 => Path.Combine(noFileJpeg, "noFileList.jpg"),
                         4 => Path.Combine(noFileJpeg, "noFileBig.jpg"),
+                        SkinTabIndexHelper.WpfSkinThumbnailSlotIndex => Path.Combine(noFileJpeg, "noFileGrid.jpg"),
                         99 => Path.Combine(noFileJpeg, "noFileGrid.jpg"),
                         _ => Path.Combine(noFileJpeg, "noFileSmall.jpg"),
                     };
@@ -101,7 +105,6 @@ namespace IndigoMovieManager.Thumbnail
                 TempPath = tempPath,
                 Hash = hash,
                 IsManual = isManual,
-                IsResizeThumb = host.IsResizeThumb,
             };
 
             if (ZipMediaKind.IsZipPath(movieFullPath))

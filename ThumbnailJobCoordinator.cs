@@ -177,6 +177,19 @@ namespace IndigoMovieManager
       }
     }
 
+    /// <summary>
+    /// 指定タブの追跡（tracked / inFlight）をまとめて解除する。
+    /// スキン切替で旧レイアウト向けの生成を破棄し、新ジョブが全件を登録し直せるようにする。
+    /// </summary>
+    public void ClearTrackingForTab(int tabIndex)
+    {
+      lock (_lock)
+      {
+        _tracked.RemoveWhere(k => k.TabIndex == tabIndex);
+        _inFlight.RemoveWhere(k => k.TabIndex == tabIndex);
+      }
+    }
+
     public void CancelTrackedForMovie(long movieId)
     {
       lock (_lock)
