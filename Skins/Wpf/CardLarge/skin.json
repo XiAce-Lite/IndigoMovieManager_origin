@@ -21,6 +21,7 @@
   "card": {
     "width": 600,
     "padding": 15,
+    "stretch": true,
     "background": "",
 
     "layout": {

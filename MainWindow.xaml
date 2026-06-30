@@ -565,6 +565,54 @@
                             ShowHeader="False">
                             <!--  ドキュメント  ★ここから  -->
                             <avalonDock:LayoutDocument Title="Document1" ContentId="Document1">
+                                <DockPanel>
+                                    <Border
+                                        x:Name="SkinToolbar"
+                                        DockPanel.Dock="Top"
+                                        Background="#333333"
+                                        Visibility="Collapsed">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock
+                                                Margin="8,6,0,6"
+                                                VerticalAlignment="Center"
+                                                Foreground="#CCCCCC"
+                                                Text="方式:" />
+                                            <RadioButton
+                                                x:Name="ModeWpfRadio"
+                                                Margin="8,0,0,0"
+                                                VerticalAlignment="Center"
+                                                Checked="SkinModeRadio_Checked"
+                                                Content="WPFスキン"
+                                                Foreground="#CCCCCC"
+                                                GroupName="SkinMode" />
+                                            <RadioButton
+                                                x:Name="ModeWbRadio"
+                                                Margin="12,0,0,0"
+                                                VerticalAlignment="Center"
+                                                Checked="SkinModeRadio_Checked"
+                                                Content="WB互換"
+                                                Foreground="#CCCCCC"
+                                                GroupName="SkinMode" />
+                                            <TextBlock
+                                                Margin="16,6,0,6"
+                                                VerticalAlignment="Center"
+                                                Foreground="#CCCCCC"
+                                                Text="スキン:" />
+                                            <ComboBox
+                                                x:Name="ComboSkin"
+                                                Width="180"
+                                                Margin="8,4,8,4"
+                                                Background="White"
+                                                Foreground="Black"
+                                                SelectionChanged="ComboSkin_SelectionChanged" />
+                                            <Button
+                                                x:Name="ReloadSkinButton"
+                                                Margin="0,4,8,4"
+                                                Padding="10,0"
+                                                Click="ReloadSkin_Click"
+                                                Content="Reload" />
+                                        </StackPanel>
+                                    </Border>
                                 <TabControl
                                     x:Name="Tabs"
                                     Margin="0,0,0,0"
@@ -1151,28 +1199,6 @@
                                         Header="スキン(WPF)"
                                         Tag="400x225x1x1">
                                         <DockPanel>
-                                            <StackPanel
-                                                Background="#333333"
-                                                DockPanel.Dock="Top"
-                                                Orientation="Horizontal">
-                                                <TextBlock
-                                                    Margin="8,6,0,6"
-                                                    VerticalAlignment="Center"
-                                                    Foreground="#CCCCCC"
-                                                    Text="WPFスキン:" />
-                                                <ComboBox
-                                                    x:Name="ComboWpfSkin"
-                                                    Width="180"
-                                                    Margin="8,4,8,4"
-                                                    Background="White"
-                                                    Foreground="Black"
-                                                    SelectionChanged="ComboWpfSkin_SelectionChanged" />
-                                                <Button
-                                                    Margin="0,4,8,4"
-                                                    Padding="10,0"
-                                                    Click="ReloadWpfSkin_Click"
-                                                    Content="Reload" />
-                                            </StackPanel>
                                             <ScrollViewer
                                                 x:Name="WpfSkinHeaderScroll"
                                                 DockPanel.Dock="Top"
@@ -1211,24 +1237,6 @@
                                         Header="スキン(WB)"
                                         Tag="160x120x1x1">
                                         <DockPanel>
-                                            <StackPanel
-                                                DockPanel.Dock="Top"
-                                                Background="#333333"
-                                                Orientation="Horizontal"
-                                                Visibility="Visible">
-                                                <TextBlock
-                                                    Margin="8,6,0,6"
-                                                    VerticalAlignment="Center"
-                                                    Foreground="#CCCCCC"
-                                                    Text="WBスキン:" />
-                                                <ComboBox
-                                                    x:Name="ComboWbSkin"
-                                                    Width="180"
-                                                    Margin="8,4,8,4"
-                                                    Background="White"
-                                                    Foreground="Black"
-                                                    SelectionChanged="ComboWbSkin_SelectionChanged" />
-                                            </StackPanel>
                                             <view:SkinView
                                                 x:Name="SkinViewGridWb"
                                                 SelectionChanged="SkinView_SelectionChanged"
@@ -1237,6 +1245,7 @@
                                     </TabItem>
 
                                 </TabControl>
+                                </DockPanel>
 
                             </avalonDock:LayoutDocument>
                             <!--  ドキュメント ★ここまで  -->

@@ -24,6 +24,7 @@
     "width": 980,
     "padding": 8,
     "margin": 0,
+    "stretch": true,
     "background": "",
 
     "layout": {

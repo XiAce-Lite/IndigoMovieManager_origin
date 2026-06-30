@@ -37,6 +37,14 @@ namespace IndigoMovieManager.Services.WpfSkin
         public double Width { get; set; }
         public double Height { get; set; }
         public double Padding { get; set; } = 8;
+
+        /// <summary>
+        /// true のとき、カードを固定幅にせずコンテナ幅に追従させる。
+        /// 1 カラムしか入らない幅ではウィンドウ幅まで広がり、複数カラム入る幅では
+        /// 等幅で並ぶ（既定 Big / 5x10 タブと同じ挙動）。
+        /// </summary>
+        public bool Stretch { get; set; }
+
         [JsonConverter(typeof(WpfSkinSpacingJsonConverter))]
         public WpfSkinSpacing Margin { get; set; }
         // 既定はカード背景なし（Small タブ同様、リスト背景をそのまま使う）。

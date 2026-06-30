@@ -39,11 +39,11 @@ namespace IndigoMovieManager.Services
                 return [];
             }
 
-            return [.. Directory.GetDirectories(root)
+            IEnumerable<string> names = Directory.GetDirectories(root)
                 .Select(Path.GetFileName)
                 .Where(name => !string.IsNullOrEmpty(name)
-                    && File.Exists(Path.Combine(root, name!, $"{name}.htm")))
-                .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)!];
+                    && File.Exists(Path.Combine(root, name!, $"{name}.htm")));
+            return SkinNameSortHelper.OrderDefaultFirst(names);
         }
 
         public static SkinConfig ParseSkinConfig(string folder)

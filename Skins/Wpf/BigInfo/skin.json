@@ -24,6 +24,7 @@
     "width": 600,
     "height": 0,
     "padding": 8,
+    "stretch": true,
     "background": "",
 
     "layout": {
