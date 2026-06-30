@@ -1,0 +1,70 @@
+{
+  "$schema": "../skin.schema.json",
+  "name": "WideGridInfo",
+  "type": "card",
+
+  "surface": {
+    "background": "#FFFFFF"
+  },
+
+  "styles": {
+    "title": { "fontFamily": "Yu Gothic UI", "fontSize": 15, "foreground": "#000000", "bold": true, "wrap": true },
+    "meta":  { "fontFamily": "Yu Gothic UI", "fontSize": 12, "foreground": "#555555" },
+    "path":  { "fontFamily": "Yu Gothic UI", "fontSize": 11, "foreground": "#888888", "wrap": true }
+  },
+
+  "thumbnail": {
+    "width": 220,
+    "height": 124,
+    "columns": 3,
+    "rows": 3
+  },
+
+  "card": {
+    "width": 980,
+    "padding": 8,
+    "margin": 0,
+    "background": "",
+
+    "layout": {
+      "panel": "grid",
+      "columns": ["660", "1*"],
+      "rows": ["auto", "1*"],
+      "children": [
+        {
+          "type": "thumbnail",
+          "col": 0,
+          "row": 0,
+          "rowSpan": 2,
+          "valign": "top",
+          "width": 660,
+          "height": 372
+        },
+        {
+          "type": "text",
+          "field": "title",
+          "col": 1,
+          "row": 0,
+          "style": "title",
+          "margin": "8,0,0,4"
+        },
+        {
+          "stack": "vertical",
+          "col": 1,
+          "row": 1,
+          "margin": "8,0,0,0",
+          "maxHeight": 368,
+          "children": [
+            { "type": "text", "field": "length",   "label": "尺: ",     "style": "meta" },
+            { "type": "text", "field": "size",      "label": "サイズ: ", "format": "filesize", "style": "meta" },
+            { "type": "text", "field": "filedate",  "label": "更新: ",   "style": "meta" },
+            { "type": "text", "field": "video",     "label": "映像: ",   "style": "meta" },
+            { "type": "text", "field": "audio",     "label": "音声: ",   "style": "meta" },
+            { "type": "text", "field": "path",      "style": "path" },
+            { "type": "tags", "width": 300, "minHeight": 28, "maxHeight": 170 }
+          ]
+        }
+      ]
+    }
+  }
+}

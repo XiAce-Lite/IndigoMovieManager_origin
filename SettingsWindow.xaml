@@ -7,7 +7,8 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     Title="個別設定"
     Width="800"
-    Height="420"
+    SizeToContent="Height"
+    MaxHeight="{Binding Source={x:Static SystemParameters.WorkArea}, Path=Height}"
     ResizeMode="NoResize"
     WindowStartupLocation="CenterOwner"
     mc:Ignorable="d">
@@ -22,6 +23,7 @@
 
     <Grid>
         <materialDesign:ColorZone>
+            <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
             <StackPanel Margin="10" Orientation="Vertical">
                 <Button
                     x:Name="BtnReturn"
@@ -167,6 +169,7 @@
                 </StackPanel>
 
             </StackPanel>
+            </ScrollViewer>
 
         </materialDesign:ColorZone>
     </Grid>

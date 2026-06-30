@@ -1173,12 +1173,21 @@
                                                     Click="ReloadWpfSkin_Click"
                                                     Content="Reload" />
                                             </StackPanel>
+                                            <ScrollViewer
+                                                x:Name="WpfSkinHeaderScroll"
+                                                DockPanel.Dock="Top"
+                                                HorizontalScrollBarVisibility="Hidden"
+                                                VerticalScrollBarVisibility="Disabled"
+                                                Visibility="Collapsed">
+                                                <ContentControl x:Name="WpfSkinHeaderHost" />
+                                            </ScrollViewer>
                                             <ListView
                                                 x:Name="WpfSkinList"
                                                 Background="White"
                                                 BorderThickness="0"
                                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                                 ScrollViewer.IsDeferredScrollingEnabled="True"
+                                                ScrollViewer.ScrollChanged="WpfSkinList_ScrollChanged"
                                                 SelectionChanged="List_SelectionChanged"
                                                 SelectionMode="Extended"
                                                 VirtualizingPanel.IsVirtualizing="True"

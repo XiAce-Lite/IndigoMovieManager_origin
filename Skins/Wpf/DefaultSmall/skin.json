@@ -1,0 +1,76 @@
+{
+  "$schema": "../skin.schema.json",
+  "name": "DefaultSmall",
+  "type": "card",
+
+  "surface": {
+    "background": "#FFFFFF"
+  },
+
+  "styles": {
+    "body": { "fontFamily": "Yu Gothic UI", "fontSize": 12, "foreground": "#000000" }
+  },
+
+  "thumbnail": {
+    "width": 120,
+    "height": 90,
+    "columns": 3,
+    "rows": 1
+  },
+
+  "card": {
+    "width": 650,
+    "padding": 0,
+    "margin": 0,
+    "background": "",
+
+    "layout": {
+      "stack": "vertical",
+      "children": [
+        {
+          "stack": "horizontal",
+          "children": [
+            { "type": "thumbnail", "width": 360, "height": 90 },
+            {
+              "stack": "vertical",
+              "width": 260,
+              "margin": 3,
+              "children": [
+                {
+                  "stack": "horizontal",
+                  "children": [
+                    { "type": "text", "label": "ファイル名：", "style": "body" },
+                    { "type": "text", "field": "body", "style": "body" },
+                    { "type": "text", "field": "ext", "style": "body" }
+                  ]
+                },
+                {
+                  "stack": "horizontal",
+                  "children": [
+                    { "type": "text", "label": "スコア：", "style": "body" },
+                    { "type": "text", "field": "score", "style": "body" }
+                  ]
+                },
+                {
+                  "stack": "horizontal",
+                  "children": [
+                    { "type": "text", "label": "ファイル日付：", "style": "body" },
+                    { "type": "text", "field": "filedate", "style": "body" }
+                  ]
+                },
+                {
+                  "stack": "horizontal",
+                  "children": [
+                    { "type": "text", "label": "サイズ：", "style": "body" },
+                    { "type": "text", "field": "size", "format": "filesize", "style": "body" }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        { "type": "tags", "width": 650, "minHeight": 62, "maxHeight": 110 }
+      ]
+    }
+  }
+}

@@ -5,7 +5,7 @@ namespace IndigoMovieManager.Services.WpfSkin
     internal sealed class ResolvedTextStyle
     {
         public double FontSize { get; set; } = 12;
-        public string FontFamily { get; set; } = "";
+        public string FontFamily { get; set; } = "Yu Gothic UI";
         public bool Bold { get; set; }
         public bool Italic { get; set; }
         // 既定は既存 Small タブ準拠（黒文字）。

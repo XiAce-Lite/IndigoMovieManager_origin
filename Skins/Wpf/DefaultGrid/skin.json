@@ -1,0 +1,35 @@
+{
+  "$schema": "../skin.schema.json",
+  "name": "DefaultGrid",
+  "type": "card",
+
+  "surface": {
+    "background": "#FFFFFF"
+  },
+
+  "styles": {
+    "title": { "fontFamily": "Yu Gothic UI", "fontSize": 12, "foreground": "#000000" }
+  },
+
+  "thumbnail": {
+    "width": 160,
+    "height": 120,
+    "columns": 1,
+    "rows": 1
+  },
+
+  "card": {
+    "width": 160,
+    "padding": 0,
+    "margin": 0,
+    "background": "",
+
+    "layout": {
+      "stack": "vertical",
+      "children": [
+        { "type": "thumbnail", "width": 160, "height": 120 },
+        { "type": "text", "field": "title", "style": "title", "width": 160 }
+      ]
+    }
+  }
+}
