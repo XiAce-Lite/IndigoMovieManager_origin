@@ -1450,11 +1450,9 @@
                 </DockPanel>
             </materialDesign:DrawerHost.LeftDrawerContent>
 
-            <Grid Background="Transparent" IsHitTestVisible="False">
                 <materialDesign:ColorZone
                     x:Name="HeaderZone"
                     HorizontalAlignment="Stretch"
-                    IsHitTestVisible="True"
                     Padding="16,2"
                     VerticalAlignment="Top"
                     Mode="PrimaryDark"
@@ -1593,7 +1591,6 @@
                     </VirtualizingStackPanel>
                 </DockPanel>
                 </materialDesign:ColorZone>
-            </Grid>
         </materialDesign:DrawerHost>
             </Grid>
 
