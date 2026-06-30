@@ -1,0 +1,114 @@
+
+body
+{
+	background-color : #444;
+	color : #BBB;
+	overflow : hidden;
+}
+
+*
+{
+	margin : 0;
+	padding: 0;
+	font-weight : normal;
+}
+
+a { color : #7DA; }
+
+a.a_remove
+{
+	color : #5A8;
+	margin-left : 5px;
+}
+
+/* スクロール領域 */
+div#scroll
+{
+    width : 100%;
+	height : 100%;
+	overflow : scroll;
+}
+
+/* テーブル */
+table
+{
+    font-size : 90%;
+    width : 100%;
+    border: 1px solid #ccc;
+    border-collapse: separate;
+    border-spacing: 1px;
+}
+
+th
+{
+    padding: 5px;
+    border-right: 1px solid #ccc;
+    border-bottom: 1px solid #ccc;
+    background-color: #222;
+	white-space : nowrap;
+	overflow : hidden;
+}
+
+td
+{
+    padding: 3px;
+    border-right: 1px solid #ccc;
+    border-bottom: 1px solid #ccc;
+	word-wrap : break-word;
+}
+
+/* タイトル */
+h3
+{
+	font-size : 80%;
+	margin : 2px;
+}
+
+/* スコア */
+h4
+{
+	font-size : 80%;
+	display : inline;
+}
+
+/* タグ */
+ul
+{
+	display : block;
+	margin : 3px;
+}
+
+li
+{
+	display : inline;
+	font-size : 70%;
+	margin-right : 1em;
+}
+
+/* サムネイル */
+tr.thum_select
+{
+	background-color : #064560;
+}
+
+img.img_thum
+{
+	width : 280px;
+	height : 42px;
+	background : #000;
+	border-top : 2px solid #999;
+	border-left : 2px solid #999;
+	border-right : 2px solid #666;
+	border-bottom : 2px solid #666;
+}
+
+img.img_focus
+{
+	width : 280px;
+	height : 42px;
+	background : #000;
+	border-top : 2px solid #2AF;
+	border-left : 2px solid #2AF;
+	border-right : 2px solid #18F;
+	border-bottom : 2px solid #18F;
+}

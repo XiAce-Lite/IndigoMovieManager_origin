@@ -1,0 +1,65 @@
+<html>
+
+<head>
+	<meta http-equiv="Content-Type" content="text/html; charset=Shift_JIS">
+	<link type="text/css" rel="stylesheet" href="./DefaultBig.css">
+	
+	<!-- 以下の２つのjsは必須 -->
+	<script type="text/javascript" src="../prototype.js"></script>
+	<script type="text/javascript" src="../wblib.js"></script>
+</head>
+
+<body>
+	<!-- サムネイル作成 -->
+	<script type="text/javascript">
+		wb.onCreateThum = function(mv, dir)
+		{
+			var tags = "";
+			
+			for(var i=0;i<mv.tags.length;i++){
+				tags += "<li><a href=\"javascript:wb.find('" + wb.htmlDecode(mv.tags[i]) + "')\">" + mv.tags[i] + "</a>";
+				tags += "<a href=\"javascript:wb.removeTag(" + mv.id + ",'" + wb.htmlDecode(mv.tags[i]) + "')\" class=\"a_remove\">[x]</a>";
+			}
+			
+			var exist = (mv.exist == 0) ? " style=\"filter:Gray\"" : "";
+			var select = (mv.select == 1) ? "thum_select" : "thum";
+			var insert = (dir < 0) ? Insertion.Top : Insertion.Bottom;
+			
+			new insert($("view"), ' \
+				<div class="' + select + '" id="thum' + mv.id + '"> \
+					<h3 id="title' + mv.id + '">◆&nbsp;No.' + mv.id + '：&nbsp;' +  mv.title + mv.ext + ' </h3> \
+					<div class="shadow"><img class="img_thum" id="img' + mv.id + '" src="' + mv.thum + '"' + exist + '></div> \
+					<span class="item">スコア : </span><span id="score' + mv.id + '">' + mv.score + '</span><br> \
+					<span class="item">サイズ : </span><span>' + mv.size + '</span><br> \
+					<span class="item">再生時間 : </span><span>' + mv.len + '</span><br> \
+					<span class="item">更新日付 : </span><span>' + mv.fileDate.substr(0,10) + '</span><br> \
+					<ul id="tag' + mv.id + '">' + tags + '</ul> \
+				</div>'
+			);
+		};
+		
+		wb.onModifyPath = function(id, drive, dir, title, ext, kana)
+		{
+			var elem = $("title" + id);
+			if(elem == null) return;
+			
+			elem.innerHTML = '◆&nbsp;No.' + id + '：&nbsp;' + title + ext;
+		};
+	</script>
+	
+	<!-- サムネイル表示エリア -->
+	<div id="view"></div>
+	
+	<!-- コンフィグ -->
+	<div id="config">
+		skin-version :		1;
+		multi-select :		1;
+		seamless-scroll :	2;
+		thum-width :		200;
+		thum-height :	 	150;
+		thum-column : 		3;
+		thum-row : 			1;
+	</div>
+</body>
+
+</html>

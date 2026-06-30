@@ -54,11 +54,16 @@ namespace IndigoMovieManager.UserControls
                 // Arrange 時に StretchItems がスロット幅まで引き伸ばす。
                 CardBorder.ClearValue(WidthProperty);
                 CardBorder.HorizontalAlignment = HorizontalAlignment.Stretch;
+                // UserControl 既定の HorizontalContentAlignment=Left だと、内側の
+                // CardBorder/レイアウトが内容幅で左寄せにシュリンクラップされ、grid の
+                // star 列が広がらずテキストが「…」になる。Stretch にして内部も全幅へ伸ばす。
+                HorizontalContentAlignment = HorizontalAlignment.Stretch;
             }
             else
             {
                 CardBorder.Width = cardWidth;
                 CardBorder.HorizontalAlignment = HorizontalAlignment.Left;
+                HorizontalContentAlignment = HorizontalAlignment.Left;
             }
 
             CardBorder.Padding = new Thickness(card.Padding);

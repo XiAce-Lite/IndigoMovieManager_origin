@@ -355,6 +355,9 @@ namespace IndigoMovieManager.Services.WpfSkin
 
             var panelTemplate = new ItemsPanelTemplate();
             var wrap = new FrameworkElementFactory(typeof(WrapPanel));
+            // 幅指定（width）があると StackPanel 内で「幅固定＋Stretch」となり中央寄せされ、
+            // テキスト情報の左位置とタグの左位置がずれる。左寄せに固定して始点を揃える。
+            wrap.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Left);
             double tagsWidth = node.Width ?? (def.Card.Width > 0 ? def.Card.Width : def.Thumbnail.Width);
             if (tagsWidth > 0)
             {

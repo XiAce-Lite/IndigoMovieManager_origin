@@ -52,6 +52,18 @@ namespace IndigoMovieManager.Services.WpfSkin
                 // StretchItems: 1 カラムしか入らない幅ではカードをコンテナ幅いっぱいに広げ、
                 // 複数カラム入る幅では等幅で並べる（既定 Big / 5x10 タブと同じ）。
                 panelFactory.SetValue(VirtualizingWrapPanel.StretchItemsProperty, true);
+
+                // card に width/height 両方が指定されている場合は ItemSize を固定する。
+                // 列数は「カードの自然幅」ではなく card.width 基準で決定されるため、
+                // 横長カード（BigInfo / WideGridInfo 等）でも長文に引きずられず、
+                // ウィンドウ幅に応じて狙いどおりの列数で並ぶ。
+                // ※ StretchItems により各カードはスロット幅まで伸びる（arrange 時）。
+                double w = def.Card.Width;
+                double h = def.Card.Height;
+                if (w > 0 && h > 0)
+                {
+                    panelFactory.SetValue(VirtualizingWrapPanel.ItemSizeProperty, new Size(w, h));
+                }
             }
             else
             {

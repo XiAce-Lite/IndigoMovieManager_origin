@@ -45,6 +45,8 @@ namespace IndigoMovieManager
         private bool _openingDatabase;
         private bool _suppressSkinComboChange;
         private bool _suppressSkinModeChange;
+        private const string SkinEngineWpf = "WPF";
+        private const string SkinEngineWb = "WB";
 
         private Stack<string> recentFiles = new();
 
@@ -195,7 +197,9 @@ namespace IndigoMovieManager
             string savedWpfSkin = Properties.Settings.Default.LastWpfSkinName;
             ApplyWpfSkin(string.IsNullOrWhiteSpace(savedWpfSkin) ? null : savedWpfSkin);
             UpdateWbSkinTabTag();
-            UpdateSkinToolbarForTab(Tabs.SelectedIndex);
+            int initialSkinTabIndex = GetSavedSkinEngineTabIndex();
+            Tabs.SelectedIndex = initialSkinTabIndex;
+            UpdateSkinToolbarForTab(initialSkinTabIndex);
 
             // WebView2 はネイティブ HWND のため WPF オーバーレイより前面に出る（エアスペース問題）。
             // ドロワー（ハンバーガーメニュー）表示中は SkinView を隠して被りを防ぐ。
@@ -206,9 +210,27 @@ namespace IndigoMovieManager
         private void UpdateWbSkinTabTag() =>
             TabGridWb.Tag = WhiteBrowserSkinSettings.GetThumbnailTag();
 
+        private static bool IsWbEngine(string value) =>
+            string.Equals(value, SkinEngineWb, StringComparison.OrdinalIgnoreCase);
+
+        private int GetSavedSkinEngineTabIndex() =>
+            IsWbEngine(Properties.Settings.Default.LastSkinEngine)
+                ? SkinTabIndexHelper.WbSkinTabIndex
+                : SkinTabIndexHelper.WpfSkinTabIndex;
+
+        private void SaveSkinEngine(int tabIndex)
+        {
+            string engine = SkinTabIndexHelper.IsWebSkinTab(tabIndex) ? SkinEngineWb : SkinEngineWpf;
+            if (!string.Equals(Properties.Settings.Default.LastSkinEngine, engine, StringComparison.OrdinalIgnoreCase))
+            {
+                Properties.Settings.Default.LastSkinEngine = engine;
+                Properties.Settings.Default.Save();
+            }
+        }
+
         /// <summary>
         /// 共通スキンツールバー（方式トグル＋スキン Combo）を、選択中タブに合わせて更新する。
-        /// WPF / WB スキンタブ以外では非表示にする。
+        /// 統合一覧では WPF / WB のどちらかを必ず選択状態にする。
         /// </summary>
         private void UpdateSkinToolbarForTab(int index)
         {
@@ -222,19 +244,22 @@ namespace IndigoMovieManager
 
             if (!isWpf && !isWb)
             {
-                SkinToolbar.Visibility = Visibility.Collapsed;
-                return;
+                index = GetSavedSkinEngineTabIndex();
+                isWpf = index == SkinTabIndexHelper.WpfSkinTabIndex;
+                isWb = index == SkinTabIndexHelper.WbSkinTabIndex;
             }
 
             SkinToolbar.Visibility = Visibility.Visible;
+            SaveSkinEngine(index);
 
             _suppressSkinModeChange = true;
             ModeWpfRadio.IsChecked = isWpf;
             ModeWbRadio.IsChecked = isWb;
             _suppressSkinModeChange = false;
 
-            // Reload は WPF スキン専用機能。
-            ReloadSkinButton.Visibility = isWpf ? Visibility.Visible : Visibility.Collapsed;
+            // Reload は WPF スキン専用機能。WB では Hidden にしてレイアウト領域を保持し、
+            // モード切替でツールバー高さが変動（ピコピコ）しないようにする。
+            ReloadSkinButton.Visibility = isWpf ? Visibility.Visible : Visibility.Hidden;
 
             RebuildSkinCombo(isWpf);
         }
@@ -275,6 +300,11 @@ namespace IndigoMovieManager
                 // ツールバーと Combo が同期される。
                 Tabs.SelectedIndex = target;
             }
+            else
+            {
+                SaveSkinEngine(target);
+                UpdateSkinToolbarForTab(target);
+            }
         }
 
         private async void ComboSkin_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -307,6 +337,7 @@ namespace IndigoMovieManager
             }
 
             WhiteBrowserSkinSettings.ActiveSkinFolder = folder;
+            Properties.Settings.Default.LastSkinEngine = SkinEngineWb;
             Properties.Settings.Default.LastWbSkinFolder = folder;
             Properties.Settings.Default.Save();
             UpdateWbSkinTabTag();
@@ -332,6 +363,41 @@ namespace IndigoMovieManager
             StartTabSwitchThumbnailJob(SkinTabIndexHelper.WbSkinTabIndex);
         }
 
+        private static string MapLegacySkinToWpfSkinName(string skin) =>
+            string.IsNullOrWhiteSpace(skin)
+                ? null
+                : skin.Replace(" ", "") switch
+                {
+                    "DefaultSmall" => "DefaultSmall",
+                    "DefaultBig" => "DefaultBig",
+                    "DefaultGrid" => "DefaultGrid",
+                    "DefaultList" => "DefaultList",
+                    "DefaultBig10" => "DefaultBig10",
+                    _ => skin,
+                };
+
+        private int PrepareStartupSkinMode(string dbSkin)
+        {
+            int targetTabIndex = GetSavedSkinEngineTabIndex();
+            if (targetTabIndex == SkinTabIndexHelper.WpfSkinTabIndex)
+            {
+                string mappedSkin = MapLegacySkinToWpfSkinName(dbSkin);
+                string skinName = !string.IsNullOrWhiteSpace(mappedSkin)
+                    ? mappedSkin
+                    : Properties.Settings.Default.LastWpfSkinName;
+                ApplyWpfSkin(string.IsNullOrWhiteSpace(skinName) ? null : skinName);
+
+                if (!string.IsNullOrWhiteSpace(_wpfSkin?.Name))
+                {
+                    Properties.Settings.Default.LastWpfSkinName = _wpfSkin.Name;
+                }
+            }
+
+            Tabs.SelectedIndex = targetTabIndex;
+            UpdateSkinToolbarForTab(targetTabIndex);
+            return targetTabIndex;
+        }
+
         private void MenuToggleButton_DrawerStateChanged(object sender, RoutedEventArgs e)
         {
             Visibility visibility = MenuToggleButton.IsChecked == true
@@ -345,6 +411,7 @@ namespace IndigoMovieManager
         private void ApplyWpfSkinSelection(string folder)
         {
             ApplyWpfSkin(folder);
+            Properties.Settings.Default.LastSkinEngine = SkinEngineWpf;
             Properties.Settings.Default.LastWpfSkinName = folder;
             Properties.Settings.Default.Save();
             RefreshWpfSkinItemsForCurrentFilter();
@@ -1057,20 +1124,29 @@ namespace IndigoMovieManager
                     MainVM.MovieRecs.Clear();
                     GetHistoryTable(dbFullPath, session);
 
-                    int startupTabIndex = ThumbnailLayoutCache.GetTabIndexFromSkin(MainVM.DbInfo.Skin);
+                    int startupTabIndex = PrepareStartupSkinMode(MainVM.DbInfo.Skin);
                     string sortId = MainVM.DbInfo.Sort ?? "1";
                     await FilterAndSortAsync(sortId, true, startupTabIndex).ConfigureAwait(true);
-
-                    if (MainVM.DbInfo.Skin != null)
-                    {
-                        SwitchTab(MainVM.DbInfo.Skin);
-                    }
 
                     GetBookmarkTable(session);
                     GetTagBarTable(session);
                 }
 
                 SetSkinViewRoots();
+
+                // DB オープン/切替時は、タブ設定が _openingDatabase 中に行われるため
+                // Tabs_SelectionChangedAsync が早期 return し、現在モードのサムネ生成が
+                // 起動されない（旧 SwitchTab 相当の起点が無くなったことによるデグレ）。
+                // ここでアクティブモードの生成ジョブを明示起動して未生成分を作る。
+                StartTabSwitchThumbnailJob(Tabs.SelectedIndex);
+
+                // DB オープン/切替直後は何も選択されておらず Avalon 詳細ペインが空になる。
+                // 現在の表示モード（WPF/WB）とドロップダウン状態のまま先頭レコードを選択し、
+                // 詳細を表示しておく。WB の遅延描画（ContextIdle で Tag 設定）後に走るよう、
+                // 同優先度でキューの後ろに積む。
+                _ = Dispatcher.BeginInvoke(
+                    new Action(() => TabSelectionHelper.SelectFirstItem(this)),
+                    DispatcherPriority.ContextIdle);
 
                 CreateWatcher();
                 ScheduleStartupFolderCheck();
@@ -1360,9 +1436,18 @@ namespace IndigoMovieManager
 
         private void UpdateSkin()
         {
-            if (SkinTabIndexHelper.IsWebSkinTab(Tabs.SelectedIndex)
-                || SkinTabIndexHelper.IsWpfSkinTab(Tabs.SelectedIndex))
+            if (SkinTabIndexHelper.IsWebSkinTab(Tabs.SelectedIndex))
             {
+                return;
+            }
+
+            if (SkinTabIndexHelper.IsWpfSkinTab(Tabs.SelectedIndex))
+            {
+                string skinName = _wpfSkin?.Name;
+                if (!string.IsNullOrWhiteSpace(skinName))
+                {
+                    UpsertSystemTable(Properties.Settings.Default.LastDoc, "skin", skinName);
+                }
                 return;
             }
 
@@ -1436,11 +1521,11 @@ namespace IndigoMovieManager
                     BigList10.ItemsSource = items;
                     break;
                 case SkinTabIndexHelper.WpfSkinTabIndex:
+                    ResolveThumbPathsForTab(SkinTabIndexHelper.WpfSkinTabIndex, items);
                     WpfSkinList.ItemsSource = items;
                     break;
                 case SkinTabIndexHelper.WbSkinTabIndex:
-                    SkinViewGridWb.Tag = items;
-                    SkinViewGridWb.RenderItems(items);
+                    RenderSkinViewForCurrentFilter(SkinTabIndexHelper.WbSkinTabIndex, deferUntilVisible: true);
                     break;
                 default:
                     SmallList.ItemsSource = items;
@@ -1461,6 +1546,11 @@ namespace IndigoMovieManager
             if (SkinTabIndexHelper.IsWebSkinTab(Tabs.SelectedIndex))
             {
                 RenderSkinViewForCurrentFilter(Tabs.SelectedIndex, deferUntilVisible: false);
+            }
+            else if (SkinTabIndexHelper.IsWpfSkinTab(Tabs.SelectedIndex))
+            {
+                ResolveThumbPathsForTab(SkinTabIndexHelper.WpfSkinTabIndex, items);
+                WpfSkinList.ItemsSource = items;
             }
         }
 
@@ -2596,6 +2686,13 @@ namespace IndigoMovieManager
         //
         private async void ReloadButton_Click(object sender, RoutedEventArgs e)
         {
+            // DB 未オープン時は SQLite クエリが "Data Source cannot be empty" で
+            // 落ちるため、何もせず抜ける（スキンの Reload と同じく無反応にする）。
+            if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
+            {
+                return;
+            }
+
             // フォルダの最新状態をDBに反映
             //await CheckFolderAsync(CheckMode.Auto);
 
