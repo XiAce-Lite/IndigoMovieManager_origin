@@ -11,6 +11,10 @@ namespace IndigoMovieManager.Services.WpfSkin
         public WpfSkinCard Card { get; set; } = new();
         public WpfSkinSurface Surface { get; set; } = new();
         public Dictionary<string, WpfSkinStyle> Styles { get; set; } = new();
+
+        /// <summary>type が "list" のとき、1 行 1 アイテムの縦リスト表示にする。</summary>
+        [JsonIgnore]
+        public bool IsList => string.Equals(Type, "list", System.StringComparison.OrdinalIgnoreCase);
     }
 
     public sealed class WpfSkinSurface
@@ -33,6 +37,8 @@ namespace IndigoMovieManager.Services.WpfSkin
         public double Width { get; set; }
         public double Height { get; set; }
         public double Padding { get; set; } = 8;
+        [JsonConverter(typeof(WpfSkinSpacingJsonConverter))]
+        public WpfSkinSpacing Margin { get; set; }
         // 既定はカード背景なし（Small タブ同様、リスト背景をそのまま使う）。
         public string Background { get; set; } = "";
         public WpfSkinNode Layout { get; set; } = new();
@@ -69,6 +75,9 @@ namespace IndigoMovieManager.Services.WpfSkin
         public string Type { get; set; } = "text";
         public string Field { get; set; } = "";
         public string Label { get; set; } = "";
+
+        /// <summary>list 型のカラム見出し（ヘッダー行に表示）。</summary>
+        public string Header { get; set; } = "";
         public string Format { get; set; } = "";
         // 以下のスタイル系は未指定（空 / 0）を既定とし、styles 参照や既定スタイルが効くようにする。
         public string Align { get; set; } = "";
@@ -96,8 +105,10 @@ namespace IndigoMovieManager.Services.WpfSkin
         public double? MaxWidth { get; set; }
         public double? MinHeight { get; set; }
         public double? MaxHeight { get; set; }
-        public double Margin { get; set; }
-        public double Padding { get; set; }
+        [JsonConverter(typeof(WpfSkinSpacingJsonConverter))]
+        public WpfSkinSpacing Margin { get; set; }
+        [JsonConverter(typeof(WpfSkinSpacingJsonConverter))]
+        public WpfSkinSpacing Padding { get; set; }
         public string VAlign { get; set; } = "";
         public string HAlign { get; set; } = "";
         public string Background { get; set; } = "";

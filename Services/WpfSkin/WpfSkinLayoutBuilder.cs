@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -28,6 +29,70 @@ namespace IndigoMovieManager.Services.WpfSkin
                 : BuildLeaf(node, def);
 
             return WrapWithChrome(element, node);
+        }
+
+        /// <summary>
+        /// list 型スキンのカラム見出し行を組み立てる。ルートが grid で、子に header が
+        /// 1 つ以上あるときのみ生成する（なければ null）。
+        /// </summary>
+        public static UIElement BuildListHeader(WpfSkinDefinition def)
+        {
+            WpfSkinNode root = def?.Card?.Layout;
+            if (def == null || !def.IsList || root == null || !root.IsGrid || root.Children == null)
+            {
+                return null;
+            }
+
+            if (!root.Children.Any(c => !string.IsNullOrEmpty(c.Header)))
+            {
+                return null;
+            }
+
+            var grid = new Grid
+            {
+                Background = new SolidColorBrush(Color.FromRgb(0xF0, 0xF0, 0xF0)),
+            };
+
+            if (def.Card.Width > 0)
+            {
+                grid.Width = def.Card.Width;
+                grid.HorizontalAlignment = HorizontalAlignment.Left;
+            }
+
+            if (root.Columns != null)
+            {
+                foreach (string col in root.Columns)
+                {
+                    grid.ColumnDefinitions.Add(new ColumnDefinition { Width = WpfSkinGridLengthParser.Parse(col) });
+                }
+            }
+
+            foreach (WpfSkinNode child in root.Children)
+            {
+                if (string.IsNullOrEmpty(child.Header))
+                {
+                    continue;
+                }
+
+                var header = new TextBlock
+                {
+                    Text = child.Header,
+                    FontWeight = FontWeights.Bold,
+                    FontFamily = new FontFamily("Yu Gothic UI"),
+                    Padding = new Thickness(4, 3, 4, 3),
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                };
+                Grid.SetColumn(header, child.Col);
+                grid.Children.Add(header);
+            }
+
+            var border = new Border
+            {
+                Child = grid,
+                BorderBrush = new SolidColorBrush(Color.FromRgb(0xC0, 0xC0, 0xC0)),
+                BorderThickness = new Thickness(0, 0, 0, 1),
+            };
+            return border;
         }
 
         private static UIElement BuildContainer(WpfSkinNode node, WpfSkinDefinition def)
@@ -148,26 +213,35 @@ namespace IndigoMovieManager.Services.WpfSkin
                 text.FontFamily = new FontFamily(style.FontFamily);
             }
 
-            Binding binding;
-            if (string.Equals(node.Format, "filesize", StringComparison.OrdinalIgnoreCase)
-                && WpfSkinHostContext.FileSizeConverter != null)
+            // field 未指定で label のみのノードは静的ラベル（バインドしない）。
+            // ここでバインドすると既定の Movie_Name が引かれ、全項目にファイル名が混入する。
+            if (string.IsNullOrWhiteSpace(node.Field))
             {
-                binding = new Binding(GetFieldPath(node.Field))
-                {
-                    Converter = WpfSkinHostContext.FileSizeConverter,
-                };
+                text.Text = node.Label ?? "";
             }
             else
             {
-                binding = new Binding(GetFieldPath(node.Field));
-            }
+                Binding binding;
+                if (string.Equals(node.Format, "filesize", StringComparison.OrdinalIgnoreCase)
+                    && WpfSkinHostContext.FileSizeConverter != null)
+                {
+                    binding = new Binding(GetFieldPath(node.Field))
+                    {
+                        Converter = WpfSkinHostContext.FileSizeConverter,
+                    };
+                }
+                else
+                {
+                    binding = new Binding(GetFieldPath(node.Field));
+                }
 
-            if (!string.IsNullOrEmpty(node.Label))
-            {
-                binding.StringFormat = node.Label + "{0}";
-            }
+                if (!string.IsNullOrEmpty(node.Label))
+                {
+                    binding.StringFormat = node.Label + "{0}";
+                }
 
-            text.SetBinding(TextBlock.TextProperty, binding);
+                text.SetBinding(TextBlock.TextProperty, binding);
+            }
 
             if (style.Wrap)
             {
@@ -287,6 +361,16 @@ namespace IndigoMovieManager.Services.WpfSkin
                 wrap.SetValue(FrameworkElement.WidthProperty, tagsWidth);
             }
 
+            if (node.MinHeight.HasValue)
+            {
+                wrap.SetValue(FrameworkElement.MinHeightProperty, node.MinHeight.Value);
+            }
+
+            if (node.MaxHeight.HasValue)
+            {
+                wrap.SetValue(FrameworkElement.MaxHeightProperty, node.MaxHeight.Value);
+            }
+
             panelTemplate.VisualTree = wrap;
             items.ItemsPanel = panelTemplate;
 
@@ -301,7 +385,7 @@ namespace IndigoMovieManager.Services.WpfSkin
                 return null;
             }
 
-            bool hasPadding = node.Padding > 0;
+            bool hasPadding = node.Padding != null && !node.Padding.IsEmpty;
             bool hasBackground = !string.IsNullOrEmpty(node.Background);
             if (!hasPadding && !hasBackground)
             {
@@ -315,7 +399,7 @@ namespace IndigoMovieManager.Services.WpfSkin
 
             if (hasPadding)
             {
-                border.Padding = new Thickness(node.Padding);
+                border.Padding = node.Padding.ToThickness();
             }
 
             if (hasBackground)
@@ -361,9 +445,9 @@ namespace IndigoMovieManager.Services.WpfSkin
                 element.MaxHeight = node.MaxHeight.Value;
             }
 
-            if (node.Margin != 0)
+            if (node.Margin != null && !node.Margin.IsEmpty)
             {
-                element.Margin = new Thickness(node.Margin);
+                element.Margin = node.Margin.ToThickness();
             }
 
             if (!string.IsNullOrEmpty(node.VAlign))
@@ -424,6 +508,7 @@ namespace IndigoMovieManager.Services.WpfSkin
             return field.ToLowerInvariant() switch
             {
                 "title" or "name" => nameof(MovieRecords.Movie_Name),
+                "id" or "movieid" => nameof(MovieRecords.Movie_Id),
                 "body" => nameof(MovieRecords.Movie_Body),
                 "metatitle" => nameof(MovieRecords.Title),
                 "path" => nameof(MovieRecords.Movie_Path),

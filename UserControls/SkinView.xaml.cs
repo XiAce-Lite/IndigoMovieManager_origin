@@ -40,6 +40,7 @@ namespace IndigoMovieManager.UserControls
         };
 
         private bool _initialized;
+        private bool _initializing;
         private bool _ready;
         private bool IsWhiteBrowserCompat => SkinTabIndexHelper.IsWhiteBrowserCompatTab(SkinTabIndex);
         private string _thumbRoot = "";
@@ -125,18 +126,25 @@ namespace IndigoMovieManager.UserControls
                 _imagesRoot = imagesRoot;
             }
 
-            if (_initialized)
+            // _initialized を立てるのは await 群の後なので、初期化中に Loaded が再発火すると
+            // ガードを通り抜けて WebMessageReceived が多重購読され、play が複数回処理されてしまう
+            // （ダブルクリックで動画が複数再生される原因）。_initializing で再入を防ぐ。
+            if (_initialized || _initializing)
             {
                 return;
             }
 
+            _initializing = true;
             try
             {
                 await Browser.EnsureCoreWebView2Async().ConfigureAwait(true);
                 CoreWebView2 core = Browser.CoreWebView2;
                 core.Settings.AreDevToolsEnabled = false;
                 core.Settings.IsStatusBarEnabled = false;
+                // 二重購読の保険（万一の再入時にハンドラが複数登録されると play が多重発火する）。
+                core.WebMessageReceived -= Core_WebMessageReceived;
                 core.WebMessageReceived += Core_WebMessageReceived;
+                Browser.PreviewKeyDown -= Browser_PreviewKeyDown;
                 Browser.PreviewKeyDown += Browser_PreviewKeyDown;
 
                 if (!string.IsNullOrWhiteSpace(_thumbRoot) && Directory.Exists(_thumbRoot))
@@ -198,6 +206,10 @@ namespace IndigoMovieManager.UserControls
             {
                 ErrorText.Text = $"WebView2 の初期化に失敗しました: {ex.Message}";
                 ErrorText.Visibility = Visibility.Visible;
+            }
+            finally
+            {
+                _initializing = false;
             }
         }
 

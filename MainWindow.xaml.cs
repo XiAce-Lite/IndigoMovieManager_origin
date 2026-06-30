@@ -184,7 +184,15 @@ namespace IndigoMovieManager
             SkinViewGridWb.SearchTagRequested += SkinView_SearchTagRequested;
             SkinViewGridWb.RemoveTagRequested += SkinView_RemoveTagRequested;
 
-            ApplyWpfSkin();
+            string savedWbSkin = Properties.Settings.Default.LastWbSkinFolder;
+            if (!string.IsNullOrWhiteSpace(savedWbSkin)
+                && WhiteBrowserSkinSettings.EnumerateSkinFolders().Contains(savedWbSkin, StringComparer.OrdinalIgnoreCase))
+            {
+                WhiteBrowserSkinSettings.ActiveSkinFolder = savedWbSkin;
+            }
+
+            string savedWpfSkin = Properties.Settings.Default.LastWpfSkinName;
+            ApplyWpfSkin(string.IsNullOrWhiteSpace(savedWpfSkin) ? null : savedWpfSkin);
             InitializeWpfSkinCombo();
             InitializeWbSkinCombo();
 
@@ -227,6 +235,8 @@ namespace IndigoMovieManager
             }
 
             WhiteBrowserSkinSettings.ActiveSkinFolder = folder;
+            Properties.Settings.Default.LastWbSkinFolder = folder;
+            Properties.Settings.Default.Save();
             UpdateWbSkinTabTag();
 
             try
@@ -283,6 +293,8 @@ namespace IndigoMovieManager
             }
 
             ApplyWpfSkin(folder);
+            Properties.Settings.Default.LastWpfSkinName = folder;
+            Properties.Settings.Default.Save();
             RefreshWpfSkinItemsForCurrentFilter();
         }
 
@@ -332,10 +344,28 @@ namespace IndigoMovieManager
             WpfSkinList.ItemsPanel = Services.WpfSkin.WpfSkinTemplateBuilder.BuildItemsPanel(_wpfSkin);
             WpfSkinList.ItemTemplate = Services.WpfSkin.WpfSkinTemplateBuilder.BuildItemTemplate(_wpfSkin);
 
+            // list 型は横スクロール可・カラム見出し行を表示。card 型は従来通り横スクロール無し。
+            ScrollViewer.SetHorizontalScrollBarVisibility(
+                WpfSkinList,
+                _wpfSkin.IsList ? ScrollBarVisibility.Auto : ScrollBarVisibility.Disabled);
+
+            UIElement header = Services.WpfSkin.WpfSkinLayoutBuilder.BuildListHeader(_wpfSkin);
+            WpfSkinHeaderHost.Content = header;
+            WpfSkinHeaderScroll.Visibility = header != null ? Visibility.Visible : Visibility.Collapsed;
+
             System.Windows.Media.Brush surfaceBg = Services.WpfSkin.WpfSkinTemplateBuilder.ParseSurfaceBackground(_wpfSkin);
             if (surfaceBg != null)
             {
                 WpfSkinList.Background = surfaceBg;
+            }
+        }
+
+        // リスト型スキンのヘッダー行を本体の横スクロールに追従させる。
+        private void WpfSkinList_ScrollChanged(object sender, ScrollChangedEventArgs e)
+        {
+            if (WpfSkinHeaderScroll.Visibility == Visibility.Visible)
+            {
+                WpfSkinHeaderScroll.ScrollToHorizontalOffset(e.HorizontalOffset);
             }
         }
 

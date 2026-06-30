@@ -217,5 +217,29 @@ namespace IndigoMovieManager.Properties {
                 this["DefaultZipViewerParam"] = value;
             }
         }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string LastWpfSkinName {
+            get {
+                return ((string)(this["LastWpfSkinName"]));
+            }
+            set {
+                this["LastWpfSkinName"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string LastWbSkinFolder {
+            get {
+                return ((string)(this["LastWbSkinFolder"]));
+            }
+            set {
+                this["LastWbSkinFolder"] = value;
+            }
+        }
     }
 }

@@ -1,0 +1,75 @@
+{
+  "$schema": "../skin.schema.json",
+  "name": "DefaultBig",
+  "type": "card",
+
+  "surface": {
+    "background": "#FFFFFF"
+  },
+
+  "styles": {
+    "titlePart": { "fontFamily": "Yu Gothic UI", "fontSize": 14, "foreground": "#000000", "bold": true },
+    "meta": { "fontFamily": "Yu Gothic UI", "fontSize": 12, "foreground": "#000000" }
+  },
+
+  "thumbnail": {
+    "width": 200,
+    "height": 150,
+    "columns": 3,
+    "rows": 1
+  },
+
+  "card": {
+    "width": 920,
+    "padding": 0,
+    "margin": 0,
+    "background": "",
+
+    "layout": {
+      "stack": "horizontal",
+      "children": [
+        {
+          "stack": "vertical",
+          "children": [
+            {
+              "stack": "horizontal",
+              "children": [
+                { "type": "text", "label": "◇No.", "style": "titlePart", "margin": 3 },
+                { "type": "text", "field": "id", "style": "titlePart", "margin": 3 },
+                { "type": "text", "label": ":", "style": "titlePart", "margin": 3 },
+                { "type": "text", "field": "title", "style": "titlePart", "margin": 3, "maxWidth": 500 }
+              ]
+            },
+            { "type": "thumbnail", "width": 600, "height": 150 }
+          ]
+        },
+        {
+          "stack": "vertical",
+          "width": 300,
+          "margin": "0,26,0,0",
+          "children": [
+            {
+              "stack": "horizontal",
+              "children": [
+                { "type": "text", "label": "スコア：", "width": 50, "padding": "5,0,2,0", "style": "meta" },
+                { "type": "text", "field": "score", "padding": "2,0,0,0", "style": "meta", "valign": "center" },
+                { "type": "text", "label": "サイズ：", "width": 50, "margin": "24,0,0,0", "padding": "5,0,2,0", "style": "meta" },
+                { "type": "text", "field": "size", "format": "filesize", "padding": "2,0,0,0", "style": "meta", "valign": "center" },
+                { "type": "text", "label": "時間：", "width": 50, "margin": "24,0,0,0", "padding": "5,0,2,0", "style": "meta" },
+                { "type": "text", "field": "length", "padding": "2,0,0,0", "style": "meta", "valign": "center" }
+              ]
+            },
+            {
+              "stack": "horizontal",
+              "children": [
+                { "type": "text", "label": "ファイル日付：", "padding": "5,0,2,0", "style": "meta" },
+                { "type": "text", "field": "filedate", "padding": "2,0,0,0", "style": "meta" }
+              ]
+            },
+            { "type": "tags", "width": 300, "minHeight": 62 }
+          ]
+        }
+      ]
+    }
+  }
+}

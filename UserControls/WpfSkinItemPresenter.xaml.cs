@@ -49,7 +49,11 @@ namespace IndigoMovieManager.UserControls
 
             CardBorder.Width = cardWidth;
             CardBorder.Padding = new Thickness(card.Padding);
-            CardBorder.Margin = new Thickness(2);
+            // margin が JSON に明示されていれば（0 でも）それを尊重する。
+            // 未指定（null）のときだけ既定 2px。IsEmpty で判定すると "margin":0 が既定 2 に化ける。
+            CardBorder.Margin = card.Margin != null
+                ? card.Margin.ToThickness()
+                : new Thickness(2);
             CardBorder.Background = ParseBrush(card.Background);
 
             if (card.Height > 0)

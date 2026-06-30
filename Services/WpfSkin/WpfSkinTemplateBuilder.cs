@@ -36,9 +36,19 @@ namespace IndigoMovieManager.Services.WpfSkin
 
         public static ItemsPanelTemplate BuildItemsPanel(WpfSkinDefinition def)
         {
+            if (def != null && def.IsList)
+            {
+                // リスト型は 1 行 1 アイテムで縦に積む（既定 List タブ相当）。
+                var stackFactory = new FrameworkElementFactory(typeof(VirtualizingStackPanel));
+                stackFactory.SetValue(VirtualizingStackPanel.OrientationProperty, Orientation.Vertical);
+                return new ItemsPanelTemplate { VisualTree = stackFactory };
+            }
+
+            // Uniform だと余白が均等配分され、1 カラムしか入らない幅でカードが中央寄せになる。
+            // BetweenItemsOnly は両端に余白を入れず左寄せになる（既定 Grid タブと同じ挙動）。
             var panelFactory = new FrameworkElementFactory(typeof(VirtualizingWrapPanel));
             panelFactory.SetValue(VirtualizingWrapPanel.OrientationProperty, Orientation.Horizontal);
-            panelFactory.SetValue(VirtualizingWrapPanel.SpacingModeProperty, SpacingMode.Uniform);
+            panelFactory.SetValue(VirtualizingWrapPanel.SpacingModeProperty, SpacingMode.BetweenItemsOnly);
             return new ItemsPanelTemplate { VisualTree = panelFactory };
         }
 
