@@ -22,8 +22,10 @@
 
   "card": {
     "width": 980,
+    "height": 388,
     "padding": 8,
     "margin": 0,
+    "stretch": true,
     "background": "",
 
     "layout": {

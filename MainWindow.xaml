@@ -565,6 +565,99 @@
                             ShowHeader="False">
                             <!--  ドキュメント  ★ここから  -->
                             <avalonDock:LayoutDocument Title="Document1" ContentId="Document1">
+                                <DockPanel>
+                                    <Border
+                                        x:Name="SkinToolbar"
+                                        DockPanel.Dock="Top"
+                                        Background="#5A5A5A">
+                                        <Border.Resources>
+                                            <!--  方式切替を「選択中が凹んだセグメントボタン」風に見せる RadioButton スタイル。  -->
+                                            <Style x:Key="SegmentRadio" TargetType="RadioButton">
+                                                <Setter Property="Foreground" Value="#E0E0E0" />
+                                                <Setter Property="Padding" Value="12,3" />
+                                                <Setter Property="VerticalAlignment" Value="Center" />
+                                                <Setter Property="SnapsToDevicePixels" Value="True" />
+                                                <Setter Property="Template">
+                                                    <Setter.Value>
+                                                        <ControlTemplate TargetType="RadioButton">
+                                                            <Border
+                                                                x:Name="Bd"
+                                                                Background="#707070"
+                                                                BorderBrush="#3A3A3A"
+                                                                BorderThickness="1"
+                                                                CornerRadius="3"
+                                                                Padding="{TemplateBinding Padding}">
+                                                                <ContentPresenter
+                                                                    HorizontalAlignment="Center"
+                                                                    VerticalAlignment="Center" />
+                                                            </Border>
+                                                            <ControlTemplate.Triggers>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter TargetName="Bd" Property="Background" Value="#7C7C7C" />
+                                                                </Trigger>
+                                                                <Trigger Property="IsChecked" Value="True">
+                                                                    <Setter TargetName="Bd" Property="Background" Value="#2D2D2D" />
+                                                                    <Setter TargetName="Bd" Property="BorderBrush" Value="#1F1F1F" />
+                                                                    <Setter Property="Foreground" Value="#FFFFFF" />
+                                                                </Trigger>
+                                                                <MultiTrigger>
+                                                                    <MultiTrigger.Conditions>
+                                                                        <Condition Property="IsChecked" Value="True" />
+                                                                        <Condition Property="IsMouseOver" Value="True" />
+                                                                    </MultiTrigger.Conditions>
+                                                                    <Setter TargetName="Bd" Property="Background" Value="#383838" />
+                                                                </MultiTrigger>
+                                                            </ControlTemplate.Triggers>
+                                                        </ControlTemplate>
+                                                    </Setter.Value>
+                                                </Setter>
+                                            </Style>
+                                        </Border.Resources>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock
+                                                Margin="8,6,0,6"
+                                                VerticalAlignment="Center"
+                                                Foreground="#E8E8E8"
+                                                Text="方式:" />
+                                            <RadioButton
+                                                x:Name="ModeWpfRadio"
+                                                Margin="8,0,0,0"
+                                                Checked="SkinModeRadio_Checked"
+                                                Content="WPFスキン"
+                                                GroupName="SkinMode"
+                                                Style="{StaticResource SegmentRadio}" />
+                                            <RadioButton
+                                                x:Name="ModeWbRadio"
+                                                Margin="-1,0,0,0"
+                                                Checked="SkinModeRadio_Checked"
+                                                Content="WB互換"
+                                                GroupName="SkinMode"
+                                                Style="{StaticResource SegmentRadio}" />
+                                            <TextBlock
+                                                Margin="16,6,0,6"
+                                                VerticalAlignment="Center"
+                                                Foreground="#E8E8E8"
+                                                Text="スキン:" />
+                                            <ComboBox
+                                                x:Name="ComboSkin"
+                                                Width="180"
+                                                Margin="8,4,8,4"
+                                                Padding="8,2,0,2"
+                                                VerticalAlignment="Center"
+                                                materialDesign:TextFieldAssist.HasOutlinedTextField="True"
+                                                materialDesign:TextFieldAssist.TextFieldCornerRadius="3"
+                                                Background="White"
+                                                Foreground="Black"
+                                                Loaded="ComboBoxArrow_Loaded"
+                                                SelectionChanged="ComboSkin_SelectionChanged" />
+                                            <Button
+                                                x:Name="ReloadSkinButton"
+                                                Margin="0,4,8,4"
+                                                Padding="10,0"
+                                                Click="ReloadSkin_Click"
+                                                Content="Reload" />
+                                        </StackPanel>
+                                    </Border>
                                 <TabControl
                                     x:Name="Tabs"
                                     Margin="0,0,0,0"
@@ -572,6 +665,21 @@
                                     KeyboardNavigation.TabNavigation="None"
                                     PreviewKeyDown="Tab_PreviewKeyDown"
                                     SelectionChanged="Tabs_SelectionChangedAsync">
+                                    <TabControl.Resources>
+                                        <!--
+                                            内部のタブ番号（Small=0 ... WPF=5/WB=6）は既存処理との互換のため残す。
+                                            ただし UI としては方式トグル + 単一一覧ホストに見せるため、タブ見出しは描画しない。
+                                        -->
+                                        <Style TargetType="{x:Type TabItem}">
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="{x:Type TabItem}">
+                                                        <Border Width="0" Height="0" />
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Style>
+                                    </TabControl.Resources>
 
                                     <TabItem
                                         x:Name="TabSmall"
@@ -1151,28 +1259,6 @@
                                         Header="スキン(WPF)"
                                         Tag="400x225x1x1">
                                         <DockPanel>
-                                            <StackPanel
-                                                Background="#333333"
-                                                DockPanel.Dock="Top"
-                                                Orientation="Horizontal">
-                                                <TextBlock
-                                                    Margin="8,6,0,6"
-                                                    VerticalAlignment="Center"
-                                                    Foreground="#CCCCCC"
-                                                    Text="WPFスキン:" />
-                                                <ComboBox
-                                                    x:Name="ComboWpfSkin"
-                                                    Width="180"
-                                                    Margin="8,4,8,4"
-                                                    Background="White"
-                                                    Foreground="Black"
-                                                    SelectionChanged="ComboWpfSkin_SelectionChanged" />
-                                                <Button
-                                                    Margin="0,4,8,4"
-                                                    Padding="10,0"
-                                                    Click="ReloadWpfSkin_Click"
-                                                    Content="Reload" />
-                                            </StackPanel>
                                             <ScrollViewer
                                                 x:Name="WpfSkinHeaderScroll"
                                                 DockPanel.Dock="Top"
@@ -1211,24 +1297,6 @@
                                         Header="スキン(WB)"
                                         Tag="160x120x1x1">
                                         <DockPanel>
-                                            <StackPanel
-                                                DockPanel.Dock="Top"
-                                                Background="#333333"
-                                                Orientation="Horizontal"
-                                                Visibility="Visible">
-                                                <TextBlock
-                                                    Margin="8,6,0,6"
-                                                    VerticalAlignment="Center"
-                                                    Foreground="#CCCCCC"
-                                                    Text="WBスキン:" />
-                                                <ComboBox
-                                                    x:Name="ComboWbSkin"
-                                                    Width="180"
-                                                    Margin="8,4,8,4"
-                                                    Background="White"
-                                                    Foreground="Black"
-                                                    SelectionChanged="ComboWbSkin_SelectionChanged" />
-                                            </StackPanel>
                                             <view:SkinView
                                                 x:Name="SkinViewGridWb"
                                                 SelectionChanged="SkinView_SelectionChanged"
@@ -1237,6 +1305,7 @@
                                     </TabItem>
 
                                 </TabControl>
+                                </DockPanel>
 
                             </avalonDock:LayoutDocument>
                             <!--  ドキュメント ★ここまで  -->
@@ -1566,6 +1635,8 @@
                             Width="200"
                             Margin="4,0,4,0"
                             VerticalAlignment="Center"
+                            materialDesign:TextFieldAssist.HasOutlinedTextField="True"
+                            materialDesign:TextFieldAssist.TextFieldCornerRadius="3"
                             Background="White"
                             DisplayMemberPath="Name"
                             Foreground="Black"

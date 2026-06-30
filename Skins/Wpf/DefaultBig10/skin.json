@@ -23,6 +23,7 @@
     "width": 920,
     "padding": 0,
     "margin": 0,
+    "stretch": true,
     "background": "",
 
     "layout": {
@@ -45,7 +46,6 @@
         },
         {
           "stack": "vertical",
-          "width": 300,
           "margin": "0,26,0,0",
           "children": [
             {

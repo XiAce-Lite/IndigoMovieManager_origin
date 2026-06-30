@@ -43,7 +43,10 @@ namespace IndigoMovieManager
         private readonly DiscoveredFileRegistrationGate _discoveredFileRegistrationGate = new();
         private readonly SemaphoreSlim _folderCheckGate = new(1, 1);
         private bool _openingDatabase;
-        private bool _suppressWbSkinComboChange;
+        private bool _suppressSkinComboChange;
+        private bool _suppressSkinModeChange;
+        private const string SkinEngineWpf = "WPF";
+        private const string SkinEngineWb = "WB";
 
         private Stack<string> recentFiles = new();
 
@@ -193,8 +196,10 @@ namespace IndigoMovieManager
 
             string savedWpfSkin = Properties.Settings.Default.LastWpfSkinName;
             ApplyWpfSkin(string.IsNullOrWhiteSpace(savedWpfSkin) ? null : savedWpfSkin);
-            InitializeWpfSkinCombo();
-            InitializeWbSkinCombo();
+            UpdateWbSkinTabTag();
+            int initialSkinTabIndex = GetSavedSkinEngineTabIndex();
+            Tabs.SelectedIndex = initialSkinTabIndex;
+            UpdateSkinToolbarForTab(initialSkinTabIndex);
 
             // WebView2 はネイティブ HWND のため WPF オーバーレイより前面に出る（エアスペース問題）。
             // ドロワー（ハンバーガーメニュー）表示中は SkinView を隠して被りを防ぐ。
@@ -202,39 +207,137 @@ namespace IndigoMovieManager
             MenuToggleButton.Unchecked += MenuToggleButton_DrawerStateChanged;
         }
 
-        private void InitializeWbSkinCombo()
-        {
-            IReadOnlyList<string> skins = WhiteBrowserSkinSettings.EnumerateSkinFolders();
-            ComboWbSkin.ItemsSource = skins;
-
-            string active = WhiteBrowserSkinSettings.ActiveSkinFolder;
-            _suppressWbSkinComboChange = true;
-            ComboWbSkin.SelectedItem = skins.Contains(active) ? active : skins.FirstOrDefault();
-            _suppressWbSkinComboChange = false;
-            UpdateWbSkinTabTag();
-        }
-
         private void UpdateWbSkinTabTag() =>
             TabGridWb.Tag = WhiteBrowserSkinSettings.GetThumbnailTag();
 
-        private async void ComboWbSkin_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        private static bool IsWbEngine(string value) =>
+            string.Equals(value, SkinEngineWb, StringComparison.OrdinalIgnoreCase);
+
+        private int GetSavedSkinEngineTabIndex() =>
+            IsWbEngine(Properties.Settings.Default.LastSkinEngine)
+                ? SkinTabIndexHelper.WbSkinTabIndex
+                : SkinTabIndexHelper.WpfSkinTabIndex;
+
+        private void SaveSkinEngine(int tabIndex)
         {
-            if (_suppressWbSkinComboChange)
+            string engine = SkinTabIndexHelper.IsWebSkinTab(tabIndex) ? SkinEngineWb : SkinEngineWpf;
+            if (!string.Equals(Properties.Settings.Default.LastSkinEngine, engine, StringComparison.OrdinalIgnoreCase))
+            {
+                Properties.Settings.Default.LastSkinEngine = engine;
+                Properties.Settings.Default.Save();
+            }
+        }
+
+        /// <summary>
+        /// 共通スキンツールバー（方式トグル＋スキン Combo）を、選択中タブに合わせて更新する。
+        /// 統合一覧では WPF / WB のどちらかを必ず選択状態にする。
+        /// </summary>
+        private void UpdateSkinToolbarForTab(int index)
+        {
+            if (SkinToolbar == null)
             {
                 return;
             }
 
-            if (ComboWbSkin.SelectedItem is not string folder)
+            bool isWpf = index == SkinTabIndexHelper.WpfSkinTabIndex;
+            bool isWb = index == SkinTabIndexHelper.WbSkinTabIndex;
+
+            if (!isWpf && !isWb)
+            {
+                index = GetSavedSkinEngineTabIndex();
+                isWpf = index == SkinTabIndexHelper.WpfSkinTabIndex;
+                isWb = index == SkinTabIndexHelper.WbSkinTabIndex;
+            }
+
+            SkinToolbar.Visibility = Visibility.Visible;
+            SaveSkinEngine(index);
+
+            _suppressSkinModeChange = true;
+            ModeWpfRadio.IsChecked = isWpf;
+            ModeWbRadio.IsChecked = isWb;
+            _suppressSkinModeChange = false;
+
+            // Reload は WPF スキン専用機能。WB では Hidden にしてレイアウト領域を保持し、
+            // モード切替でツールバー高さが変動（ピコピコ）しないようにする。
+            ReloadSkinButton.Visibility = isWpf ? Visibility.Visible : Visibility.Hidden;
+
+            RebuildSkinCombo(isWpf);
+        }
+
+        private void RebuildSkinCombo(bool isWpf)
+        {
+            _suppressSkinComboChange = true;
+            if (isWpf)
+            {
+                IReadOnlyList<string> skins = Services.WpfSkin.WpfSkinLoader.EnumerateSkins();
+                ComboSkin.ItemsSource = skins;
+                ComboSkin.SelectedItem = skins.Contains(_wpfSkin?.Name) ? _wpfSkin.Name : skins.FirstOrDefault();
+            }
+            else
+            {
+                IReadOnlyList<string> skins = WhiteBrowserSkinSettings.EnumerateSkinFolders();
+                ComboSkin.ItemsSource = skins;
+                string active = WhiteBrowserSkinSettings.ActiveSkinFolder;
+                ComboSkin.SelectedItem = skins.Contains(active) ? active : skins.FirstOrDefault();
+            }
+            _suppressSkinComboChange = false;
+        }
+
+        private void SkinModeRadio_Checked(object sender, RoutedEventArgs e)
+        {
+            if (_suppressSkinModeChange)
             {
                 return;
             }
 
+            int target = ReferenceEquals(sender, ModeWpfRadio)
+                ? SkinTabIndexHelper.WpfSkinTabIndex
+                : SkinTabIndexHelper.WbSkinTabIndex;
+
+            if (Tabs.SelectedIndex != target)
+            {
+                // タブ切替に伴い Tabs_SelectionChangedAsync → UpdateSkinToolbarForTab が走り、
+                // ツールバーと Combo が同期される。
+                Tabs.SelectedIndex = target;
+            }
+            else
+            {
+                SaveSkinEngine(target);
+                UpdateSkinToolbarForTab(target);
+            }
+        }
+
+        private async void ComboSkin_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressSkinComboChange)
+            {
+                return;
+            }
+
+            if (ComboSkin.SelectedItem is not string name)
+            {
+                return;
+            }
+
+            if (ModeWbRadio.IsChecked == true)
+            {
+                await ApplyWbSkinSelectionAsync(name).ConfigureAwait(true);
+            }
+            else
+            {
+                ApplyWpfSkinSelection(name);
+            }
+        }
+
+        private async Task ApplyWbSkinSelectionAsync(string folder)
+        {
             if (string.Equals(folder, WhiteBrowserSkinSettings.ActiveSkinFolder, StringComparison.OrdinalIgnoreCase))
             {
                 return;
             }
 
             WhiteBrowserSkinSettings.ActiveSkinFolder = folder;
+            Properties.Settings.Default.LastSkinEngine = SkinEngineWb;
             Properties.Settings.Default.LastWbSkinFolder = folder;
             Properties.Settings.Default.Save();
             UpdateWbSkinTabTag();
@@ -260,6 +363,41 @@ namespace IndigoMovieManager
             StartTabSwitchThumbnailJob(SkinTabIndexHelper.WbSkinTabIndex);
         }
 
+        private static string MapLegacySkinToWpfSkinName(string skin) =>
+            string.IsNullOrWhiteSpace(skin)
+                ? null
+                : skin.Replace(" ", "") switch
+                {
+                    "DefaultSmall" => "DefaultSmall",
+                    "DefaultBig" => "DefaultBig",
+                    "DefaultGrid" => "DefaultGrid",
+                    "DefaultList" => "DefaultList",
+                    "DefaultBig10" => "DefaultBig10",
+                    _ => skin,
+                };
+
+        private int PrepareStartupSkinMode(string dbSkin)
+        {
+            int targetTabIndex = GetSavedSkinEngineTabIndex();
+            if (targetTabIndex == SkinTabIndexHelper.WpfSkinTabIndex)
+            {
+                string mappedSkin = MapLegacySkinToWpfSkinName(dbSkin);
+                string skinName = !string.IsNullOrWhiteSpace(mappedSkin)
+                    ? mappedSkin
+                    : Properties.Settings.Default.LastWpfSkinName;
+                ApplyWpfSkin(string.IsNullOrWhiteSpace(skinName) ? null : skinName);
+
+                if (!string.IsNullOrWhiteSpace(_wpfSkin?.Name))
+                {
+                    Properties.Settings.Default.LastWpfSkinName = _wpfSkin.Name;
+                }
+            }
+
+            Tabs.SelectedIndex = targetTabIndex;
+            UpdateSkinToolbarForTab(targetTabIndex);
+            return targetTabIndex;
+        }
+
         private void MenuToggleButton_DrawerStateChanged(object sender, RoutedEventArgs e)
         {
             Visibility visibility = MenuToggleButton.IsChecked == true
@@ -269,38 +407,19 @@ namespace IndigoMovieManager
         }
 
         private Services.WpfSkin.WpfSkinDefinition _wpfSkin;
-        private bool _suppressWpfSkinComboChange;
 
-        private void InitializeWpfSkinCombo()
+        private void ApplyWpfSkinSelection(string folder)
         {
-            IReadOnlyList<string> skins = Services.WpfSkin.WpfSkinLoader.EnumerateSkins();
-            _suppressWpfSkinComboChange = true;
-            ComboWpfSkin.ItemsSource = skins;
-            ComboWpfSkin.SelectedItem = skins.Contains(_wpfSkin?.Name) ? _wpfSkin.Name : skins.FirstOrDefault();
-            _suppressWpfSkinComboChange = false;
-        }
-
-        private void ComboWpfSkin_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        {
-            if (_suppressWpfSkinComboChange)
-            {
-                return;
-            }
-
-            if (ComboWpfSkin.SelectedItem is not string folder)
-            {
-                return;
-            }
-
             ApplyWpfSkin(folder);
+            Properties.Settings.Default.LastSkinEngine = SkinEngineWpf;
             Properties.Settings.Default.LastWpfSkinName = folder;
             Properties.Settings.Default.Save();
             RefreshWpfSkinItemsForCurrentFilter();
         }
 
-        private void ReloadWpfSkin_Click(object sender, RoutedEventArgs e)
+        private void ReloadSkin_Click(object sender, RoutedEventArgs e)
         {
-            string skinName = ComboWpfSkin.SelectedItem as string ?? _wpfSkin?.Name;
+            string skinName = ComboSkin.SelectedItem as string ?? _wpfSkin?.Name;
             ApplyWpfSkin(skinName);
             RefreshWpfSkinItemsForCurrentFilter();
         }
@@ -343,6 +462,7 @@ namespace IndigoMovieManager
 
             WpfSkinList.ItemsPanel = Services.WpfSkin.WpfSkinTemplateBuilder.BuildItemsPanel(_wpfSkin);
             WpfSkinList.ItemTemplate = Services.WpfSkin.WpfSkinTemplateBuilder.BuildItemTemplate(_wpfSkin);
+            WpfSkinList.ItemContainerStyle = BuildWpfSkinItemContainerStyle(_wpfSkin);
 
             // list 型は横スクロール可・カラム見出し行を表示。card 型は従来通り横スクロール無し。
             ScrollViewer.SetHorizontalScrollBarVisibility(
@@ -358,6 +478,24 @@ namespace IndigoMovieManager
             {
                 WpfSkinList.Background = surfaceBg;
             }
+        }
+
+        // ListViewItem スタイルをスキンに合わせて生成する。
+        // stretch スキン（既定 Big/5x10 相当）はアイテムを全幅に伸ばし、選択ハイライトを
+        // ウィンドウ幅いっぱいに出す。それ以外は従来どおり左寄せ・自然幅のまま。
+        private Style BuildWpfSkinItemContainerStyle(Services.WpfSkin.WpfSkinDefinition def)
+        {
+            bool stretch = def?.Card?.Stretch == true;
+            HorizontalAlignment hAlign = stretch ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+
+            var style = new Style(typeof(ListViewItem));
+            style.Setters.Add(new Setter(FrameworkElement.HorizontalAlignmentProperty, hAlign));
+            style.Setters.Add(new Setter(Control.HorizontalContentAlignmentProperty, hAlign));
+            style.Setters.Add(new Setter(Control.VerticalContentAlignmentProperty, VerticalAlignment.Top));
+            style.Setters.Add(new EventSetter(
+                UIElement.PreviewMouseLeftButtonDownEvent,
+                new MouseButtonEventHandler(WpfSkinItem_PreviewMouseLeftButtonDown)));
+            return style;
         }
 
         // リスト型スキンのヘッダー行を本体の横スクロールに追従させる。
@@ -986,20 +1124,29 @@ namespace IndigoMovieManager
                     MainVM.MovieRecs.Clear();
                     GetHistoryTable(dbFullPath, session);
 
-                    int startupTabIndex = ThumbnailLayoutCache.GetTabIndexFromSkin(MainVM.DbInfo.Skin);
+                    int startupTabIndex = PrepareStartupSkinMode(MainVM.DbInfo.Skin);
                     string sortId = MainVM.DbInfo.Sort ?? "1";
                     await FilterAndSortAsync(sortId, true, startupTabIndex).ConfigureAwait(true);
-
-                    if (MainVM.DbInfo.Skin != null)
-                    {
-                        SwitchTab(MainVM.DbInfo.Skin);
-                    }
 
                     GetBookmarkTable(session);
                     GetTagBarTable(session);
                 }
 
                 SetSkinViewRoots();
+
+                // DB オープン/切替時は、タブ設定が _openingDatabase 中に行われるため
+                // Tabs_SelectionChangedAsync が早期 return し、現在モードのサムネ生成が
+                // 起動されない（旧 SwitchTab 相当の起点が無くなったことによるデグレ）。
+                // ここでアクティブモードの生成ジョブを明示起動して未生成分を作る。
+                StartTabSwitchThumbnailJob(Tabs.SelectedIndex);
+
+                // DB オープン/切替直後は何も選択されておらず Avalon 詳細ペインが空になる。
+                // 現在の表示モード（WPF/WB）とドロップダウン状態のまま先頭レコードを選択し、
+                // 詳細を表示しておく。WB の遅延描画（ContextIdle で Tag 設定）後に走るよう、
+                // 同優先度でキューの後ろに積む。
+                _ = Dispatcher.BeginInvoke(
+                    new Action(() => TabSelectionHelper.SelectFirstItem(this)),
+                    DispatcherPriority.ContextIdle);
 
                 CreateWatcher();
                 ScheduleStartupFolderCheck();
@@ -1289,9 +1436,18 @@ namespace IndigoMovieManager
 
         private void UpdateSkin()
         {
-            if (SkinTabIndexHelper.IsWebSkinTab(Tabs.SelectedIndex)
-                || SkinTabIndexHelper.IsWpfSkinTab(Tabs.SelectedIndex))
+            if (SkinTabIndexHelper.IsWebSkinTab(Tabs.SelectedIndex))
             {
+                return;
+            }
+
+            if (SkinTabIndexHelper.IsWpfSkinTab(Tabs.SelectedIndex))
+            {
+                string skinName = _wpfSkin?.Name;
+                if (!string.IsNullOrWhiteSpace(skinName))
+                {
+                    UpsertSystemTable(Properties.Settings.Default.LastDoc, "skin", skinName);
+                }
                 return;
             }
 
@@ -1365,11 +1521,11 @@ namespace IndigoMovieManager
                     BigList10.ItemsSource = items;
                     break;
                 case SkinTabIndexHelper.WpfSkinTabIndex:
+                    ResolveThumbPathsForTab(SkinTabIndexHelper.WpfSkinTabIndex, items);
                     WpfSkinList.ItemsSource = items;
                     break;
                 case SkinTabIndexHelper.WbSkinTabIndex:
-                    SkinViewGridWb.Tag = items;
-                    SkinViewGridWb.RenderItems(items);
+                    RenderSkinViewForCurrentFilter(SkinTabIndexHelper.WbSkinTabIndex, deferUntilVisible: true);
                     break;
                 default:
                     SmallList.ItemsSource = items;
@@ -1390,6 +1546,11 @@ namespace IndigoMovieManager
             if (SkinTabIndexHelper.IsWebSkinTab(Tabs.SelectedIndex))
             {
                 RenderSkinViewForCurrentFilter(Tabs.SelectedIndex, deferUntilVisible: false);
+            }
+            else if (SkinTabIndexHelper.IsWpfSkinTab(Tabs.SelectedIndex))
+            {
+                ResolveThumbPathsForTab(SkinTabIndexHelper.WpfSkinTabIndex, items);
+                WpfSkinList.ItemsSource = items;
             }
         }
 
@@ -1564,6 +1725,8 @@ namespace IndigoMovieManager
                 if (index == -1) return;
 
                 MainVM.DbInfo.CurrentTabIndex = index;
+
+                UpdateSkinToolbarForTab(index);
 
                 if (filterList == null || _openingDatabase)
                 {
@@ -2523,6 +2686,13 @@ namespace IndigoMovieManager
         //
         private async void ReloadButton_Click(object sender, RoutedEventArgs e)
         {
+            // DB 未オープン時は SQLite クエリが "Data Source cannot be empty" で
+            // 落ちるため、何もせず抜ける（スキンの Reload と同じく無反応にする）。
+            if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
+            {
+                return;
+            }
+
             // フォルダの最新状態をDBに反映
             //await CheckFolderAsync(CheckMode.Auto);
 

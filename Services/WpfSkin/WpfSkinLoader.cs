@@ -35,11 +35,10 @@ namespace IndigoMovieManager.Services.WpfSkin
                     return Array.Empty<string>();
                 }
 
-                return Directory.GetDirectories(SkinsRoot)
+                IEnumerable<string> names = Directory.GetDirectories(SkinsRoot)
                     .Where(dir => File.Exists(Path.Combine(dir, DefinitionFileName)))
-                    .Select(Path.GetFileName)
-                    .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
-                    .ToArray();
+                    .Select(Path.GetFileName);
+                return SkinNameSortHelper.OrderDefaultFirst(names);
             }
             catch
             {

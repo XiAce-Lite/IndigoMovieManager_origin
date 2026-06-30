@@ -44,11 +44,34 @@ namespace IndigoMovieManager.Services.WpfSkin
                 return new ItemsPanelTemplate { VisualTree = stackFactory };
             }
 
-            // Uniform だと余白が均等配分され、1 カラムしか入らない幅でカードが中央寄せになる。
-            // BetweenItemsOnly は両端に余白を入れず左寄せになる（既定 Grid タブと同じ挙動）。
             var panelFactory = new FrameworkElementFactory(typeof(VirtualizingWrapPanel));
             panelFactory.SetValue(VirtualizingWrapPanel.OrientationProperty, Orientation.Horizontal);
-            panelFactory.SetValue(VirtualizingWrapPanel.SpacingModeProperty, SpacingMode.BetweenItemsOnly);
+
+            if (def?.Card?.Stretch == true)
+            {
+                // StretchItems: 1 カラムしか入らない幅ではカードをコンテナ幅いっぱいに広げ、
+                // 複数カラム入る幅では等幅で並べる（既定 Big / 5x10 タブと同じ）。
+                panelFactory.SetValue(VirtualizingWrapPanel.StretchItemsProperty, true);
+
+                // card に width/height 両方が指定されている場合は ItemSize を固定する。
+                // 列数は「カードの自然幅」ではなく card.width 基準で決定されるため、
+                // 横長カード（BigInfo / WideGridInfo 等）でも長文に引きずられず、
+                // ウィンドウ幅に応じて狙いどおりの列数で並ぶ。
+                // ※ StretchItems により各カードはスロット幅まで伸びる（arrange 時）。
+                double w = def.Card.Width;
+                double h = def.Card.Height;
+                if (w > 0 && h > 0)
+                {
+                    panelFactory.SetValue(VirtualizingWrapPanel.ItemSizeProperty, new Size(w, h));
+                }
+            }
+            else
+            {
+                // Uniform だと余白が均等配分され、1 カラムしか入らない幅でカードが中央寄せになる。
+                // BetweenItemsOnly は両端に余白を入れず左寄せになる（既定 Grid タブと同じ挙動）。
+                panelFactory.SetValue(VirtualizingWrapPanel.SpacingModeProperty, SpacingMode.BetweenItemsOnly);
+            }
+
             return new ItemsPanelTemplate { VisualTree = panelFactory };
         }
 

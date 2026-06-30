@@ -241,5 +241,17 @@ namespace IndigoMovieManager.Properties {
                 this["LastWbSkinFolder"] = value;
             }
         }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("WPF")]
+        public string LastSkinEngine {
+            get {
+                return ((string)(this["LastSkinEngine"]));
+            }
+            set {
+                this["LastSkinEngine"] = value;
+            }
+        }
     }
 }
