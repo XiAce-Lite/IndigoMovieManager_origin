@@ -7,7 +7,7 @@ namespace IndigoMovieManager.Thumbnail
 {
     internal static class ThumbnailDurationResolver
     {
-        public static bool TryResolve(string movieFullPath, out double durationSec)
+        public static bool TryResolve(string movieFullPath, out double durationSec, double knownDurationSec = 0d)
         {
             durationSec = 0;
             if (string.IsNullOrWhiteSpace(movieFullPath) || !Path.Exists(movieFullPath))
@@ -15,18 +15,33 @@ namespace IndigoMovieManager.Thumbnail
                 return false;
             }
 
-            double fromFfprobe = 0d;
+            if (knownDurationSec > 0d)
+            {
+                durationSec = Math.Truncate(knownDurationSec);
+                return true;
+            }
+
             if (FfmpegPathResolver.TryResolveFfprobe(out string ffprobePath))
             {
-                fromFfprobe = TryResolveFromFfprobe(ffprobePath, movieFullPath);
+                double fromFfprobe = TryResolveFromFfprobe(ffprobePath, movieFullPath);
+                if (fromFfprobe > 0d)
+                {
+                    durationSec = fromFfprobe;
+                    return true;
+                }
             }
 
             double fromShell = TryResolveFromShell(movieFullPath);
-            double fromOpenCv = TryResolveFromOpenCv(movieFullPath);
-            durationSec = PickBestDuration(fromFfprobe, fromShell, fromOpenCv);
-
-            if (durationSec > 0)
+            if (fromShell > 0d)
             {
+                durationSec = fromShell;
+                return true;
+            }
+
+            double fromOpenCv = TryResolveFromOpenCv(movieFullPath);
+            if (fromOpenCv > 0d)
+            {
+                durationSec = fromOpenCv;
                 return true;
             }
 

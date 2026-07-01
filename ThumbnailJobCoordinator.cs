@@ -34,6 +34,7 @@ namespace IndigoMovieManager
     private int _jobId;
     private int _jobSwitchToken;
     private readonly Dictionary<int, JobState> _jobs = [];
+    private readonly Dictionary<int, CancellationTokenSource> _jobCancellation = [];
     private readonly HashSet<(long MovieId, int TabIndex)> _tracked = [];
     private readonly HashSet<(long MovieId, int TabIndex)> _inFlight = [];
 
@@ -77,6 +78,7 @@ namespace IndigoMovieManager
         if (_jobId > 0 && _jobs.TryGetValue(_jobId, out JobState previous))
         {
           previous.Abandoned = true;
+          CancelJobCancellationLocked(_jobId);
         }
 
         _jobId++;
@@ -85,7 +87,50 @@ namespace IndigoMovieManager
         {
           PrimaryTabIndex = primaryTabIndex,
         };
+        _jobCancellation[_jobId] = new CancellationTokenSource();
         return _jobId;
+      }
+    }
+
+    /// <summary>
+    /// タブ/スキン切替でジョブが放棄されたとき、実行中ワーカーへキャンセルを伝える。
+    /// </summary>
+    public CancellationToken GetJobCancellationToken(int jobId)
+    {
+      if (jobId <= 0 || jobId == SilentJobId)
+      {
+        return CancellationToken.None;
+      }
+
+      lock (_lock)
+      {
+        return _jobCancellation.TryGetValue(jobId, out CancellationTokenSource cts)
+          ? cts.Token
+          : CancellationToken.None;
+      }
+    }
+
+    private void CancelJobCancellationLocked(int jobId)
+    {
+      if (!_jobCancellation.TryGetValue(jobId, out CancellationTokenSource cts))
+      {
+        return;
+      }
+
+      try
+      {
+        cts.Cancel();
+      }
+      catch (ObjectDisposedException)
+      {
+      }
+    }
+
+    private void DisposeJobCancellationLocked(int jobId)
+    {
+      if (_jobCancellation.Remove(jobId, out CancellationTokenSource cts))
+      {
+        cts.Dispose();
       }
     }
 
@@ -428,6 +473,7 @@ namespace IndigoMovieManager
       if (finished)
       {
         _jobs.Remove(jobId);
+        DisposeJobCancellationLocked(jobId);
       }
     }
   }

@@ -63,9 +63,7 @@ namespace IndigoMovieManager
                 ? $"{_baseTitle} ({clampedCompleted}/{total})"
                 : _baseTitle;
 
-            string message = string.IsNullOrEmpty(detail)
-                ? string.Empty
-                : ProgressPathFormatter.Format(detail, StatusBarProgressViewModel.DetailMaxWidth);
+            string message = detail ?? string.Empty;
 
             _handle.Report(title, percent, message);
             return true;

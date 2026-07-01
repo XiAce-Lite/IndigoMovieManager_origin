@@ -57,11 +57,11 @@
           "margin": "8,0,0,0",
           "maxHeight": 368,
           "children": [
-            { "type": "text", "field": "length",   "label": "尺: ",     "style": "meta" },
-            { "type": "text", "field": "size",      "label": "サイズ: ", "format": "filesize", "style": "meta" },
-            { "type": "text", "field": "filedate",  "label": "更新: ",   "style": "meta" },
-            { "type": "text", "field": "video",     "label": "映像: ",   "style": "meta" },
-            { "type": "text", "field": "audio",     "label": "音声: ",   "style": "meta" },
+            { "type": "text", "field": "length",   "style": "meta" },
+            { "type": "text", "field": "size",      "format": "filesize", "style": "meta" },
+            { "type": "text", "field": "filedate",  "style": "meta" },
+            { "type": "text", "field": "video",     "style": "meta" },
+            { "type": "text", "field": "audio",     "style": "meta" },
             { "type": "text", "field": "path",      "style": "path" },
             { "type": "tags", "width": 300, "minHeight": 28, "maxHeight": 170 }
           ]

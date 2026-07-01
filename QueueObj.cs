@@ -12,6 +12,7 @@
         private int? _thumbTimePos = null;
         private bool _isManual;
         private Thumbnail.ThumbnailLayoutSpec _thumbnailLayout;
+        private string _lastThumbProgressDetail = "";
 
         public int JobId { get { return _jobId; } set { _jobId = value; } }
         public bool IsManual { get { return _isManual; } set { _isManual = value; } }
@@ -27,6 +28,13 @@
         {
             get => _thumbnailLayout;
             set => _thumbnailLayout = value;
+        }
+
+        /// <summary>直近のサムネ作成進捗表示用（フルパス + バックエンド情報）。</summary>
+        public string LastThumbProgressDetail
+        {
+            get => _lastThumbProgressDetail;
+            set => _lastThumbProgressDetail = value ?? "";
         }
     }
 }

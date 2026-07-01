@@ -3,11 +3,13 @@ using System.Diagnostics;
 using System.Windows;
 using System.Windows.Threading;
 using IndigoMovieManager.Services;
+using IndigoMovieManager.Thumbnail;
 
 namespace IndigoMovieManager
 {
   /// <summary>
   /// サムネイル作成キューの監視・進捗表示・並列実行を担当する。
+  /// 常時 N ワーカーが 1 件ずつ dequeue して処理する（Tier B-4 パイプライン）。
   /// </summary>
   public sealed class ThumbnailQueueProcessor
   {
@@ -105,77 +107,188 @@ namespace IndigoMovieManager
       s_cancelPendingProgressShow = CancelPendingProgressShow;
       s_dismissActiveProgress = DismissActiveProgressNow;
 
-      try
+      int safeMaxParallelism = ResolveMaxParallelism(maxParallelism, maxParallelismResolver);
+
+      async Task ProcessQueueItemAsync(QueueObj item, CancellationToken itemToken)
       {
-        while (true)
+        if (!jobCoordinator.ShouldProcess(item))
         {
-          try
-          {
-          await Task.Delay(safePollIntervalMs, cts).ConfigureAwait(false);
+          jobCoordinator.TrySkipItem(item);
+          return;
+        }
 
-          int switchToken = jobCoordinator.JobSwitchToken;
-          if (switchToken != lastJobSwitchToken)
+        jobCoordinator.MarkInFlight(item);
+
+        await MaybeShowProgressAfterMarkInFlightAsync(
+          uiDispatcher,
+          jobCoordinator,
+          progressLock,
+          () => activeProgress,
+          session => activeProgress = session,
+          () => activeProgressJobId,
+          jobId => activeProgressJobId = jobId,
+          utc => lastReportUtc = utc,
+          item).ConfigureAwait(false);
+
+        try
+        {
+          await createThumbAsync(item, itemToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+          Debug.WriteLine(
+            $"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : [thumb] item failed: {ex.Message}");
+        }
+        finally
+        {
+          ThumbnailJobCoordinator.Snapshot snapshot = jobCoordinator.TryComplete(item);
+
+          ThumbnailProgressSession progressToReport;
+          int progressJobId;
+          lock (progressLock)
           {
-            lastJobSwitchToken = switchToken;
-            await DismissActiveProgressSilentlyAsync(
-              uiDispatcher,
-              progressLock,
-              () => activeProgress,
-              session => activeProgress = session,
-              () => activeProgressJobId,
-              jobId => activeProgressJobId = jobId,
-              utc => lastReportUtc = utc,
-              ReplaceProgressShowCts).ConfigureAwait(false);
+            progressToReport = activeProgress;
+            progressJobId = activeProgressJobId;
           }
 
-          if (queueThumb.IsEmpty)
+          if (progressToReport != null && item.JobId == progressJobId)
           {
-            ThumbnailJobCoordinator.Snapshot idleSnapshot;
-            int trackedJobId;
-            lock (progressLock)
+            if (snapshot.Abandoned)
             {
-              trackedJobId = activeProgressJobId;
-            }
-
-            idleSnapshot = trackedJobId > 0
-              ? jobCoordinator.GetSnapshot(trackedJobId)
-              : jobCoordinator.GetSnapshot();
-
-            if (activeProgress != null
-              && idleSnapshot.JobId == trackedJobId
-              && (idleSnapshot.IsComplete || idleSnapshot.Abandoned))
-            {
-              CancelPendingProgressShow();
-              await DisposeProgressAsync(uiDispatcher, activeProgress, progressLock).ConfigureAwait(false);
-              activeProgress = null;
-              activeProgressJobId = -1;
-              lastReportUtc = DateTime.MinValue;
-            }
-
-            continue;
-          }
-
-          List<QueueObj> batch = DequeueBatch(queueThumb, queueSync);
-          if (batch.Count < 1)
-          {
-            continue;
-          }
-
-          List<QueueObj> currentBatch = [];
-          foreach (QueueObj item in batch)
-          {
-            if (jobCoordinator.ShouldProcess(item))
-            {
-              currentBatch.Add(item);
+              if (snapshot.IsComplete)
+              {
+                CancelPendingProgressShow();
+                await DisposeProgressAsync(uiDispatcher, progressToReport, progressLock).ConfigureAwait(false);
+                lock (progressLock)
+                {
+                  if (activeProgress == progressToReport)
+                  {
+                    activeProgress = null;
+                    activeProgressJobId = -1;
+                    lastReportUtc = DateTime.MinValue;
+                  }
+                }
+              }
             }
             else
             {
-              jobCoordinator.TrySkipItem(item);
+              bool shouldReport;
+              lock (progressLock)
+              {
+                DateTime now = DateTime.UtcNow;
+                shouldReport = snapshot.IsComplete
+                  || (now - lastReportUtc).TotalMilliseconds >= ProgressReportIntervalMs;
+                if (shouldReport)
+                {
+                  lastReportUtc = now;
+                }
+              }
+
+              if (shouldReport)
+              {
+                try
+                {
+                  await ReportProgressOnUiAsync(
+                    uiDispatcher,
+                    progressToReport,
+                    jobCoordinator,
+                    progressJobId,
+                    snapshot.Completed,
+                    snapshot.Total,
+                    GetThumbProgressDetail(item)).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                  Debug.WriteLine($"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : [thumb-progress] {ex.Message}");
+                }
+              }
+
+              if (snapshot.IsComplete)
+              {
+                CancelPendingProgressShow();
+                await DisposeProgressAsync(uiDispatcher, progressToReport, progressLock).ConfigureAwait(false);
+                lock (progressLock)
+                {
+                  if (activeProgress == progressToReport)
+                  {
+                    activeProgress = null;
+                    activeProgressJobId = -1;
+                    lastReportUtc = DateTime.MinValue;
+                  }
+                }
+              }
             }
           }
-
-          if (currentBatch.Count < 1)
+          else if (progressToReport != null
+            && item.JobId != progressJobId
+            && snapshot.IsComplete
+            && snapshot.Abandoned)
           {
+            CancelPendingProgressShow();
+            await DisposeProgressAsync(uiDispatcher, progressToReport, progressLock).ConfigureAwait(false);
+            lock (progressLock)
+            {
+              if (activeProgress == progressToReport)
+              {
+                activeProgress = null;
+                activeProgressJobId = -1;
+                lastReportUtc = DateTime.MinValue;
+              }
+            }
+          }
+        }
+      }
+
+      async Task TryCloseProgressIfJobDrainedAsync()
+      {
+        ThumbnailProgressSession progressToClose;
+        int closingJobId;
+        lock (progressLock)
+        {
+          progressToClose = activeProgress;
+          closingJobId = activeProgressJobId;
+        }
+
+        if (progressToClose == null || closingJobId <= 0)
+        {
+          return;
+        }
+
+        ThumbnailJobCoordinator.Snapshot afterItem = jobCoordinator.GetSnapshot(closingJobId);
+        if (!afterItem.IsComplete
+          || afterItem.JobId != closingJobId
+          || afterItem.Abandoned
+          || HasQueuedWorkForJob(queueThumb, queueSync, closingJobId))
+        {
+          return;
+        }
+
+        CancelPendingProgressShow();
+        await DisposeProgressAsync(uiDispatcher, progressToClose, progressLock).ConfigureAwait(false);
+        lock (progressLock)
+        {
+          if (activeProgress == progressToClose)
+          {
+            activeProgress = null;
+            activeProgressJobId = -1;
+            lastReportUtc = DateTime.MinValue;
+          }
+        }
+      }
+
+      async Task WorkerLoopAsync()
+      {
+        while (!cts.IsCancellationRequested)
+        {
+          try
+          {
+            QueueObj item = TryDequeueOne(queueThumb, queueSync);
+            if (item == null)
+            {
+              await Task.Delay(safePollIntervalMs, cts).ConfigureAwait(false);
+              continue;
+            }
+
             await SwitchProgressToCurrentJobAsync(
               uiDispatcher,
               jobCoordinator,
@@ -186,223 +299,113 @@ namespace IndigoMovieManager
               jobId => activeProgressJobId = jobId,
               utc => lastReportUtc = utc,
               ReplaceProgressShowCts).ConfigureAwait(false);
-            continue;
+
+            CancellationToken batchToken = batchCancellationToken?.Invoke() ?? cts;
+            CancellationToken jobToken = jobCoordinator.GetJobCancellationToken(item.JobId);
+            using CancellationTokenSource linkedCts =
+              CancellationTokenSource.CreateLinkedTokenSource(cts, batchToken, jobToken);
+
+            try
+            {
+              await ProcessQueueItemAsync(item, linkedCts.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!cts.IsCancellationRequested)
+            {
+              CancelPendingProgressShow();
+              Debug.WriteLine(
+                $"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : サムネイル作成バッチをキャンセルしました。");
+            }
+
+            await TryCloseProgressIfJobDrainedAsync().ConfigureAwait(false);
+
+            await SwitchProgressToCurrentJobAsync(
+              uiDispatcher,
+              jobCoordinator,
+              progressLock,
+              () => activeProgress,
+              session => activeProgress = session,
+              () => activeProgressJobId,
+              jobId => activeProgressJobId = jobId,
+              utc => lastReportUtc = utc,
+              ReplaceProgressShowCts).ConfigureAwait(false);
           }
+          catch (OperationCanceledException) when (cts.IsCancellationRequested)
+          {
+            return;
+          }
+          catch (Exception ex)
+          {
+            string itemMsg = $"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : [thumb-worker] {ex.Message}";
+            Debug.WriteLine(itemMsg);
+            log?.Invoke(itemMsg);
+          }
+        }
+      }
 
-          int currentJobId = jobCoordinator.CurrentJobId;
+      Task[] workers = new Task[safeMaxParallelism];
+      for (int i = 0; i < safeMaxParallelism; i++)
+      {
+        workers[i] = WorkerLoopAsync();
+      }
 
-          await SwitchProgressToCurrentJobAsync(
-            uiDispatcher,
-            jobCoordinator,
-            progressLock,
-            () => activeProgress,
-            session => activeProgress = session,
-            () => activeProgressJobId,
-            jobId => activeProgressJobId = jobId,
-            utc => lastReportUtc = utc,
-            ReplaceProgressShowCts).ConfigureAwait(false);
+      try
+      {
+        while (true)
+        {
+          try
+          {
+            await Task.Delay(safePollIntervalMs, cts).ConfigureAwait(false);
 
-          int safeMaxParallelism = ResolveMaxParallelism(maxParallelism, maxParallelismResolver);
-          CancellationToken batchToken = batchCancellationToken?.Invoke() ?? cts;
-          using CancellationTokenSource linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cts, batchToken);
-
-          await Parallel.ForEachAsync(
-            currentBatch,
-            new ParallelOptions
+            int switchToken = jobCoordinator.JobSwitchToken;
+            if (switchToken != lastJobSwitchToken)
             {
-              MaxDegreeOfParallelism = safeMaxParallelism,
-              CancellationToken = linkedCts.Token,
-            },
-            async (item, token) =>
-            {
-              if (!jobCoordinator.ShouldProcess(item))
-              {
-                jobCoordinator.TrySkipItem(item);
-                return;
-              }
-
-              jobCoordinator.MarkInFlight(item);
-
-              await MaybeShowProgressAfterMarkInFlightAsync(
+              lastJobSwitchToken = switchToken;
+              await DismissActiveProgressSilentlyAsync(
                 uiDispatcher,
-                jobCoordinator,
                 progressLock,
                 () => activeProgress,
                 session => activeProgress = session,
                 () => activeProgressJobId,
                 jobId => activeProgressJobId = jobId,
                 utc => lastReportUtc = utc,
-                item).ConfigureAwait(false);
+                ReplaceProgressShowCts).ConfigureAwait(false);
+            }
 
-              try
-              {
-                await createThumbAsync(item, token).ConfigureAwait(false);
-              }
-              catch (Exception ex) when (ex is not OperationCanceledException)
-              {
-                // 1 件のサムネ生成失敗でバッチ全体（ひいてはプロセッサ）を巻き込まない。
-                // 失敗アイテムはログに残し、finally で完了扱いにしてループを継続する。
-                Debug.WriteLine(
-                  $"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : [thumb] item failed: {ex.Message}");
-              }
-              finally
-              {
-                ThumbnailJobCoordinator.Snapshot snapshot = jobCoordinator.TryComplete(item);
-
-                ThumbnailProgressSession progressToReport;
-                int progressJobId;
-                lock (progressLock)
-                {
-                  progressToReport = activeProgress;
-                  progressJobId = activeProgressJobId;
-                }
-
-                if (progressToReport != null && item.JobId == progressJobId)
-                {
-                  if (snapshot.Abandoned)
-                  {
-                    if (snapshot.IsComplete)
-                    {
-                      CancelPendingProgressShow();
-                      await DisposeProgressAsync(uiDispatcher, progressToReport, progressLock).ConfigureAwait(false);
-                      lock (progressLock)
-                      {
-                        if (activeProgress == progressToReport)
-                        {
-                          activeProgress = null;
-                          activeProgressJobId = -1;
-                          lastReportUtc = DateTime.MinValue;
-                        }
-                      }
-                    }
-                  }
-                  else
-                  {
-                    bool shouldReport;
-                    lock (progressLock)
-                    {
-                      DateTime now = DateTime.UtcNow;
-                      shouldReport = snapshot.IsComplete
-                        || (now - lastReportUtc).TotalMilliseconds >= ProgressReportIntervalMs;
-                      if (shouldReport)
-                      {
-                        lastReportUtc = now;
-                      }
-                    }
-
-                    if (shouldReport)
-                    {
-                      try
-                      {
-                        await ReportProgressOnUiAsync(
-                          uiDispatcher,
-                          progressToReport,
-                          jobCoordinator,
-                          progressJobId,
-                          snapshot.Completed,
-                          snapshot.Total,
-                          item.MovieFullPath).ConfigureAwait(false);
-                      }
-                      catch (Exception ex)
-                      {
-                        Debug.WriteLine($"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : [thumb-progress] {ex.Message}");
-                      }
-                    }
-
-                    if (snapshot.IsComplete)
-                    {
-                      CancelPendingProgressShow();
-                      await DisposeProgressAsync(uiDispatcher, progressToReport, progressLock).ConfigureAwait(false);
-                      lock (progressLock)
-                      {
-                        if (activeProgress == progressToReport)
-                        {
-                          activeProgress = null;
-                          activeProgressJobId = -1;
-                          lastReportUtc = DateTime.MinValue;
-                        }
-                      }
-                    }
-                  }
-                }
-                else if (progressToReport != null
-                  && item.JobId != progressJobId
-                  && snapshot.IsComplete
-                  && snapshot.Abandoned)
-                {
-                  CancelPendingProgressShow();
-                  await DisposeProgressAsync(uiDispatcher, progressToReport, progressLock).ConfigureAwait(false);
-                  lock (progressLock)
-                  {
-                    if (activeProgress == progressToReport)
-                    {
-                      activeProgress = null;
-                      activeProgressJobId = -1;
-                      lastReportUtc = DateTime.MinValue;
-                    }
-                  }
-                }
-              }
-            }).ConfigureAwait(false);
-
-          ThumbnailJobCoordinator.Snapshot afterBatch;
-          ThumbnailProgressSession progressToClose;
-          int closingJobId;
-          lock (progressLock)
-          {
-            progressToClose = activeProgress;
-            closingJobId = activeProgressJobId;
-          }
-
-          afterBatch = closingJobId > 0
-            ? jobCoordinator.GetSnapshot(closingJobId)
-            : jobCoordinator.GetSnapshot();
-
-          if (progressToClose != null
-            && afterBatch.IsComplete
-            && afterBatch.JobId == closingJobId
-            && !afterBatch.Abandoned
-            && !HasQueuedWorkForJob(queueThumb, queueSync, closingJobId))
-          {
-            CancelPendingProgressShow();
-            await DisposeProgressAsync(uiDispatcher, progressToClose, progressLock).ConfigureAwait(false);
-            lock (progressLock)
+            if (queueThumb.IsEmpty)
             {
-              if (activeProgress == progressToClose)
+              ThumbnailJobCoordinator.Snapshot idleSnapshot;
+              int trackedJobId;
+              lock (progressLock)
               {
+                trackedJobId = activeProgressJobId;
+              }
+
+              idleSnapshot = trackedJobId > 0
+                ? jobCoordinator.GetSnapshot(trackedJobId)
+                : jobCoordinator.GetSnapshot();
+
+              if (activeProgress != null
+                && idleSnapshot.JobId == trackedJobId
+                && (idleSnapshot.IsComplete || idleSnapshot.Abandoned))
+              {
+                CancelPendingProgressShow();
+                await DisposeProgressAsync(uiDispatcher, activeProgress, progressLock).ConfigureAwait(false);
                 activeProgress = null;
                 activeProgressJobId = -1;
                 lastReportUtc = DateTime.MinValue;
               }
-            }
-          }
 
-          await SwitchProgressToCurrentJobAsync(
-            uiDispatcher,
-            jobCoordinator,
-            progressLock,
-            () => activeProgress,
-            session => activeProgress = session,
-            () => activeProgressJobId,
-            jobId => activeProgressJobId = jobId,
-            utc => lastReportUtc = utc,
-            ReplaceProgressShowCts).ConfigureAwait(false);
+              continue;
+            }
+
+            await TryCloseProgressIfJobDrainedAsync().ConfigureAwait(false);
           }
           catch (OperationCanceledException) when (cts.IsCancellationRequested)
           {
-            // プロセッサ自体の終了要求。外側で後始末する。
             throw;
-          }
-          catch (OperationCanceledException)
-          {
-            // バッチ単位のキャンセル（DB 切替など）。プロセッサループは生かしたまま継続する。
-            CancelPendingProgressShow();
-            Debug.WriteLine(
-              $"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : サムネイル作成バッチをキャンセルしました。");
           }
           catch (Exception ex)
           {
-            // 予期せぬ例外でもプロセッサを停止させない（1 件の失敗で全体が止まるのを防ぐ）。
             string itemMsg = $"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : [thumb-loop] {ex.Message}";
             Debug.WriteLine(itemMsg);
             log?.Invoke(itemMsg);
@@ -424,6 +427,15 @@ namespace IndigoMovieManager
       }
       finally
       {
+        try
+        {
+          await Task.WhenAll(workers).ConfigureAwait(false);
+        }
+        catch
+        {
+          // ワーカー終了時の例外は握りつぶし、後始末を続行する。
+        }
+
         s_cancelPendingProgressShow = null;
         s_dismissActiveProgress = null;
         CancelPendingProgressShow();
@@ -546,7 +558,7 @@ namespace IndigoMovieManager
           jobId,
           snapshot.Completed,
           snapshot.Total,
-          item.MovieFullPath ?? string.Empty).ConfigureAwait(false);
+          GetThumbProgressDetail(item)).ConfigureAwait(false);
       }
       catch (Exception ex)
       {
@@ -721,6 +733,21 @@ namespace IndigoMovieManager
       return false;
     }
 
+    private static string GetThumbProgressDetail(QueueObj item)
+    {
+      if (item == null)
+      {
+        return string.Empty;
+      }
+
+      if (!string.IsNullOrWhiteSpace(item.LastThumbProgressDetail))
+      {
+        return item.LastThumbProgressDetail;
+      }
+
+      return item.MovieFullPath ?? string.Empty;
+    }
+
     private static Task ReportProgressOnUiAsync(
       Dispatcher uiDispatcher,
       ThumbnailProgressSession session,
@@ -755,23 +782,20 @@ namespace IndigoMovieManager
       return uiDispatcher.InvokeAsync(Report, DispatcherPriority.Send).Task;
     }
 
-    private static List<QueueObj> DequeueBatch(ConcurrentQueue<QueueObj> queueThumb, object queueSync)
+    private static QueueObj TryDequeueOne(ConcurrentQueue<QueueObj> queueThumb, object queueSync)
     {
       lock (queueSync)
       {
-        List<QueueObj> batch = [];
         while (queueThumb.TryDequeue(out QueueObj queueObj))
         {
-          if (queueObj == null)
+          if (queueObj != null)
           {
-            continue;
+            return queueObj;
           }
-
-          batch.Add(queueObj);
         }
-
-        return batch;
       }
+
+      return null;
     }
 
     private static Task DisposeProgressAsync(

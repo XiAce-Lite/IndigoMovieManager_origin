@@ -6,6 +6,18 @@ namespace IndigoMovieManager.Thumbnail
     {
         private const string ExePathEnvName = "IMM_FFMPEG_EXE_PATH";
         private const string ForceFfmpegEnvName = "IMM_FORCE_FFMPEG";
+        private const string ThumbEngineEnvName = "IMM_THUMB_ENGINE";
+
+        public static string GetThumbEngineMode()
+        {
+            return Environment.GetEnvironmentVariable(ThumbEngineEnvName)?.Trim() ?? "";
+        }
+
+        public static bool IsOnePassEngineRequested()
+        {
+            string mode = GetThumbEngineMode();
+            return string.Equals(mode, "ffmpeg1pass", StringComparison.OrdinalIgnoreCase);
+        }
 
         public static bool IsForceFfmpegEnabled()
         {

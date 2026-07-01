@@ -1,7 +1,10 @@
 ﻿using IndigoMovieManager.Services;
+using IndigoMovieManager.Thumbnail;
 using Microsoft.Win32;
 using System.ComponentModel;
+using System.IO;
 using System.Windows;
+using System.Windows.Controls;
 
 namespace IndigoMovieManager
 {
@@ -24,6 +27,44 @@ namespace IndigoMovieManager
                 "<file>",
                 "\"<file>\""
             };
+            InitializeFfmpegHardwareDecodeCombo();
+        }
+
+        private void InitializeFfmpegHardwareDecodeCombo()
+        {
+            (string Value, string Label)[] items =
+            [
+                ("Off", "使用しない"),
+                ("Auto", "自動"),
+                ("Cuda", "NVIDIA CUDA"),
+                ("Qsv", "Intel QSV"),
+                ("D3d11va", "D3D11VA"),
+                ("Dxva2", "DXVA2"),
+            ];
+
+            foreach ((string value, string label) in items)
+            {
+                FfmpegHardwareDecodeModeCombo.Items.Add(new ComboBoxItem
+                {
+                    Content = label,
+                    Tag = value,
+                });
+            }
+
+            string current = Properties.Settings.Default.FfmpegHardwareDecodeMode?.Trim() ?? "Off";
+            foreach (ComboBoxItem item in FfmpegHardwareDecodeModeCombo.Items)
+            {
+                if (string.Equals(item.Tag as string, current, StringComparison.OrdinalIgnoreCase))
+                {
+                    FfmpegHardwareDecodeModeCombo.SelectedItem = item;
+                    break;
+                }
+            }
+
+            if (FfmpegHardwareDecodeModeCombo.SelectedItem == null && FfmpegHardwareDecodeModeCombo.Items.Count > 0)
+            {
+                FfmpegHardwareDecodeModeCombo.SelectedIndex = 0;
+            }
         }
 
         private void OnClosing(object sender, CancelEventArgs e)
@@ -36,6 +77,13 @@ namespace IndigoMovieManager
             Properties.Settings.Default.DefaultZipViewerParam = DefaultZipViewerParam.Text;
             Properties.Settings.Default.RecentFilesCount = (int)slider.Value;
             Properties.Settings.Default.CheckExt = MediaExtensionSettings.NormalizeListForStorage(CheckExt.Text);
+            if (FfmpegHardwareDecodeModeCombo.SelectedItem is ComboBoxItem hwItem
+                && hwItem.Tag is string hwMode)
+            {
+                Properties.Settings.Default.FfmpegHardwareDecodeMode = hwMode;
+                FfmpegHardwareDecodePolicy.InvalidateCache();
+            }
+
             MediaExtensionSettings.EnsureRequiredExtensions();
             Properties.Settings.Default.Save();
         }

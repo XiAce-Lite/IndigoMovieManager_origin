@@ -88,15 +88,7 @@ namespace IndigoMovieManager.Thumbnail
                 // 優先度変更失敗は無視
             }
 
-            Task<string> stderrTask = process.StandardError.ReadToEndAsync(cts);
-            Task<string> stdoutTask = process.StandardOutput.ReadToEndAsync(cts);
-
-            using CancellationTokenSource timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cts);
-            Task delayTask = Task.Delay(timeout, timeoutCts.Token);
-            Task waitTask = process.WaitForExitAsync(cts);
-            Task completed = await Task.WhenAny(waitTask, delayTask).ConfigureAwait(false);
-
-            if (completed == delayTask)
+            void TryKillProcessTree()
             {
                 try
                 {
@@ -109,22 +101,49 @@ namespace IndigoMovieManager.Thumbnail
                 {
                     // ignore
                 }
-
-                return (false, $"ffmpeg timeout ({timeout.TotalSeconds:0}s)");
             }
 
-            timeoutCts.Cancel();
-            await waitTask.ConfigureAwait(false);
-
-            string stderr = await stderrTask.ConfigureAwait(false);
-            _ = await stdoutTask.ConfigureAwait(false);
-
-            if (process.ExitCode != 0)
+            try
             {
-                return (false, string.IsNullOrWhiteSpace(stderr) ? $"exit={process.ExitCode}" : stderr);
-            }
+                Task<string> stderrTask = process.StandardError.ReadToEndAsync(cts);
+                Task<string> stdoutTask = process.StandardOutput.ReadToEndAsync(cts);
 
-            return (true, stderr);
+                using CancellationTokenSource timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cts);
+                Task delayTask = Task.Delay(timeout, timeoutCts.Token);
+                Task waitTask = process.WaitForExitAsync(cts);
+                Task completed = await Task.WhenAny(waitTask, delayTask).ConfigureAwait(false);
+
+                if (completed == delayTask)
+                {
+                    TryKillProcessTree();
+                    return (false, $"ffmpeg timeout ({timeout.TotalSeconds:0}s)");
+                }
+
+                timeoutCts.Cancel();
+                await waitTask.ConfigureAwait(false);
+
+                string stderr = await stderrTask.ConfigureAwait(false);
+                _ = await stdoutTask.ConfigureAwait(false);
+
+                if (process.ExitCode != 0)
+                {
+                    return (false, string.IsNullOrWhiteSpace(stderr) ? $"exit={process.ExitCode}" : stderr);
+                }
+
+                return (true, stderr);
+            }
+            catch (OperationCanceledException)
+            {
+                TryKillProcessTree();
+                throw;
+            }
+            finally
+            {
+                if (cts.IsCancellationRequested)
+                {
+                    TryKillProcessTree();
+                }
+            }
         }
 
         private static bool TryGetShortPath(string longPath, out string shortPath)

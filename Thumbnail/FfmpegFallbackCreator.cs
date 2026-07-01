@@ -1,8 +1,8 @@
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Globalization;
 using System.IO;
-using System.Text;
 using static IndigoMovieManager.Tools;
 
 namespace IndigoMovieManager.Thumbnail
@@ -10,7 +10,9 @@ namespace IndigoMovieManager.Thumbnail
     internal static class FfmpegFallbackCreator
     {
         private const string JpegQualityEnvName = "IMM_THUMB_JPEG_Q";
+        private const string BenchPerPanelOnlyEnvName = "IMM_THUMB_BENCH_PERPANEL_ONLY";
         private const int DefaultJpegQuality = 5;
+        private static readonly TimeSpan PerPanelTimeout = TimeSpan.FromSeconds(90);
 
         public static async Task<ThumbnailCreateResult> TryCreateAsync(
             ThumbnailJobContext ctx,
@@ -35,16 +37,27 @@ namespace IndigoMovieManager.Thumbnail
                 return ThumbnailCreateResult.Failed("thumb sec list is empty");
             }
 
-            ThumbnailCreateResult tiledResult = await TryCreateTiledAsync(
+            if (!IsBenchPerPanelOnly() && FfmpegOnePassPolicy.CanUse(thumbInfo, durationSec))
+            {
+                ThumbnailCreateResult onePassResult = await FfmpegOnePassCreator
+                    .TryCreateAsync(ctx, thumbInfo, durationSec, ffmpegExePath, cts)
+                    .ConfigureAwait(false);
+
+                if (onePassResult.Success)
+                {
+                    return onePassResult;
+                }
+            }
+
+            ThumbnailCreateResult perPanelResult = await TryCreatePerPanelSeekAsync(
                 ctx,
                 thumbInfo,
-                durationSec,
                 ffmpegExePath,
                 cts).ConfigureAwait(false);
 
-            if (tiledResult.Success)
+            if (perPanelResult.Success)
             {
-                return tiledResult;
+                return perPanelResult;
             }
 
             ThumbnailCreateResult singleFrameResult = await TryCreateSingleFrameFallbackAsync(
@@ -59,7 +72,7 @@ namespace IndigoMovieManager.Thumbnail
                 return singleFrameResult;
             }
 
-            string reason = tiledResult.FailureReason ?? "ffmpeg failed";
+            string reason = perPanelResult.FailureReason ?? "ffmpeg failed";
             if (!string.IsNullOrWhiteSpace(singleFrameResult.FailureReason))
             {
                 reason = $"{reason}; single-frame: {singleFrameResult.FailureReason}";
@@ -68,10 +81,12 @@ namespace IndigoMovieManager.Thumbnail
             return ThumbnailCreateResult.Failed(reason);
         }
 
-        private static async Task<ThumbnailCreateResult> TryCreateTiledAsync(
+        /// <summary>
+        /// OpenCV と同様に、各パネル秒へシークして 1 枚ずつ取得し、タイル合成する。
+        /// </summary>
+        private static async Task<ThumbnailCreateResult> TryCreatePerPanelSeekAsync(
             ThumbnailJobContext ctx,
             ThumbInfo thumbInfo,
-            double durationSec,
             string ffmpegExePath,
             CancellationToken cts
         )
@@ -84,69 +99,81 @@ namespace IndigoMovieManager.Thumbnail
                 return ThumbnailCreateResult.Failed("invalid panel configuration");
             }
 
+            DeleteOldTempPanelFiles(ctx);
+
+            List<string> panelPaths = [];
             (int targetWidth, int targetHeight) = ResolveTargetSize(ctx);
-            double startSec = Math.Max(0, thumbInfo.ThumbSec[0]);
-            double samplingDuration = ThumbnailSamplingPolicy.GetEffectiveSamplingDuration(
-                durationSec,
-                ctx.IsManual);
-            double intervalSec = ResolveFrameIntervalSec(thumbInfo.ThumbSec, samplingDuration, panelCount);
-            string vf = BuildTileFilter(
-                intervalSec,
-                targetWidth,
-                targetHeight,
-                cols,
-                rows,
-                samplingDuration,
-                panelCount
-            );
-
-            string startText = startSec.ToString("0.###", CultureInfo.InvariantCulture);
             int jpegQuality = ResolveJpegQuality();
+            string vf = BuildAspectFillCropFilter(targetWidth, targetHeight);
+            string lastError = "per-panel extract failed";
+            string decoderLabel = "";
 
-            List<string> args =
-            [
-                "-y",
-                "-hide_banner",
-                "-loglevel",
-                "error",
-                "-an",
-                "-sn",
-                "-dn",
-                "-ss",
-                startText,
-                "-i",
-                ctx.MovieFullPath,
-                "-frames:v",
-                "1",
-                "-strict",
-                "unofficial",
-                "-pix_fmt",
-                "yuv420p",
-                "-q:v",
-                jpegQuality.ToString(CultureInfo.InvariantCulture),
-                "-vf",
-                vf,
-                ctx.SaveThumbFileName,
-            ];
-
-            TimeSpan timeout = TimeSpan.FromSeconds(Math.Min(600, Math.Max(60, panelCount * 15)));
-            (bool ok, string stderr) = await FfmpegProcessRunner
-                .RunAsync(ffmpegExePath, args, timeout, cts)
-                .ConfigureAwait(false);
-
-            if (!ok || !File.Exists(ctx.SaveThumbFileName))
+            try
             {
-                return ThumbnailCreateResult.Failed(
-                    string.IsNullOrWhiteSpace(stderr) ? "ffmpeg one-pass failed" : stderr
-                );
-            }
+                for (int i = 0; i < panelCount; i++)
+                {
+                    string saveFile = Path.Combine(ctx.TempPath, $"tn_{ctx.TempFileBody}{i:D2}.jpg");
+                    if (File.Exists(saveFile))
+                    {
+                        File.Delete(saveFile);
+                    }
 
-            ThumbnailMetadataWriter.AppendMetadata(ctx.SaveThumbFileName, thumbInfo);
-            return ThumbnailCreateResult.Succeeded([ctx.SaveThumbFileName]);
+                    string seekText = Math.Max(0, thumbInfo.ThumbSec[i])
+                        .ToString("0.###", CultureInfo.InvariantCulture);
+                    (bool ok, string stderr, string panelDecoder) = await RunFfmpegWithHardwareFallbackAsync(
+                            ffmpegExePath,
+                            hwMode => BuildExtractArgs(
+                                hwMode,
+                                seekText,
+                                ctx.MovieFullPath,
+                                jpegQuality,
+                                vf,
+                                saveFile),
+                            PerPanelTimeout,
+                            cts)
+                        .ConfigureAwait(false);
+
+                    if (!ok || !File.Exists(saveFile))
+                    {
+                        lastError = string.IsNullOrWhiteSpace(stderr) ? lastError : stderr;
+                        return ThumbnailCreateResult.Failed(lastError, "FFmpeg", panelDecoder);
+                    }
+
+                    if (string.IsNullOrEmpty(decoderLabel))
+                    {
+                        decoderLabel = panelDecoder;
+                    }
+
+                    panelPaths.Add(saveFile);
+                }
+
+                using Bitmap bmp = ConcatImages(panelPaths, cols, rows);
+                if (bmp == null)
+                {
+                    return ThumbnailCreateResult.Failed("ffmpeg per-panel concat failed");
+                }
+
+                if (File.Exists(ctx.SaveThumbFileName))
+                {
+                    File.Delete(ctx.SaveThumbFileName);
+                }
+
+                bmp.Save(ctx.SaveThumbFileName, ImageFormat.Jpeg);
+                ThumbnailMetadataWriter.AppendMetadata(ctx.SaveThumbFileName, thumbInfo);
+                return ThumbnailCreateResult.Succeeded(panelPaths, "FFmpeg", decoderLabel);
+            }
+            catch (Exception ex)
+            {
+                return ThumbnailCreateResult.Failed(ex.Message);
+            }
+            finally
+            {
+                CleanupTempPanelFiles(ctx);
+            }
         }
 
         /// <summary>
-        /// タイル合成に失敗したファイル向け。1 フレームだけ抽出し、同一画像を並べてサムネを構成する。
+        /// パネル個別取得に失敗したファイル向け。1 フレームだけ抽出し、同一画像を並べてサムネを構成する。
         /// </summary>
         private static async Task<ThumbnailCreateResult> TryCreateSingleFrameFallbackAsync(
             ThumbnailJobContext ctx,
@@ -163,6 +190,7 @@ namespace IndigoMovieManager.Thumbnail
             int jpegQuality = ResolveJpegQuality();
             string tempFile = Path.Combine(ctx.TempPath, $"tn_{ctx.TempFileBody}_ffsingle.jpg");
             string lastError = "single-frame extract failed";
+            string decoderLabel = "";
 
             foreach (double seekSec in BuildSingleFrameSeekPoints(durationSec, thumbInfo))
             {
@@ -172,38 +200,28 @@ namespace IndigoMovieManager.Thumbnail
                 }
 
                 string seekText = seekSec.ToString("0.###", CultureInfo.InvariantCulture);
-                List<string> args =
-                [
-                    "-y",
-                    "-hide_banner",
-                    "-loglevel",
-                    "error",
-                    "-an",
-                    "-sn",
-                    "-dn",
-                    "-ss",
-                    seekText,
-                    "-i",
-                    ctx.MovieFullPath,
-                    "-frames:v",
-                    "1",
-                    "-pix_fmt",
-                    "yuv420p",
-                    "-q:v",
-                    jpegQuality.ToString(CultureInfo.InvariantCulture),
-                    "-vf",
-                    BuildAspectFillCropFilter(targetWidth, targetHeight),
-                    tempFile,
-                ];
-
-                (bool ok, string stderr) = await FfmpegProcessRunner
-                    .RunAsync(ffmpegExePath, args, TimeSpan.FromSeconds(90), cts)
+                (bool ok, string stderr, string frameDecoder) = await RunFfmpegWithHardwareFallbackAsync(
+                        ffmpegExePath,
+                        hwMode => BuildExtractArgs(
+                            hwMode,
+                            seekText,
+                            ctx.MovieFullPath,
+                            jpegQuality,
+                            BuildAspectFillCropFilter(targetWidth, targetHeight),
+                            tempFile),
+                        PerPanelTimeout,
+                        cts)
                     .ConfigureAwait(false);
 
                 if (!ok || !File.Exists(tempFile))
                 {
                     lastError = string.IsNullOrWhiteSpace(stderr) ? lastError : stderr;
                     continue;
+                }
+
+                if (string.IsNullOrEmpty(decoderLabel))
+                {
+                    decoderLabel = frameDecoder;
                 }
 
                 try
@@ -228,7 +246,7 @@ namespace IndigoMovieManager.Thumbnail
 
                     bmp.Save(ctx.SaveThumbFileName, ImageFormat.Jpeg);
                     ThumbnailMetadataWriter.AppendMetadata(ctx.SaveThumbFileName, thumbInfo);
-                    return ThumbnailCreateResult.Succeeded([ctx.SaveThumbFileName]);
+                    return ThumbnailCreateResult.Succeeded([ctx.SaveThumbFileName], "FFmpeg", decoderLabel);
                 }
                 catch (Exception ex)
                 {
@@ -243,7 +261,7 @@ namespace IndigoMovieManager.Thumbnail
                 }
             }
 
-            return ThumbnailCreateResult.Failed(lastError);
+            return ThumbnailCreateResult.Failed(lastError, "FFmpeg", decoderLabel);
         }
 
         private static IEnumerable<double> BuildSingleFrameSeekPoints(double durationSec, ThumbInfo thumbInfo)
@@ -301,70 +319,123 @@ namespace IndigoMovieManager.Thumbnail
             return (160, 120);
         }
 
-        private static double ResolveFrameIntervalSec(
-            List<int> secList,
-            double durationSec,
-            int panelCount
+        private static async Task<(bool ok, string stderr, string decoderLabel)> RunFfmpegWithHardwareFallbackAsync(
+            string ffmpegExePath,
+            Func<FfmpegHardwareDecodeMode?, List<string>> buildArgs,
+            TimeSpan timeout,
+            CancellationToken cts
         )
         {
-            if (secList.Count >= 2)
+            IReadOnlyList<FfmpegHardwareDecodeMode> modes =
+                FfmpegHardwareDecodePolicy.GetModesToAttempt(ffmpegExePath);
+
+            foreach (FfmpegHardwareDecodeMode mode in modes)
             {
-                int interval = secList[1] - secList[0];
-                if (interval > 0)
+                (bool ok, string stderr) = await FfmpegProcessRunner
+                    .RunAsync(ffmpegExePath, buildArgs(mode), timeout, cts)
+                    .ConfigureAwait(false);
+
+                if (ok)
                 {
-                    return interval;
+                    return (true, stderr, FfmpegHardwareDecodePolicy.GetHwaccelName(mode));
+                }
+
+                FfmpegHardwareDecodePolicy.MarkModeFailed(mode);
+                Debug.WriteLine(
+                    $"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : [thumb] ffmpeg hwdecode {FfmpegHardwareDecodePolicy.GetHwaccelName(mode)} failed: {stderr}"
+                );
+            }
+
+            (bool softwareOk, string softwareStderr) = await FfmpegProcessRunner
+                .RunAsync(ffmpegExePath, buildArgs(null), timeout, cts)
+                .ConfigureAwait(false);
+
+            return (softwareOk, softwareStderr, "software");
+        }
+
+        private static List<string> BuildExtractArgs(
+            FfmpegHardwareDecodeMode? hwMode,
+            string seekText,
+            string inputPath,
+            int jpegQuality,
+            string vf,
+            string outputPath
+        )
+        {
+            List<string> args =
+            [
+                "-y",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-an",
+                "-sn",
+                "-dn",
+            ];
+
+            if (hwMode is FfmpegHardwareDecodeMode mode && mode != FfmpegHardwareDecodeMode.Off)
+            {
+                string hwaccel = FfmpegHardwareDecodePolicy.GetHwaccelName(mode);
+                if (!string.IsNullOrWhiteSpace(hwaccel))
+                {
+                    args.Add("-hwaccel");
+                    args.Add(hwaccel);
                 }
             }
 
-            if (durationSec > 0 && panelCount > 0)
-            {
-                double divide = durationSec / (panelCount + 1);
-                if (divide > 0.1d)
-                {
-                    return divide;
-                }
-            }
-
-            return 1d;
+            args.Add("-ss");
+            args.Add(seekText);
+            args.Add("-i");
+            args.Add(inputPath);
+            args.Add("-frames:v");
+            args.Add("1");
+            args.Add("-pix_fmt");
+            args.Add("yuv420p");
+            args.Add("-q:v");
+            args.Add(jpegQuality.ToString(CultureInfo.InvariantCulture));
+            args.Add("-vf");
+            args.Add(vf);
+            args.Add(outputPath);
+            return args;
         }
 
-        private static string BuildTileFilter(
-            double intervalSec,
-            int width,
-            int height,
-            int cols,
-            int rows,
-            double durationSec,
-            int panelCount
-        )
-        {
-            double safeInterval = intervalSec > 0 ? intervalSec : 1d;
-            string intervalText = safeInterval.ToString("0.###", CultureInfo.InvariantCulture);
-            StringBuilder vf = new();
-
-            if (durationSec > 0 && panelCount > 0 && durationSec < safeInterval * panelCount)
-            {
-                double padSec = (safeInterval * panelCount) - durationSec + 0.05d;
-                string padText = padSec.ToString("0.###", CultureInfo.InvariantCulture);
-                vf.Append($"tpad=stop_mode=clone:stop_duration={padText},");
-            }
-
-            vf.Append($"fps=1/{intervalText},");
-            vf.Append(BuildAspectFillCropFilter(width, height));
-            vf.Append(',');
-            vf.Append($"tile={cols}x{rows}");
-            return vf.ToString();
-        }
-
-        /// <summary>
-        /// パネル比へセンタークロップして全面を埋める（黒帯を焼き込まない）。
-        /// 4:3 パネルなら 4:3、16:9 パネルなら 16:9 を維持する。
-        /// </summary>
         private static string BuildAspectFillCropFilter(int width, int height)
         {
             return
                 $"scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,"
                 + $"crop={width}:{height},setsar=1";
+        }
+
+        private static void DeleteOldTempPanelFiles(ThumbnailJobContext ctx)
+        {
+            string[] oldTempFiles = Directory.GetFiles(
+                ctx.TempPath,
+                $"*{ctx.TempFileBody}*.jpg",
+                SearchOption.TopDirectoryOnly
+            );
+            foreach (string oldFile in oldTempFiles)
+            {
+                if (File.Exists(oldFile))
+                {
+                    File.Delete(oldFile);
+                }
+            }
+        }
+
+        private static void CleanupTempPanelFiles(ThumbnailJobContext ctx)
+        {
+            string[] oldTempFiles = Directory.GetFiles(
+                ctx.TempPath,
+                $"*{ctx.TempFileBody}*.jpg",
+                SearchOption.TopDirectoryOnly
+            );
+            foreach (string oldFile in oldTempFiles)
+            {
+                if (File.Exists(oldFile))
+                {
+                    File.Delete(oldFile);
+                }
+            }
         }
 
         private static int ResolveJpegQuality()
@@ -384,6 +455,12 @@ namespace IndigoMovieManager.Thumbnail
             }
 
             return DefaultJpegQuality;
+        }
+
+        private static bool IsBenchPerPanelOnly()
+        {
+            string raw = Environment.GetEnvironmentVariable(BenchPerPanelOnlyEnvName)?.Trim() ?? "";
+            return raw is "1" or "true" or "on" or "yes";
         }
     }
 }

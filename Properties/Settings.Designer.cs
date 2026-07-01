@@ -183,6 +183,18 @@ namespace IndigoMovieManager.Properties {
         
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("Off")]
+        public string FfmpegHardwareDecodeMode {
+            get {
+                return ((string)(this["FfmpegHardwareDecodeMode"]));
+            }
+            set {
+                this["FfmpegHardwareDecodeMode"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
         [global::System.Configuration.DefaultSettingValueAttribute("*.avi,*.wmv,*.mpg,*.flv,*.asf,*.mpeg,*.mkv,*.swf,*.ogm,*.mp4,*.mov,*.avs,*.divx,*" +
             ".3gp,*.3g2,*.m4v,*.zip")]
         public string CheckExt {
