@@ -868,9 +868,12 @@
                     Padding="16,3,16,1"
                     VerticalAlignment="Top"
                     Mode="PrimaryDark"
+                    Loaded="HeaderZone_Loaded"
                     SizeChanged="HeaderZone_SizeChanged">
-                    <Grid>
+                    <Grid x:Name="HeaderLayoutGrid">
                         <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
@@ -889,6 +892,7 @@
                             Style="{DynamicResource MaterialDesignHamburgerToggleButton}" />
 
                         <StackPanel
+                            x:Name="HeaderSearchPanel"
                             Grid.Row="0"
                             Grid.Column="1"
                             Margin="8,0,12,0"
@@ -896,9 +900,10 @@
                             Orientation="Horizontal">
                             <ComboBox
                                 x:Name="SearchBox"
+                                MinWidth="180"
                                 Width="326"
                                 Height="Auto"
-                                Margin="22,0,4,0"
+                                Margin="0,0,4,0"
                                 Padding="4,2,0,2"
                                 VerticalAlignment="Center"
                                 HorizontalContentAlignment="Stretch"
@@ -972,97 +977,109 @@
                         </StackPanel>
 
                         <StackPanel
+                            x:Name="HeaderToolbarHost"
                             Grid.Row="0"
                             Grid.Column="2"
                             VerticalAlignment="Center"
                             Orientation="Horizontal">
-                            <TextBlock
-                                Margin="0,0,6,0"
+                            <StackPanel
+                                x:Name="HeaderModePanel"
                                 VerticalAlignment="Center"
-                                Foreground="#E8E8E8"
-                                Text="方式:" />
-                            <RadioButton
-                                x:Name="ModeWpfRadio"
-                                Checked="SkinModeRadio_Checked"
-                                Content="WPF"
-                                GroupName="SkinMode"
-                                Style="{StaticResource HeaderSegmentRadio}" />
-                            <RadioButton
-                                x:Name="ModeWbRadio"
-                                Margin="-1,0,0,0"
-                                Checked="SkinModeRadio_Checked"
-                                Content="WB"
-                                GroupName="SkinMode"
-                                Style="{StaticResource HeaderSegmentRadio}" />
-                            <TextBlock
-                                Margin="12,0,6,0"
-                                VerticalAlignment="Center"
-                                Foreground="#E8E8E8"
-                                Text="スキン:" />
-                            <ComboBox
-                                x:Name="ComboSkin"
-                                Width="150"
-                                Margin="0,0,4,0"
-                                Padding="4,2,0,2"
-                                VerticalAlignment="Center"
-                                FontSize="14"
-                                materialDesign:TextFieldAssist.HasOutlinedTextField="True"
-                                materialDesign:TextFieldAssist.TextFieldCornerRadius="3"
-                                Background="White"
-                                Foreground="Black"
-                                Loaded="ComboBoxArrow_Loaded"
-                                SelectionChanged="ComboSkin_SelectionChanged" />
-                            <!-- WPF 時のみ表示。WB 切替でも幅を確保し右側コントロールの位置を固定する -->
-                            <Grid
-                                Width="40"
-                                Height="40"
-                                Margin="0,0,8,0"
-                                VerticalAlignment="Center">
-                                <Button
-                                    x:Name="ReloadSkinButton"
-                                    HorizontalAlignment="Center"
+                                Orientation="Horizontal">
+                                <TextBlock
+                                    Margin="0,0,6,0"
                                     VerticalAlignment="Center"
-                                    Click="ReloadSkin_Click"
-                                    Style="{StaticResource MaterialDesignIconButton}"
-                                    ToolTip="スキンを再読込"
-                                    Visibility="Collapsed">
-                                    <materialDesign:PackIcon Kind="Refresh" />
-                                </Button>
-                            </Grid>
-                            <TextBlock
-                                Margin="8,0,4,0"
+                                    Foreground="#E8E8E8"
+                                    Text="方式:" />
+                                <RadioButton
+                                    x:Name="ModeWpfRadio"
+                                    Checked="SkinModeRadio_Checked"
+                                    Content="Indigo"
+                                    GroupName="SkinMode"
+                                    Style="{StaticResource HeaderSegmentRadio}"
+                                    ToolTip="Indigo ネイティブスキン" />
+                                <RadioButton
+                                    x:Name="ModeWbRadio"
+                                    Margin="-1,0,0,0"
+                                    Checked="SkinModeRadio_Checked"
+                                    Content="WB"
+                                    GroupName="SkinMode"
+                                    Style="{StaticResource HeaderSegmentRadio}"
+                                    ToolTip="WhiteBrowser 互換スキン" />
+                                <TextBlock
+                                    Margin="12,0,6,0"
+                                    VerticalAlignment="Center"
+                                    Foreground="#E8E8E8"
+                                    Text="スキン:" />
+                                <ComboBox
+                                    x:Name="ComboSkin"
+                                    Width="150"
+                                    Margin="0,0,4,0"
+                                    Padding="4,2,0,2"
+                                    VerticalAlignment="Center"
+                                    FontSize="14"
+                                    materialDesign:TextFieldAssist.HasOutlinedTextField="True"
+                                    materialDesign:TextFieldAssist.TextFieldCornerRadius="3"
+                                    Background="White"
+                                    Foreground="Black"
+                                    Loaded="ComboBoxArrow_Loaded"
+                                    SelectionChanged="ComboSkin_SelectionChanged" />
+                                <Grid
+                                    Width="40"
+                                    Height="40"
+                                    Margin="0,0,8,0"
+                                    VerticalAlignment="Center">
+                                    <Button
+                                        x:Name="ReloadSkinButton"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        Click="ReloadSkin_Click"
+                                        Style="{StaticResource MaterialDesignIconButton}"
+                                        ToolTip="スキンを再読込"
+                                        Visibility="Collapsed">
+                                        <materialDesign:PackIcon Kind="Refresh" />
+                                    </Button>
+                                </Grid>
+                            </StackPanel>
+                            <StackPanel
+                                x:Name="HeaderSortPanel"
                                 VerticalAlignment="Center"
-                                Foreground="White"
-                                Text="ソート:" />
-                            <ComboBox
-                                x:Name="ComboSort"
-                                Width="170"
-                                Margin="0,0,8,0"
-                                VerticalAlignment="Center"
-                                materialDesign:TextFieldAssist.HasOutlinedTextField="True"
-                                materialDesign:TextFieldAssist.TextFieldCornerRadius="3"
-                                Background="White"
-                                DisplayMemberPath="Name"
-                                Foreground="Black"
-                                ItemsSource="{Binding SortLists}"
-                                Loaded="ComboBoxArrow_Loaded"
-                                SelectedValue="{Binding DbInfo.Sort}"
-                                SelectedValuePath="Id"
-                                SelectionChanged="ComboSort_SelectionChanged" />
-                            <TextBlock
-                                VerticalAlignment="Center"
-                                Foreground="White"
-                                Text="{Binding DbInfo.SearchCount, UpdateSourceTrigger=PropertyChanged}" />
-                            <TextBlock
-                                Margin="4,0"
-                                VerticalAlignment="Center"
-                                Foreground="White"
-                                Text="/" />
-                            <TextBlock
-                                Margin="0,0,0,0"
-                                VerticalAlignment="Center"
-                                Foreground="White"
-                                Text="{Binding MovieRecs.Count, UpdateSourceTrigger=PropertyChanged}" />
+                                Orientation="Horizontal">
+                                <TextBlock
+                                    x:Name="HeaderSortLabel"
+                                    Margin="8,0,4,0"
+                                    VerticalAlignment="Center"
+                                    Foreground="White"
+                                    Text="ソート:" />
+                                <ComboBox
+                                    x:Name="ComboSort"
+                                    Width="170"
+                                    Margin="0,0,8,0"
+                                    VerticalAlignment="Center"
+                                    materialDesign:TextFieldAssist.HasOutlinedTextField="True"
+                                    materialDesign:TextFieldAssist.TextFieldCornerRadius="3"
+                                    Background="White"
+                                    DisplayMemberPath="Name"
+                                    Foreground="Black"
+                                    ItemsSource="{Binding SortLists}"
+                                    Loaded="ComboBoxArrow_Loaded"
+                                    SelectedValue="{Binding DbInfo.Sort}"
+                                    SelectedValuePath="Id"
+                                    SelectionChanged="ComboSort_SelectionChanged" />
+                                <TextBlock
+                                    VerticalAlignment="Center"
+                                    Foreground="White"
+                                    Text="{Binding DbInfo.SearchCount, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock
+                                    Margin="4,0"
+                                    VerticalAlignment="Center"
+                                    Foreground="White"
+                                    Text="/" />
+                                <TextBlock
+                                    VerticalAlignment="Center"
+                                    Foreground="White"
+                                    Text="{Binding MovieRecs.Count, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
                         </StackPanel>
 
                         <TextBlock
@@ -1070,7 +1087,7 @@
                             Grid.Row="1"
                             Grid.Column="1"
                             Grid.ColumnSpan="2"
-                            Margin="30,-6,0,0"
+                            Margin="8,-6,0,0"
                             VerticalAlignment="Center"
                             FontSize="12"
                             Foreground="#CFD8DC"
