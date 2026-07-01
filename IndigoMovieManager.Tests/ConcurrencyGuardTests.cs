@@ -20,6 +20,19 @@ public class MainWindowSessionStateTests
 public class ThumbnailJobCoordinatorTests
 {
     [Fact]
+    public void BeginJob_cancels_previous_job_token()
+    {
+        var coordinator = new ThumbnailJobCoordinator();
+        int firstJobId = coordinator.BeginJob(0);
+        CancellationToken firstToken = coordinator.GetJobCancellationToken(firstJobId);
+        Assert.False(firstToken.IsCancellationRequested);
+
+        coordinator.BeginJob(1);
+
+        Assert.True(firstToken.IsCancellationRequested);
+    }
+
+    [Fact]
     public void AbandonAndClearQueue_marks_previous_job_abandoned()
     {
         var scheduler = new ThumbnailQueueScheduler();

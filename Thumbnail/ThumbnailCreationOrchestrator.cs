@@ -33,6 +33,12 @@ namespace IndigoMovieManager.Thumbnail
                 return;
             }
 
+            MovieRecords movieForProgress = host.FindMovieRecord?.Invoke(queueObj.MovieId);
+            queueObj.LastThumbProgressDetail = ThumbnailProgressDetailFormatter.Format(
+                queueObj.MovieFullPath,
+                null,
+                movieForProgress?.Video);
+
             TabInfo tbi = queueObj.ThumbnailLayout != null
                 ? new TabInfo(queueObj.ThumbnailLayout, host.DbName, host.ThumbFolder)
                 : new TabInfo(queueObj.Tabindex, host.DbName, host.ThumbFolder);
@@ -134,13 +140,14 @@ namespace IndigoMovieManager.Thumbnail
                     }
                 }
 
-                bool zipCreated = await TryCreateZipThumbnailAsync(ctx, cts).ConfigureAwait(false);
+                ThumbnailCreateResult zipResult = await TryCreateZipThumbnailAsync(ctx, cts).ConfigureAwait(false);
+                UpdateThumbProgressDetail(queueObj, zipResult, host.FindMovieRecord?.Invoke(queueObj.MovieId));
                 if (!IsSessionActive(host) || host.FindMovieRecord?.Invoke(queueObj.MovieId) == null)
                 {
                     return;
                 }
 
-                if (zipCreated)
+                if (zipResult.Success)
                 {
                     ApplyIfAllowed(host, queueObj, saveThumbFileName, isFailurePlaceholder: false);
                     await EnsureDetailThumbnailAfterPrimaryAsync(host, queueObj, saveThumbFileName, cts).ConfigureAwait(false);
@@ -153,12 +160,13 @@ namespace IndigoMovieManager.Thumbnail
                 return;
             }
 
-            if (!ThumbnailDurationResolver.TryResolve(movieFullPath, out double durationSec))
+            MovieRecords movieItem = host.FindMovieRecord?.Invoke(queueObj.MovieId);
+            long knownDurationSec = MovieFileInfoHelper.GetMovieLengthSeconds(movieItem);
+            if (!ThumbnailDurationResolver.TryResolve(movieFullPath, out double durationSec, knownDurationSec))
             {
                 durationSec = 0;
             }
 
-            MovieRecords movieItem = host.FindMovieRecord?.Invoke(queueObj.MovieId);
             if (movieItem != null && durationSec > 0 && IsSessionActive(host))
             {
                 string tSpan = new TimeSpan(0, 0, (int)(long)durationSec).ToString(@"hh\:mm\:ss");
@@ -185,9 +193,29 @@ namespace IndigoMovieManager.Thumbnail
             }
 
             bool forceFfmpeg = FfmpegPathResolver.IsForceFfmpegEnabled() && !isManual;
+            bool tryOnePassFirst = FfmpegPathResolver.IsOnePassEngineRequested() && !isManual;
             bool created = false;
+            ThumbnailCreateResult lastResult = null;
 
-            if (!forceFfmpeg)
+            if (tryOnePassFirst
+                && FfmpegPathResolver.TryResolve(out string ffmpegOnePassPath)
+                && FfmpegOnePassPolicy.CanUse(thumbInfo, durationSec))
+            {
+                ThumbnailCreateResult onePassResult = await FfmpegOnePassCreator
+                    .TryCreateAsync(ctx, thumbInfo, durationSec, ffmpegOnePassPath, cts)
+                    .ConfigureAwait(false);
+
+                lastResult = onePassResult;
+                created = onePassResult.Success;
+                if (!created)
+                {
+                    Debug.WriteLine(
+                        $"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : [thumb] ffmpeg1pass: {onePassResult.FailureReason}"
+                    );
+                }
+            }
+
+            if (!created && !forceFfmpeg)
             {
                 ThumbnailCreateResult openCvResult = await TryCreateWithOpenCvAsync(
                         ctx,
@@ -196,6 +224,7 @@ namespace IndigoMovieManager.Thumbnail
                         cts)
                     .ConfigureAwait(false);
 
+                lastResult = openCvResult;
                 if (openCvResult.Success)
                 {
                     created = true;
@@ -217,6 +246,7 @@ namespace IndigoMovieManager.Thumbnail
                         ThumbnailCreateResult ffResult = await FfmpegFallbackCreator
                             .TryCreateAsync(ctx, thumbInfo, durationSec, ffmpegPath, cts)
                             .ConfigureAwait(false);
+                        lastResult = ffResult;
                         created = ffResult.Success;
                         if (!created)
                         {
@@ -227,11 +257,12 @@ namespace IndigoMovieManager.Thumbnail
                     }
                 }
             }
-            else if (FfmpegPathResolver.TryResolve(out string ffmpegPathForced))
+            else if (!created && forceFfmpeg && FfmpegPathResolver.TryResolve(out string ffmpegPathForced))
             {
                 ThumbnailCreateResult ffResult = await FfmpegFallbackCreator
                     .TryCreateAsync(ctx, thumbInfo, durationSec, ffmpegPathForced, cts)
                     .ConfigureAwait(false);
+                lastResult = ffResult;
                 created = ffResult.Success;
                 if (!created)
                 {
@@ -240,6 +271,8 @@ namespace IndigoMovieManager.Thumbnail
                     );
                 }
             }
+
+            UpdateThumbProgressDetail(queueObj, lastResult, movieItem);
 
             if (!IsSessionActive(host) || host.FindMovieRecord?.Invoke(queueObj.MovieId) == null)
             {
@@ -359,14 +392,29 @@ namespace IndigoMovieManager.Thumbnail
             if (openCvResult.Success
                 && ThumbnailDuplicateDetector.HasDuplicatePanels(openCvResult.PanelPaths))
             {
-                Debug.WriteLine(
-                    $"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : [thumb] duplicate panels detected, retrying per-panel opencv"
-                );
                 ThumbnailMetadataWriter.CleanupPartialOutput(saveThumbFileName, openCvResult.PanelPaths);
 
-                openCvResult = await OpenCvThumbnailCreator
-                    .TryCreatePerPanelAsync(ctx, thumbInfo, cts)
-                    .ConfigureAwait(false);
+                if (ThumbnailDuplicateRetryPolicy.ShouldRetryOpenCvPerPanel(ctx.IsManual))
+                {
+                    Debug.WriteLine(
+                        $"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : [thumb] duplicate panels detected, retrying per-panel opencv"
+                    );
+
+                    openCvResult = await OpenCvThumbnailCreator
+                        .TryCreatePerPanelAsync(ctx, thumbInfo, cts)
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    Debug.WriteLine(
+                        $"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : [thumb] duplicate panels detected, deferring to ffmpeg fallback"
+                    );
+
+                    return ThumbnailCreateResult.Failed(
+                        "opencv duplicate panels",
+                        "OpenCV",
+                        "OpenCV");
+                }
             }
 
             if (openCvResult.Success)
@@ -383,25 +431,36 @@ namespace IndigoMovieManager.Thumbnail
                     $"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : [thumb] duplicate panels remain after per-panel retry"
                 );
                 ThumbnailMetadataWriter.CleanupPartialOutput(saveThumbFileName, openCvResult.PanelPaths);
-                return ThumbnailCreateResult.Failed("opencv duplicate panels after per-panel retry");
+                return ThumbnailCreateResult.Failed(
+                    "opencv duplicate panels after per-panel retry",
+                    "OpenCV",
+                    "OpenCV");
+            }
+
+            if (!openCvResult.Success && string.IsNullOrEmpty(openCvResult.Backend))
+            {
+                return ThumbnailCreateResult.Failed(
+                    openCvResult.FailureReason,
+                    "OpenCV",
+                    "OpenCV");
             }
 
             return openCvResult;
         }
 
-        private static async Task<bool> TryCreateZipThumbnailAsync(
+        private static async Task<ThumbnailCreateResult> TryCreateZipThumbnailAsync(
             ThumbnailJobContext ctx,
             CancellationToken cts)
         {
             if (!ZipImageCatalog.TryGetImageEntries(ctx.MovieFullPath, out IReadOnlyList<string> entries)
                 || entries.Count == 0)
             {
-                return false;
+                return ThumbnailCreateResult.Failed("zip: no images");
             }
 
             if (!ThumbnailJobPreparer.TryBuildZipThumbInfo(ctx, entries.Count, out ThumbInfo thumbInfo))
             {
-                return false;
+                return ThumbnailCreateResult.Failed("zip: thumb info build failed");
             }
 
             ThumbnailCreateResult result = await ZipThumbnailCreator
@@ -413,7 +472,23 @@ namespace IndigoMovieManager.Thumbnail
                 Debug.WriteLine($"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : [thumb] zip: {result.FailureReason}");
             }
 
-            return result.Success;
+            return result;
+        }
+
+        private static void UpdateThumbProgressDetail(
+            QueueObj queueObj,
+            ThumbnailCreateResult result,
+            MovieRecords movie)
+        {
+            if (queueObj == null)
+            {
+                return;
+            }
+
+            queueObj.LastThumbProgressDetail = ThumbnailProgressDetailFormatter.Format(
+                queueObj.MovieFullPath,
+                result,
+                movie?.Video);
         }
     }
 }

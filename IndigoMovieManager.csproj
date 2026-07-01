@@ -9,8 +9,8 @@
     <Title>IndigoMovieManager</Title>
     <Platforms>AnyCPU;x64</Platforms>
     <PlatformTarget>AnyCPU</PlatformTarget>
-    <FileVersion>1.0.0.60</FileVersion>
-    <AssemblyVersion>1.0.0.60</AssemblyVersion>
+    <FileVersion>1.0.0.61</FileVersion>
+    <AssemblyVersion>1.0.0.61</AssemblyVersion>
     <SupportedOSPlatformVersion>7.0</SupportedOSPlatformVersion>
   </PropertyGroup>
 

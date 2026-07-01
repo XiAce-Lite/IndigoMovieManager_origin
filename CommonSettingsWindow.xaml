@@ -188,6 +188,20 @@
                     <Label
                         Width="300"
                         Margin="5"
+                        Content="FFmpegハードウェアデコード"
+                        FontSize="14"
+                        ToolTip="OpenCV失敗時のFFmpegフォールバックでのみ有効。ライト版（essentials）FFmpegでは使えません。gyan.dev の full ビルドまたは同梱版を推奨。失敗時は通常デコードに戻ります。" />
+                    <ComboBox
+                        x:Name="FfmpegHardwareDecodeModeCombo"
+                        Width="400"
+                        Margin="5"
+                        FontSize="14" />
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal">
+                    <Label
+                        Width="300"
+                        Margin="5"
                         Content="監視・走査対象の拡張子"
                         FontSize="14"
                         ToolTip="カンマ区切り。例: .mp4,.mkv,.mod" />

@@ -93,7 +93,17 @@ namespace IndigoMovieManager.Thumbnail
         {
             for (int i = 0; i < thumbInfo.ThumbSec.Count; i++)
             {
-                if (!CaptureSinglePanel(ctx, thumbInfo, paths, ref isSuccess, sw, i, null))
+                double unusedLastMsec = -1d;
+                if (!CaptureSinglePanel(
+                        ctx,
+                        thumbInfo,
+                        paths,
+                        ref isSuccess,
+                        sw,
+                        i,
+                        null,
+                        useForwardCapture: false,
+                        ref unusedLastMsec))
                 {
                     return;
                 }
@@ -109,9 +119,21 @@ namespace IndigoMovieManager.Thumbnail
             Stopwatch sw
         )
         {
+            bool useForwardCapture = OpenCvForwardCapturePolicy.CanUseForwardCapture(ctx, thumbInfo.ThumbSec);
+            double lastCapturedMsec = -1d;
+
             for (int i = 0; i < thumbInfo.ThumbSec.Count; i++)
             {
-                if (!CaptureSinglePanel(ctx, thumbInfo, paths, ref isSuccess, sw, i, sharedCapture))
+                if (!CaptureSinglePanel(
+                        ctx,
+                        thumbInfo,
+                        paths,
+                        ref isSuccess,
+                        sw,
+                        i,
+                        sharedCapture,
+                        useForwardCapture,
+                        ref lastCapturedMsec))
                 {
                     return;
                 }
@@ -125,8 +147,9 @@ namespace IndigoMovieManager.Thumbnail
             ref bool isSuccess,
             Stopwatch sw,
             int panelIndex,
-            VideoCapture sharedCapture
-        )
+            VideoCapture sharedCapture,
+            bool useForwardCapture,
+            ref double lastCapturedMsec)
         {
             sw.Restart();
 
@@ -151,6 +174,9 @@ namespace IndigoMovieManager.Thumbnail
                         capture,
                         thumbInfo.ThumbSec[panelIndex],
                         ctx,
+                        panelIndex,
+                        useForwardCapture,
+                        ref lastCapturedMsec,
                         out Mat dst))
                 {
                     dst?.Dispose();
@@ -182,13 +208,21 @@ namespace IndigoMovieManager.Thumbnail
             VideoCapture capture,
             int sec,
             ThumbnailJobContext ctx,
+            int panelIndex,
+            bool useForwardCapture,
+            ref double lastCapturedMsec,
             out Mat dst
         )
         {
             dst = null;
-            using Mat img = new();
-            capture.PosMsec = sec * 1000;
+            double targetMsec = Math.Max(0, sec) * 1000d;
 
+            if (!SeekToTargetMsec(capture, targetMsec, panelIndex, useForwardCapture, ref lastCapturedMsec))
+            {
+                return false;
+            }
+
+            using Mat img = new();
             int msecCounter = 0;
             while (!capture.Read(img))
             {
@@ -209,7 +243,79 @@ namespace IndigoMovieManager.Thumbnail
             int panelWidth = Math.Max(1, ctx.TabInfo.Width);
             int panelHeight = Math.Max(1, ctx.TabInfo.Height);
             dst = ThumbnailImageGeometry.FitFrameToPanel(img, panelWidth, panelHeight);
-            return dst != null && !dst.Empty();
+            if (dst == null || dst.Empty())
+            {
+                return false;
+            }
+
+            lastCapturedMsec = capture.Get(VideoCaptureProperties.PosMsec);
+            if (lastCapturedMsec < 0d || double.IsNaN(lastCapturedMsec))
+            {
+                lastCapturedMsec = targetMsec;
+            }
+
+            return true;
+        }
+
+        private static bool SeekToTargetMsec(
+            VideoCapture capture,
+            double targetMsec,
+            int panelIndex,
+            bool useForwardCapture,
+            ref double lastCapturedMsec)
+        {
+            if (panelIndex == 0
+                || !useForwardCapture
+                || lastCapturedMsec < 0d
+                || targetMsec < lastCapturedMsec - 50d)
+            {
+                SetPosMsec(capture, targetMsec);
+                return true;
+            }
+
+            double currentMsec = capture.Get(VideoCaptureProperties.PosMsec);
+            if (currentMsec < 0d || double.IsNaN(currentMsec))
+            {
+                currentMsec = lastCapturedMsec;
+            }
+
+            double fps = capture.Get(VideoCaptureProperties.Fps);
+            if (!OpenCvForwardCapturePolicy.ShouldForwardGrab(
+                    currentMsec,
+                    targetMsec,
+                    fps,
+                    OpenCvForwardCapturePolicy.DefaultMaxForwardGrabs))
+            {
+                SetPosMsec(capture, targetMsec);
+                return true;
+            }
+
+            int grabCount = OpenCvForwardCapturePolicy.EstimateForwardGrabCount(currentMsec, targetMsec, fps);
+            for (int i = 0; i < grabCount; i++)
+            {
+                if (capture.Get(VideoCaptureProperties.PosMsec) >= targetMsec - 50d)
+                {
+                    break;
+                }
+
+                if (!capture.Grab())
+                {
+                    SetPosMsec(capture, targetMsec);
+                    return true;
+                }
+            }
+
+            if (capture.Get(VideoCaptureProperties.PosMsec) < targetMsec - 50d)
+            {
+                SetPosMsec(capture, targetMsec);
+            }
+
+            return true;
+        }
+
+        private static void SetPosMsec(VideoCapture capture, double msec)
+        {
+            capture.PosMsec = (int)Math.Round(Math.Max(0d, msec));
         }
 
         private static ThumbnailCreateResult FinalizeThumbnail(
@@ -233,7 +339,7 @@ namespace IndigoMovieManager.Thumbnail
             bmp.Dispose();
             ThumbnailMetadataWriter.AppendMetadata(ctx.SaveThumbFileName, thumbInfo);
 
-            return ThumbnailCreateResult.Succeeded(paths);
+            return ThumbnailCreateResult.Succeeded(paths, "OpenCV", "OpenCV");
         }
 
         private static VideoCapture OpenVideoCapture(string movieFullPath)

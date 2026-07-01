@@ -740,27 +740,18 @@ namespace IndigoMovieManager
         {
             CancelThumbnailWorkForMovie(mvi.MovieId);
             EnqueueThumbnailWork(
-                [
-                    new QueueObj
-                    {
-                        MovieId = mvi.MovieId,
-                        MovieFullPath = mvi.MoviePath,
-                        Tabindex = primaryTabIndex,
-                        DbFullPath = dbFullPath,
-                    },
-                    new QueueObj
-                    {
-                        MovieId = mvi.MovieId,
-                        MovieFullPath = mvi.MoviePath,
-                        Tabindex = 99,
-                        DbFullPath = dbFullPath,
-                    },
-                ],
+                new QueueObj
+                {
+                    MovieId = mvi.MovieId,
+                    MovieFullPath = mvi.MoviePath,
+                    Tabindex = primaryTabIndex,
+                    DbFullPath = dbFullPath,
+                },
                 primaryTabIndex,
                 beginNewJob: true);
         }
 
-        private void EnsureDetailThumbnail(MovieRecords mv)
+        private void EnsureDetailThumbnail(MovieRecords mv, bool forceRecreate = false)
         {
             if (mv == null || string.IsNullOrWhiteSpace(mv.Movie_Path))
             {
@@ -779,7 +770,8 @@ namespace IndigoMovieManager
 
             mv.ThumbDetail = _thumbLayoutCache.BuildThumbPath(99, thumbFile, checkExists: true);
 
-            if (ZipMediaKind.IsZipRecord(mv) || ZipMediaKind.IsZipPath(mv.Movie_Path))
+            if (!forceRecreate
+                && (ZipMediaKind.IsZipRecord(mv) || ZipMediaKind.IsZipPath(mv.Movie_Path)))
             {
                 if (ZipDetailThumbnailMaterializer.TryCopyFromExistingTabThumbs(
                         _thumbLayoutCache,
@@ -792,10 +784,20 @@ namespace IndigoMovieManager
                 }
             }
 
-            if (!ThumbnailTabErrorDetector.IsDetailThumbnailError(mv, _thumbLayoutCache)
-                || _thumbnailScheduler.JobCoordinator.IsInFlight(mv.Movie_Id, 99))
+            if (_thumbnailScheduler.JobCoordinator.IsInFlight(mv.Movie_Id, 99))
             {
                 return;
+            }
+
+            if (!forceRecreate
+                && !ThumbnailTabErrorDetector.IsDetailThumbnailError(mv, _thumbLayoutCache))
+            {
+                return;
+            }
+
+            if (forceRecreate)
+            {
+                _thumbnailScheduler.JobCoordinator.UntrackIfNotInFlight(mv.Movie_Id, 99);
             }
 
             var item = new QueueObj
@@ -1374,12 +1376,7 @@ namespace IndigoMovieManager
                 return;
             }
 
-            if (!ThumbnailTabErrorDetector.IsDetailThumbnailError(mv, _thumbLayoutCache))
-            {
-                return;
-            }
-
-            EnsureDetailThumbnail(mv);
+            EnsureDetailThumbnail(mv, forceRecreate: true);
         }
 
         private void GetHistoryTable(string dbFullPath, SQLiteSession session = null)
@@ -4258,13 +4255,6 @@ namespace IndigoMovieManager
                                     MovieId = mvi.MovieId,
                                     MovieFullPath = mvi.MoviePath,
                                     Tabindex = tabIndex,
-                                    DbFullPath = dbFullPath,
-                                });
-                                addFiles.Add(new QueueObj
-                                {
-                                    MovieId = mvi.MovieId,
-                                    MovieFullPath = mvi.MoviePath,
-                                    Tabindex = 99,
                                     DbFullPath = dbFullPath,
                                 });
                             }

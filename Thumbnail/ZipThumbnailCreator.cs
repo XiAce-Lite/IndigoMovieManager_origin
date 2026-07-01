@@ -77,7 +77,7 @@ namespace IndigoMovieManager.Thumbnail
 
                 bmp.Save(ctx.SaveThumbFileName, ImageFormat.Jpeg);
                 ThumbnailMetadataWriter.AppendMetadata(ctx.SaveThumbFileName, thumbInfo);
-                return ThumbnailCreateResult.Succeeded(panelPaths);
+                return ThumbnailCreateResult.Succeeded(panelPaths, "ZIP", "");
             }
             catch (OperationCanceledException)
             {

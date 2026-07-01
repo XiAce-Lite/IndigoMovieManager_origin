@@ -1693,7 +1693,7 @@
                     VerticalAlignment="Center"
                     FontSize="12"
                     Text="{Binding StatusText}"
-                    TextTrimming="CharacterEllipsis" />
+                    TextTrimming="None" />
                 <ProgressBar
                     Grid.Column="1"
                     Height="4"
