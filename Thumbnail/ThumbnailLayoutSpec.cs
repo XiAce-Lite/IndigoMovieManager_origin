@@ -2,6 +2,8 @@ using System;
 using System.IO;
 using IndigoMovieManager.Services.WpfSkin;
 
+using IndigoMovieManager.Services;
+
 namespace IndigoMovieManager.Thumbnail
 {
     /// <summary>
@@ -50,6 +52,16 @@ namespace IndigoMovieManager.Thumbnail
                 thumbnail.Height,
                 thumbnail.Columns > 0 ? thumbnail.Columns : 1,
                 thumbnail.Rows > 0 ? thumbnail.Rows : 1);
+        }
+
+        internal static ThumbnailLayoutSpec FromSkinConfig(SkinConfig config)
+        {
+            SkinConfig resolved = (config ?? SkinConfig.DefaultGridWeb()).WithFallback(SkinConfig.DefaultGridWeb());
+            return new ThumbnailLayoutSpec(
+                resolved.ThumbWidth,
+                resolved.ThumbHeight,
+                resolved.ThumbColumn,
+                resolved.ThumbRow);
         }
 
         public string GetOutPath(string dbName, string thumbFolder) =>

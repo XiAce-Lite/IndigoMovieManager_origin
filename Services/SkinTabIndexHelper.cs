@@ -4,29 +4,19 @@ namespace IndigoMovieManager.Services
     {
         public const int PhysicalThumbTabCount = 5;
 
-        /// <summary>WPF ネイティブスキンタブ（旧 Small(Web) の枠を流用）。</summary>
+        /// <summary>WPF ネイティブスキン（旧 tab 5）。フェーズ B 以降はレイアウトキーが正規。</summary>
         public const int WpfSkinTabIndex = 5;
 
-        /// <summary>WPF スキン用サムネ生成スロット（キュー・パス解決の論理番号）。</summary>
+        /// <summary>キュー互換用の WPF スロット番号。</summary>
         public const int WpfSkinThumbnailSlotIndex = 5;
 
-        /// <summary>WhiteBrowser 互換スキンタブ（WebView2 ホスト）。</summary>
+        /// <summary>WhiteBrowser 互換スキン（旧 tab 6）。</summary>
         public const int WbSkinTabIndex = 6;
 
-        /// <summary>WebView2 でホストするスキンタブか（= WB 互換タブのみ）。</summary>
         public static bool IsWebSkinTab(int tabIndex) =>
             tabIndex == WbSkinTabIndex;
 
-        /// <summary>WPF ネイティブスキンタブか。</summary>
         public static bool IsWpfSkinTab(int tabIndex) =>
             tabIndex == WpfSkinTabIndex;
-
-        public static int GetThumbnailTabIndex(int tabIndex) =>
-            tabIndex switch
-            {
-                WpfSkinTabIndex => WpfSkinThumbnailSlotIndex,
-                WbSkinTabIndex => WhiteBrowserSkinSettings.GetThumbnailTabIndex(),
-                _ => tabIndex,
-            };
     }
 }

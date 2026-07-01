@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.RegularExpressions;
+using IndigoMovieManager.Thumbnail;
 
 namespace IndigoMovieManager.Services
 {
@@ -87,54 +88,11 @@ namespace IndigoMovieManager.Services
             };
         }
 
-        /// <summary>スキン #config のサムネサイズに対応する物理サムネタブ（0=Small, 2=Grid 等）。</summary>
-        public static int GetThumbnailTabIndex() =>
-            MapSkinConfigToThumbnailTab(ParseSkinConfig(ActiveSkinFolder));
+        public static ThumbnailLayoutSpec GetThumbnailLayoutSpec() =>
+            ThumbnailLayoutSpec.FromSkinConfig(ParseSkinConfig(ActiveSkinFolder));
 
         public static string GetThumbnailTag() =>
             FormatThumbnailTag(ParseSkinConfig(ActiveSkinFolder));
-
-        public static int MapSkinConfigToThumbnailTab(SkinConfig config)
-        {
-            // スキンの #config (W×H×列×行) を既存の物理サムネタブと突き合わせる。
-            for (int tab = 0; tab < SkinTabIndexHelper.PhysicalThumbTabCount; tab++)
-            {
-                var info = new TabInfo(tab, "");
-                if (info.Width == config.ThumbWidth
-                    && info.Height == config.ThumbHeight
-                    && info.Columns == config.ThumbColumn
-                    && info.Rows == config.ThumbRow)
-                {
-                    return tab;
-                }
-            }
-
-            // 完全一致が無い場合は列数・行数が一致する近いレイアウトを優先する。
-            int bestTab = -1;
-            long bestDiff = long.MaxValue;
-            for (int tab = 0; tab < SkinTabIndexHelper.PhysicalThumbTabCount; tab++)
-            {
-                var info = new TabInfo(tab, "");
-                if (info.Columns != config.ThumbColumn || info.Rows != config.ThumbRow)
-                {
-                    continue;
-                }
-
-                long diff = Math.Abs((long)info.Width * info.Height - (long)config.ThumbWidth * config.ThumbHeight);
-                if (diff < bestDiff)
-                {
-                    bestDiff = diff;
-                    bestTab = tab;
-                }
-            }
-
-            if (bestTab >= 0)
-            {
-                return bestTab;
-            }
-
-            return config.ThumbWidth * config.ThumbHeight <= 120 * 90 ? 0 : 2;
-        }
 
         private static string FormatThumbnailTag(SkinConfig config) =>
             $"{config.ThumbWidth}x{config.ThumbHeight}x{config.ThumbColumn}x{config.ThumbRow}";

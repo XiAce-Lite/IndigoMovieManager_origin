@@ -1,3 +1,5 @@
+using IndigoMovieManager.Services;
+
 namespace IndigoMovieManager
 {
   /// <summary>
@@ -7,10 +9,11 @@ namespace IndigoMovieManager
   {
     public const int SilentJobId = -1;
 
-    public readonly struct Snapshot
+        public readonly struct Snapshot
     {
       public int JobId { get; init; }
-      public int PrimaryTabIndex { get; init; }
+      public string PrimaryLayoutKey { get; init; }
+      public string DisplayTitle { get; init; }
       public int Total { get; init; }
       public int Completed { get; init; }
       public int InFlight { get; init; }
@@ -23,7 +26,8 @@ namespace IndigoMovieManager
 
     private sealed class JobState
     {
-      public int PrimaryTabIndex { get; init; }
+      public string PrimaryLayoutKey { get; init; } = "";
+      public string DisplayTitle { get; init; } = "";
       public int Total { get; set; }
       public int Completed { get; set; }
       public int InFlight { get; set; }
@@ -35,8 +39,11 @@ namespace IndigoMovieManager
     private int _jobSwitchToken;
     private readonly Dictionary<int, JobState> _jobs = [];
     private readonly Dictionary<int, CancellationTokenSource> _jobCancellation = [];
-    private readonly HashSet<(long MovieId, int TabIndex)> _tracked = [];
-    private readonly HashSet<(long MovieId, int TabIndex)> _inFlight = [];
+    private readonly HashSet<(long MovieId, string LayoutKey)> _tracked = [];
+    private readonly HashSet<(long MovieId, string LayoutKey)> _inFlight = [];
+
+    private static (long MovieId, string LayoutKey) TrackKey(QueueObj item) =>
+        (item.MovieId, ThumbnailLayoutResolver.GetTrackLayoutKey(item));
 
     public int CurrentJobId
     {
@@ -49,13 +56,13 @@ namespace IndigoMovieManager
       }
     }
 
-    public int PrimaryTabIndex
+    public string PrimaryLayoutKey
     {
       get
       {
         lock (_lock)
         {
-          return _jobs.TryGetValue(_jobId, out JobState state) ? state.PrimaryTabIndex : 0;
+          return _jobs.TryGetValue(_jobId, out JobState state) ? state.PrimaryLayoutKey : "";
         }
       }
     }
@@ -71,7 +78,7 @@ namespace IndigoMovieManager
       }
     }
 
-    public int BeginJob(int primaryTabIndex)
+    public int BeginJob(string primaryLayoutKey, string displayTitle = null)
     {
       lock (_lock)
       {
@@ -85,12 +92,19 @@ namespace IndigoMovieManager
         _jobSwitchToken++;
         _jobs[_jobId] = new JobState
         {
-          PrimaryTabIndex = primaryTabIndex,
+          PrimaryLayoutKey = primaryLayoutKey ?? "",
+          DisplayTitle = displayTitle ?? "",
         };
         _jobCancellation[_jobId] = new CancellationTokenSource();
         return _jobId;
       }
     }
+
+    public int BeginJob(string primaryLayoutKey) =>
+      BeginJob(primaryLayoutKey, null);
+
+    public int BeginJob(int primaryTabIndex) =>
+      BeginJob($"legacy-tab:{primaryTabIndex}");
 
     /// <summary>
     /// タブ/スキン切替でジョブが放棄されたとき、実行中ワーカーへキャンセルを伝える。
@@ -150,7 +164,7 @@ namespace IndigoMovieManager
             continue;
           }
 
-          if (!_tracked.Remove((item.MovieId, item.Tabindex)))
+          if (!_tracked.Remove(TrackKey(item)))
           {
             continue;
           }
@@ -176,7 +190,7 @@ namespace IndigoMovieManager
 
             lock (_lock)
             {
-                var key = (item.MovieId, item.Tabindex);
+                var key = TrackKey(item);
                 if (_inFlight.Contains(key))
                 {
                     return false;
@@ -205,7 +219,7 @@ namespace IndigoMovieManager
 
       lock (_lock)
       {
-        var key = (item.MovieId, item.Tabindex);
+        var key = TrackKey(item);
         if (_inFlight.Contains(key))
         {
           return false;
@@ -226,51 +240,65 @@ namespace IndigoMovieManager
     /// 指定タブの追跡（tracked / inFlight）をまとめて解除する。
     /// スキン切替で旧レイアウト向けの生成を破棄し、新ジョブが全件を登録し直せるようにする。
     /// </summary>
-    public void ClearTrackingForTab(int tabIndex)
+    public void ClearTrackingForLayoutKey(string layoutKey)
     {
+      if (string.IsNullOrEmpty(layoutKey))
+      {
+        return;
+      }
+
       lock (_lock)
       {
-        _tracked.RemoveWhere(k => k.TabIndex == tabIndex);
-        _inFlight.RemoveWhere(k => k.TabIndex == tabIndex);
+        _tracked.RemoveWhere(k => k.LayoutKey == layoutKey);
+        _inFlight.RemoveWhere(k => k.LayoutKey == layoutKey);
       }
     }
+
+    public void ClearTrackingForTab(int tabIndex) =>
+      ClearTrackingForLayoutKey($"legacy-tab:{tabIndex}");
 
     public void CancelTrackedForMovie(long movieId)
     {
       lock (_lock)
       {
-        List<(long MovieId, int TabIndex)> keys = [.. _tracked.Where(k => k.MovieId == movieId)];
-        foreach ((long id, int tabIndex) in keys)
+        List<(long MovieId, string LayoutKey)> keys = [.. _tracked.Where(k => k.MovieId == movieId)];
+        foreach ((long id, string layoutKey) in keys)
         {
-          if (_inFlight.Contains((id, tabIndex)))
+          if (_inFlight.Contains((id, layoutKey)))
           {
             continue;
           }
 
-          _tracked.Remove((id, tabIndex));
+          _tracked.Remove((id, layoutKey));
         }
       }
     }
 
-    public bool IsInFlight(long movieId, int tabIndex)
+    public bool IsInFlight(long movieId, string layoutKey)
     {
       lock (_lock)
       {
-        return _inFlight.Contains((movieId, tabIndex));
+        return _inFlight.Contains((movieId, layoutKey));
       }
     }
 
-    public void UntrackIfNotInFlight(long movieId, int tabIndex)
+    public bool IsInFlight(long movieId, int tabIndex) =>
+      IsInFlight(movieId, $"legacy-tab:{tabIndex}");
+
+    public void UntrackIfNotInFlight(long movieId, string layoutKey)
     {
       lock (_lock)
       {
-        var key = (movieId, tabIndex);
+        var key = (movieId, layoutKey);
         if (!_inFlight.Contains(key))
         {
           _tracked.Remove(key);
         }
       }
     }
+
+    public void UntrackIfNotInFlight(long movieId, int tabIndex) =>
+      UntrackIfNotInFlight(movieId, $"legacy-tab:{tabIndex}");
 
     public List<QueueObj> RegisterWork(int jobId, IReadOnlyList<QueueObj> items)
     {
@@ -289,7 +317,7 @@ namespace IndigoMovieManager
             continue;
           }
 
-          var key = (item.MovieId, item.Tabindex);
+          var key = TrackKey(item);
           if (!_tracked.Add(key))
           {
             continue;
@@ -340,7 +368,7 @@ namespace IndigoMovieManager
 
       lock (_lock)
       {
-        if (!_tracked.Remove((item.MovieId, item.Tabindex)))
+        if (!_tracked.Remove(TrackKey(item)))
         {
           return;
         }
@@ -362,7 +390,7 @@ namespace IndigoMovieManager
 
       lock (_lock)
       {
-        _inFlight.Add((item.MovieId, item.Tabindex));
+        _inFlight.Add(TrackKey(item));
 
         if (item.JobId == SilentJobId)
         {
@@ -388,8 +416,8 @@ namespace IndigoMovieManager
         if (item != null)
         {
           reportJobId = item.JobId;
-          _tracked.Remove((item.MovieId, item.Tabindex));
-          _inFlight.Remove((item.MovieId, item.Tabindex));
+          _tracked.Remove(TrackKey(item));
+          _inFlight.Remove(TrackKey(item));
 
           if (item.JobId != SilentJobId && _jobs.TryGetValue(item.JobId, out JobState state))
           {
@@ -403,13 +431,16 @@ namespace IndigoMovieManager
       }
     }
 
-    public bool IsTracked(long movieId, int tabIndex)
+    public bool IsTracked(long movieId, string layoutKey)
     {
       lock (_lock)
       {
-        return _tracked.Contains((movieId, tabIndex));
+        return _tracked.Contains((movieId, layoutKey));
       }
     }
+
+    public bool IsTracked(long movieId, int tabIndex) =>
+      IsTracked(movieId, $"legacy-tab:{tabIndex}");
 
     public Snapshot GetSnapshot()
     {
@@ -434,7 +465,8 @@ namespace IndigoMovieManager
         return new Snapshot
         {
           JobId = jobId,
-          PrimaryTabIndex = 0,
+          PrimaryLayoutKey = "",
+          DisplayTitle = "",
           Total = 0,
           Completed = 0,
           InFlight = 0,
@@ -451,7 +483,8 @@ namespace IndigoMovieManager
       return new Snapshot
       {
         JobId = jobId,
-        PrimaryTabIndex = state.PrimaryTabIndex,
+        PrimaryLayoutKey = state.PrimaryLayoutKey,
+        DisplayTitle = state.DisplayTitle,
         Total = total,
         Completed = completed,
         InFlight = state.InFlight,

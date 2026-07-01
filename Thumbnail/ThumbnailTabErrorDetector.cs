@@ -1,4 +1,5 @@
 using System.IO;
+using IndigoMovieManager.Services;
 
 namespace IndigoMovieManager.Thumbnail
 {
@@ -7,6 +8,31 @@ namespace IndigoMovieManager.Thumbnail
     /// </summary>
     internal static class ThumbnailTabErrorDetector
     {
+        public static bool IsErrorForEngine(MovieRecords item, SkinEngine engine, ThumbnailLayoutCache cache)
+        {
+            if (item == null || cache == null)
+            {
+                return false;
+            }
+
+            ThumbnailLayoutSpec spec = ThumbnailLayoutResolver.GetActiveListLayout(engine);
+            return IsErrorForLayout(item, spec, cache);
+        }
+
+        public static bool IsErrorForLayout(MovieRecords item, ThumbnailLayoutSpec spec, ThumbnailLayoutCache cache)
+        {
+            if (item == null || spec == null || cache == null)
+            {
+                return false;
+            }
+
+            return IsErrorThumbnailState(
+                item,
+                cache.GetExpectedThumbPath(spec, GetMovieBody(item), item.Hash),
+                cache.GetErrorPath(2),
+                cache.GetNoFilePath(2));
+        }
+
         public static bool IsErrorForTab(MovieRecords item, int tabIndex, ThumbnailLayoutCache cache)
         {
             if (item == null || cache == null)

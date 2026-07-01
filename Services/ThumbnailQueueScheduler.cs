@@ -86,7 +86,7 @@ namespace IndigoMovieManager.Services
         /// <summary>
         /// DB 切替などで進行中ジョブを破棄し、キューを空にする。
         /// </summary>
-        public void AbandonAndClearQueue(int primaryTabIndex = 0)
+        public void AbandonAndClearQueue(string primaryLayoutKey)
         {
             Interlocked.Increment(ref _tabSwitchBuildGeneration);
             ThumbnailQueueProcessor.RequestDismissProgress();
@@ -103,11 +103,18 @@ namespace IndigoMovieManager.Services
                 }
 
                 _jobCoordinator.CancelQueued(removed);
-                _jobCoordinator.BeginJob(primaryTabIndex);
+                _jobCoordinator.BeginJob(primaryLayoutKey ?? "");
             }
         }
 
-        public void EnqueueWork(IReadOnlyList<QueueObj> items, int primaryTabIndex, bool beginNewJob = false)
+        public void AbandonAndClearQueue(int primaryTabIndex = 0) =>
+            AbandonAndClearQueue($"legacy-tab:{primaryTabIndex}");
+
+        public void EnqueueWork(
+            IReadOnlyList<QueueObj> items,
+            string primaryLayoutKey,
+            bool beginNewJob = false,
+            string displayTitle = null)
         {
             if (items == null || items.Count == 0)
             {
@@ -117,12 +124,12 @@ namespace IndigoMovieManager.Services
             lock (_sync)
             {
                 int jobId = beginNewJob
-                    ? _jobCoordinator.BeginJob(primaryTabIndex)
+                    ? _jobCoordinator.BeginJob(primaryLayoutKey ?? "", displayTitle)
                     : _jobCoordinator.CurrentJobId;
 
                 if (!beginNewJob && jobId == 0)
                 {
-                    jobId = _jobCoordinator.BeginJob(primaryTabIndex);
+                    jobId = _jobCoordinator.BeginJob(primaryLayoutKey ?? "", displayTitle);
                 }
 
                 List<QueueObj> accepted = _jobCoordinator.RegisterWork(jobId, items);
@@ -132,6 +139,12 @@ namespace IndigoMovieManager.Services
                 }
             }
         }
+
+        public void EnqueueWork(IReadOnlyList<QueueObj> items, int primaryTabIndex, bool beginNewJob = false) =>
+            EnqueueWork(items, $"legacy-tab:{primaryTabIndex}", beginNewJob);
+
+        public void EnqueueWork(QueueObj item, string primaryLayoutKey, bool beginNewJob = false) =>
+            EnqueueWork([item], primaryLayoutKey, beginNewJob);
 
         public void EnqueueWork(QueueObj item, int primaryTabIndex, bool beginNewJob = false)
         {
@@ -219,8 +232,51 @@ namespace IndigoMovieManager.Services
         public void CancelTrackedForMovie(long movieId) =>
             _jobCoordinator.CancelTrackedForMovie(movieId);
 
+        public void ClearTrackingForLayoutKey(string layoutKey) =>
+            _jobCoordinator.ClearTrackingForLayoutKey(layoutKey);
+
         public void ClearTrackingForTab(int tabIndex) =>
             _jobCoordinator.ClearTrackingForTab(tabIndex);
+
+        public List<QueueObj> BuildTabSwitchWork(
+            ThumbnailLayoutSpec layout,
+            IEnumerable<MovieRecords> filterList,
+            ThumbnailLayoutCache cache,
+            string dbFullPath,
+            int workGeneration,
+            int buildEpoch = -1)
+        {
+            List<QueueObj> work = [];
+            if (layout == null || cache == null)
+            {
+                return work;
+            }
+
+            foreach (MovieRecords item in filterList)
+            {
+                if (!IsTabSwitchBuildCurrent(buildEpoch))
+                {
+                    return work;
+                }
+
+                if (!ShouldEnqueueTabSwitchWork(item, layout, cache))
+                {
+                    continue;
+                }
+
+                work.Add(new QueueObj
+                {
+                    MovieId = item.Movie_Id,
+                    MovieFullPath = item.Movie_Path,
+                    Tabindex = SkinTabIndexHelper.WpfSkinThumbnailSlotIndex,
+                    ThumbnailLayout = layout,
+                    DbFullPath = dbFullPath,
+                    WorkGeneration = workGeneration,
+                });
+            }
+
+            return work;
+        }
 
         public List<QueueObj> BuildTabSwitchWork(
             int tabIndex,
@@ -228,96 +284,25 @@ namespace IndigoMovieManager.Services
             ThumbnailLayoutCache cache,
             string dbFullPath,
             int workGeneration,
-            int buildEpoch = -1)
-        {
-            if (tabIndex == SkinTabIndexHelper.WpfSkinThumbnailSlotIndex)
-            {
-                return BuildWpfSkinTabSwitchWork(filterList, cache, dbFullPath, workGeneration, buildEpoch);
-            }
-
-            List<QueueObj> work = [];
-            if (tabIndex < 0 || tabIndex >= ThumbPathPropertyNames.Length)
-            {
-                return work;
-            }
-
-            foreach (MovieRecords item in filterList)
-            {
-                if (!IsTabSwitchBuildCurrent(buildEpoch))
-                {
-                    return work;
-                }
-
-                if (!ShouldEnqueueTabSwitchWork(item, tabIndex, cache, out _))
-                {
-                    continue;
-                }
-
-                work.Add(new QueueObj
-                {
-                    MovieId = item.Movie_Id,
-                    MovieFullPath = item.Movie_Path,
-                    Tabindex = tabIndex,
-                    DbFullPath = dbFullPath,
-                    WorkGeneration = workGeneration,
-                });
-            }
-
-            return work;
-        }
-
-        private List<QueueObj> BuildWpfSkinTabSwitchWork(
-            IEnumerable<MovieRecords> filterList,
-            ThumbnailLayoutCache cache,
-            string dbFullPath,
-            int workGeneration,
-            int buildEpoch)
-        {
-            List<QueueObj> work = [];
-            ThumbnailLayoutSpec spec = WpfSkinSettings.CurrentThumbnailLayout;
-            if (spec == null || cache == null)
-            {
-                return work;
-            }
-
-            int tabIndex = SkinTabIndexHelper.WpfSkinThumbnailSlotIndex;
-            foreach (MovieRecords item in filterList)
-            {
-                if (!IsTabSwitchBuildCurrent(buildEpoch))
-                {
-                    return work;
-                }
-
-                if (!ShouldEnqueueTabSwitchWork(item, tabIndex, cache, out ThumbnailLayoutSpec layoutSpec))
-                {
-                    continue;
-                }
-
-                work.Add(new QueueObj
-                {
-                    MovieId = item.Movie_Id,
-                    MovieFullPath = item.Movie_Path,
-                    Tabindex = tabIndex,
-                    ThumbnailLayout = layoutSpec,
-                    DbFullPath = dbFullPath,
-                    WorkGeneration = workGeneration,
-                });
-            }
-
-            return work;
-        }
+            int buildEpoch = -1) =>
+            BuildTabSwitchWork(
+                ThumbnailLayoutSpec.FromTabIndex(tabIndex),
+                filterList,
+                cache,
+                dbFullPath,
+                workGeneration,
+                buildEpoch);
 
         private bool IsTabSwitchBuildCurrent(int buildEpoch) =>
             buildEpoch < 0 || buildEpoch == Volatile.Read(ref _tabSwitchBuildGeneration);
 
         private static bool ShouldEnqueueTabSwitchWork(
             MovieRecords item,
-            int tabIndex,
-            ThumbnailLayoutCache cache,
-            out ThumbnailLayoutSpec wpfSpec)
+            ThumbnailLayoutSpec layout,
+            ThumbnailLayoutCache cache)
         {
-            wpfSpec = null;
             if (item == null
+                || layout == null
                 || cache == null
                 || string.IsNullOrWhiteSpace(item.Movie_Path)
                 || string.IsNullOrWhiteSpace(item.Hash)
@@ -328,33 +313,11 @@ namespace IndigoMovieManager.Services
 
             string fileBody = Path.GetFileNameWithoutExtension(item.Movie_Name ?? item.Movie_Path ?? string.Empty)
                 .ToLowerInvariant();
-
-            if (tabIndex == SkinTabIndexHelper.WpfSkinThumbnailSlotIndex)
-            {
-                wpfSpec = WpfSkinSettings.CurrentThumbnailLayout;
-                if (wpfSpec == null)
-                {
-                    return false;
-                }
-
-                string expectedPath = cache.GetExpectedThumbPath(wpfSpec, fileBody, item.Hash);
-                return NeedsThumbnailGeneration(item, expectedPath, tabIndex, cache);
-            }
-
-            if (tabIndex < 0 || tabIndex >= cache.TabOutPaths.Length)
-            {
-                return false;
-            }
-
-            string slotPath = cache.GetExpectedThumbPath(tabIndex, fileBody, item.Hash);
-            return NeedsThumbnailGeneration(item, slotPath, tabIndex, cache);
+            string expectedPath = cache.GetExpectedThumbPath(layout, fileBody, item.Hash);
+            return NeedsThumbnailGeneration(expectedPath);
         }
 
-        private static bool NeedsThumbnailGeneration(
-            MovieRecords item,
-            string expectedPath,
-            int tabIndex,
-            ThumbnailLayoutCache cache)
+        private static bool NeedsThumbnailGeneration(string expectedPath)
         {
             if (string.IsNullOrWhiteSpace(expectedPath))
             {
@@ -366,13 +329,53 @@ namespace IndigoMovieManager.Services
                 return true;
             }
 
-            if (tabIndex >= 0 && tabIndex < cache.TabOutPaths.Length)
-            {
-                return ThumbnailTabErrorDetector.IsErrorForTab(item, tabIndex, cache);
-            }
-
             return !ThumbnailValidityHelper.LooksLikeCompositeThumbnail(expectedPath);
         }
+
+        public void StartTabSwitchJob(
+            ThumbnailLayoutSpec layout,
+            IEnumerable<MovieRecords> filterList,
+            ThumbnailLayoutCache cache,
+            string dbFullPath,
+            int workGeneration,
+            int buildEpoch,
+            string displayTitle = null,
+            Action onFirstBatchEnqueued = null,
+            Action onScanCompleted = null)
+        {
+            lock (_tabSwitchChainGate)
+            {
+                _tabSwitchJobChain = RunTabSwitchJobAfterAsync(
+                    _tabSwitchJobChain,
+                    layout,
+                    filterList,
+                    cache,
+                    dbFullPath,
+                    workGeneration,
+                    buildEpoch,
+                    displayTitle,
+                    onFirstBatchEnqueued,
+                    onScanCompleted);
+            }
+        }
+
+        public void StartTabSwitchJob(
+            ThumbnailLayoutSpec layout,
+            IEnumerable<MovieRecords> filterList,
+            ThumbnailLayoutCache cache,
+            string dbFullPath,
+            int workGeneration,
+            int buildEpoch) =>
+            StartTabSwitchJob(
+                layout,
+                filterList,
+                cache,
+                dbFullPath,
+                workGeneration,
+                buildEpoch,
+                null,
+                null,
+                null);
 
         public void StartTabSwitchJob(
             int tabIndex,
@@ -380,29 +383,26 @@ namespace IndigoMovieManager.Services
             ThumbnailLayoutCache cache,
             string dbFullPath,
             int workGeneration,
-            int buildEpoch)
-        {
-            lock (_tabSwitchChainGate)
-            {
-                _tabSwitchJobChain = RunTabSwitchJobAfterAsync(
-                    _tabSwitchJobChain,
-                    tabIndex,
-                    filterList,
-                    cache,
-                    dbFullPath,
-                    workGeneration,
-                    buildEpoch);
-            }
-        }
+            int buildEpoch) =>
+            StartTabSwitchJob(
+                ThumbnailLayoutSpec.FromTabIndex(tabIndex),
+                filterList,
+                cache,
+                dbFullPath,
+                workGeneration,
+                buildEpoch);
 
         private async Task RunTabSwitchJobAfterAsync(
             Task prior,
-            int tabIndex,
+            ThumbnailLayoutSpec layout,
             IEnumerable<MovieRecords> filterList,
             ThumbnailLayoutCache cache,
             string dbFullPath,
             int workGeneration,
-            int buildEpoch)
+            int buildEpoch,
+            string displayTitle,
+            Action onFirstBatchEnqueued,
+            Action onScanCompleted)
         {
             try
             {
@@ -414,12 +414,156 @@ namespace IndigoMovieManager.Services
             }
 
             await StartTabSwitchJobAsync(
-                tabIndex,
+                layout,
                 filterList,
                 cache,
                 dbFullPath,
                 workGeneration,
-                buildEpoch).ConfigureAwait(false);
+                buildEpoch,
+                displayTitle,
+                onFirstBatchEnqueued,
+                onScanCompleted).ConfigureAwait(false);
+        }
+
+        public async Task StartTabSwitchJobAsync(
+            ThumbnailLayoutSpec layout,
+            IEnumerable<MovieRecords> filterList,
+            ThumbnailLayoutCache cache,
+            string dbFullPath,
+            int workGeneration,
+            int buildEpoch,
+            string displayTitle = null,
+            Action onFirstBatchEnqueued = null,
+            Action onScanCompleted = null)
+        {
+            if (!IsTabSwitchBuildCurrent(buildEpoch) || layout == null)
+            {
+                onScanCompleted?.Invoke();
+                return;
+            }
+
+            ClearSilentQueue();
+
+            IReadOnlyList<MovieRecords> snapshot = filterList as IReadOnlyList<MovieRecords> ?? [.. filterList];
+
+            await Task.Run(() =>
+            {
+                object batchLock = new();
+                List<QueueObj> batch = new(capacity: 64);
+                bool jobStarted = false;
+                bool firstBatchNotified = false;
+
+                Parallel.ForEach(
+                    snapshot,
+                    new ParallelOptions
+                    {
+                        MaxDegreeOfParallelism = Math.Clamp(Environment.ProcessorCount, 2, 8),
+                    },
+                    item =>
+                    {
+                        if (!IsTabSwitchBuildCurrent(buildEpoch))
+                        {
+                            return;
+                        }
+
+                        if (!ShouldEnqueueTabSwitchWork(item, layout, cache))
+                        {
+                            return;
+                        }
+
+                        List<QueueObj> toFlush = null;
+                        lock (batchLock)
+                        {
+                            batch.Add(new QueueObj
+                            {
+                                MovieId = item.Movie_Id,
+                                MovieFullPath = item.Movie_Path,
+                                Tabindex = SkinTabIndexHelper.WpfSkinThumbnailSlotIndex,
+                                ThumbnailLayout = layout,
+                                DbFullPath = dbFullPath,
+                                WorkGeneration = workGeneration,
+                            });
+
+                            int threshold = jobStarted ? 64 : 1;
+                            if (batch.Count >= threshold)
+                            {
+                                toFlush = batch;
+                                batch = new List<QueueObj>(capacity: 64);
+                            }
+                        }
+
+                        if (toFlush != null
+                            && TryEnqueueTabSwitchBatch(
+                                toFlush,
+                                layout.Key,
+                                buildEpoch,
+                                displayTitle,
+                                ref jobStarted))
+                        {
+                            if (!firstBatchNotified)
+                            {
+                                firstBatchNotified = true;
+                                onFirstBatchEnqueued?.Invoke();
+                            }
+                        }
+                    });
+
+                List<QueueObj> remainder;
+                lock (batchLock)
+                {
+                    remainder = batch;
+                    batch = null;
+                }
+
+                if (remainder != null
+                    && remainder.Count > 0
+                    && TryEnqueueTabSwitchBatch(
+                        remainder,
+                        layout.Key,
+                        buildEpoch,
+                        displayTitle,
+                        ref jobStarted)
+                    && !firstBatchNotified)
+                {
+                    onFirstBatchEnqueued?.Invoke();
+                }
+            }).ConfigureAwait(false);
+
+            onScanCompleted?.Invoke();
+        }
+
+        private bool TryEnqueueTabSwitchBatch(
+            List<QueueObj> batch,
+            string layoutKey,
+            int buildEpoch,
+            string displayTitle,
+            ref bool jobStarted)
+        {
+            if (!IsTabSwitchBuildCurrent(buildEpoch) || batch == null || batch.Count == 0)
+            {
+                return false;
+            }
+
+            lock (_sync)
+            {
+                if (!IsTabSwitchBuildCurrent(buildEpoch))
+                {
+                    return false;
+                }
+
+                if (!jobStarted)
+                {
+                    ClearTrackingForLayoutKey(layoutKey);
+                    EnqueueWork(batch, layoutKey, beginNewJob: true, displayTitle);
+                    jobStarted = true;
+                }
+                else
+                {
+                    EnqueueWork(batch, layoutKey, beginNewJob: false, displayTitle);
+                }
+            }
+
+            return true;
         }
 
         public async Task StartTabSwitchJobAsync(
@@ -428,40 +572,14 @@ namespace IndigoMovieManager.Services
             ThumbnailLayoutCache cache,
             string dbFullPath,
             int workGeneration,
-            int buildEpoch)
-        {
-            if (!IsTabSwitchBuildCurrent(buildEpoch))
-            {
-                return;
-            }
-
-            ClearSilentQueue();
-
-            IReadOnlyList<MovieRecords> snapshot = filterList as IReadOnlyList<MovieRecords> ?? [.. filterList];
-            List<QueueObj> work = await Task.Run(() =>
-                BuildTabSwitchWork(tabIndex, snapshot, cache, dbFullPath, workGeneration, buildEpoch)).ConfigureAwait(false);
-
-            if (!IsTabSwitchBuildCurrent(buildEpoch))
-            {
-                return;
-            }
-
-            if (work.Count == 0)
-            {
-                return;
-            }
-
-            lock (_sync)
-            {
-                if (!IsTabSwitchBuildCurrent(buildEpoch))
-                {
-                    return;
-                }
-
-                ClearTrackingForTab(tabIndex);
-                EnqueueWork(work, tabIndex, beginNewJob: true);
-            }
-        }
+            int buildEpoch) =>
+            await StartTabSwitchJobAsync(
+                ThumbnailLayoutSpec.FromTabIndex(tabIndex),
+                filterList,
+                cache,
+                dbFullPath,
+                workGeneration,
+                buildEpoch).ConfigureAwait(false);
 
         public static int GetMaxParallelism()
         {

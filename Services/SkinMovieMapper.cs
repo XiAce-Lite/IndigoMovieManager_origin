@@ -11,8 +11,7 @@ namespace IndigoMovieManager.Services
             IReadOnlyCollection<long> selectedIds,
             long? focusedId)
         {
-            int thumbTab = SkinTabIndexHelper.GetThumbnailTabIndex(tabIndex);
-            string thumbPath = PlayPositionResolver.GetThumbPathForTab(rec, thumbTab);
+            string thumbPath = PlayPositionResolver.GetThumbPathForEngine(rec, SkinEngineHelper.FromLegacyThumbTabIndex(tabIndex));
             bool selected = selectedIds.Contains(rec.Movie_Id);
 
             return new WhiteBrowserMovieDto
@@ -49,8 +48,7 @@ namespace IndigoMovieManager.Services
             IReadOnlyCollection<long> selectedIds,
             long? focusedId)
         {
-            int thumbTab = SkinTabIndexHelper.GetThumbnailTabIndex(tabIndex);
-            string thumbPath = PlayPositionResolver.GetThumbPathForTab(rec, thumbTab);
+            string thumbPath = PlayPositionResolver.GetThumbPathForEngine(rec, SkinEngineHelper.FromLegacyThumbTabIndex(tabIndex));
 
             return new SkinMovieDto
             {

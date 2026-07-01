@@ -1012,16 +1012,23 @@
                                 Foreground="Black"
                                 Loaded="ComboBoxArrow_Loaded"
                                 SelectionChanged="ComboSkin_SelectionChanged" />
-                            <Button
-                                x:Name="ReloadSkinButton"
+                            <!-- WPF 時のみ表示。WB 切替でも幅を確保し右側コントロールの位置を固定する -->
+                            <Grid
+                                Width="40"
+                                Height="40"
                                 Margin="0,0,8,0"
-                                VerticalAlignment="Center"
-                                Click="ReloadSkin_Click"
-                                Style="{StaticResource MaterialDesignIconButton}"
-                                ToolTip="スキンを再読込"
-                                Visibility="Collapsed">
-                                <materialDesign:PackIcon Kind="Refresh" />
-                            </Button>
+                                VerticalAlignment="Center">
+                                <Button
+                                    x:Name="ReloadSkinButton"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    Click="ReloadSkin_Click"
+                                    Style="{StaticResource MaterialDesignIconButton}"
+                                    ToolTip="スキンを再読込"
+                                    Visibility="Collapsed">
+                                    <materialDesign:PackIcon Kind="Refresh" />
+                                </Button>
+                            </Grid>
                             <TextBlock
                                 Margin="8,0,4,0"
                                 VerticalAlignment="Center"

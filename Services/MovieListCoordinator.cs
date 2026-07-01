@@ -22,8 +22,7 @@ namespace IndigoMovieManager.Services
             string dbFullPath,
             string sortId,
             ThumbnailLayoutCache cache,
-            int tabCount,
-            int tabIndex)
+            SkinEngine? resolveEngineOnly = null)
         {
             if (string.IsNullOrEmpty(dbFullPath))
             {
@@ -36,7 +35,7 @@ namespace IndigoMovieManager.Services
             {
                 using var session = new SQLiteSession(dbFullPath);
                 DataTable table = session.Query(sql);
-                List<MovieRecords> records = MovieRecordMapper.MapAll(table, cache, tabCount, tabIndex);
+                List<MovieRecords> records = MovieRecordMapper.MapAll(table, cache, resolveEngineOnly);
                 return new ReloadResult { Records = records };
             }).ConfigureAwait(false);
         }
