@@ -72,9 +72,6 @@ namespace IndigoMovieManager
         private DateTime _lastSliderTime = DateTime.MinValue;
         private readonly TimeSpan _timeSliderInterval = TimeSpan.FromSeconds(0.1);
 
-        //private DateTime _lastInputTime = DateTime.MinValue;  //インクリメントサーチで使用。一旦オミット。
-        private readonly TimeSpan _timeInputInterval = TimeSpan.FromSeconds(0.5);
-
         // MediaElement の再生状態と UI を同期する
         private readonly DispatcherTimer timer;
         private readonly ManualThumbnailPreviewController _manualPreview;
@@ -109,7 +106,6 @@ namespace IndigoMovieManager
         private readonly MainWindowSessionState _sessionState = new();
         private readonly StatusBarProgressCoordinator _statusBarProgress;
 
-        //private bool _searchBoxItemSelectedByMouse = false;
         private bool _isDeletingSearchHistory = false;
         private bool _isApplyingSearchKeyword = false;
         // 検索履歴ドロップダウンのキーボードカーソル位置（SelectedIndex はTextバインドで-1にリセットされ得るため独自管理）。
@@ -221,11 +217,7 @@ namespace IndigoMovieManager
         private void SaveSkinEngine(int tabIndex)
         {
             string engine = SkinTabIndexHelper.IsWebSkinTab(tabIndex) ? SkinEngineWb : SkinEngineWpf;
-            if (!string.Equals(Properties.Settings.Default.LastSkinEngine, engine, StringComparison.OrdinalIgnoreCase))
-            {
-                Properties.Settings.Default.LastSkinEngine = engine;
-                Properties.Settings.Default.Save();
-            }
+            AppSettingsPersistence.SaveSkinEngineIfChanged(engine);
         }
 
         /// <summary>
@@ -337,9 +329,7 @@ namespace IndigoMovieManager
             }
 
             WhiteBrowserSkinSettings.ActiveSkinFolder = folder;
-            Properties.Settings.Default.LastSkinEngine = SkinEngineWb;
-            Properties.Settings.Default.LastWbSkinFolder = folder;
-            Properties.Settings.Default.Save();
+            AppSettingsPersistence.SaveWbSkinSelection(SkinEngineWb, folder);
             UpdateWbSkinTabTag();
 
             try
@@ -411,9 +401,7 @@ namespace IndigoMovieManager
         private void ApplyWpfSkinSelection(string folder)
         {
             ApplyWpfSkin(folder);
-            Properties.Settings.Default.LastSkinEngine = SkinEngineWpf;
-            Properties.Settings.Default.LastWpfSkinName = folder;
-            Properties.Settings.Default.Save();
+            AppSettingsPersistence.SaveWpfSkinSelection(SkinEngineWpf, folder);
             RefreshWpfSkinItemsForCurrentFilter();
         }
 
@@ -617,9 +605,7 @@ namespace IndigoMovieManager
                 UpdateSkin();
                 UpdateSort();
 
-                Properties.Settings.Default.RecentFiles.Clear();
-                Properties.Settings.Default.RecentFiles.AddRange([.. recentFiles.Reverse()]);
-                Properties.Settings.Default.Save();
+                AppSettingsPersistence.SaveRecentFiles(recentFiles.Reverse());
 
                 XmlLayoutSerializer layoutSerializer = new(uxDockingManager);
                 using var writer = new StreamWriter(ApplicationPaths.LayoutFilePath);
@@ -2356,17 +2342,14 @@ namespace IndigoMovieManager
         private void RefreshFileInfoCore(string dbPath, MovieRecords rec) =>
             FileInfoRefreshService.RefreshCore(dbPath, rec, action => RunOnUi(action));
 
-        private void BtnExit_Click(object sender, RoutedEventArgs e)
-        {
-            Close();
-        }
+        private void RequestApplicationExit() => Close();
 
         private void OperationStatusCancel_Click(object sender, RoutedEventArgs e)
         {
             _statusBarProgress.RequestCancelActive();
         }
 
-        private void BtnNew_Click(object sender, RoutedEventArgs e)
+        private void CreateNewDatabase()
         {
             var sfd = new SaveFileDialog
             {
@@ -2390,8 +2373,7 @@ namespace IndigoMovieManager
                 CreateDatabase(sfd.FileName);
                 ReStackRecentTree(sfd.FileName);
                 OpenDatafile(sfd.FileName);
-                Properties.Settings.Default.LastDoc = sfd.FileName;
-                Properties.Settings.Default.Save();
+                AppSettingsPersistence.SaveLastDoc(sfd.FileName);
             }
         }
 
@@ -2404,12 +2386,8 @@ namespace IndigoMovieManager
             RecentFilesService.RebuildRecentItems(MainVM.RecentFileItems, recentFiles);
         }
 
-        private void PersistRecentFilesToSettings()
-        {
-            Properties.Settings.Default.RecentFiles.Clear();
-            Properties.Settings.Default.RecentFiles.AddRange([.. recentFiles.Reverse()]);
-            Properties.Settings.Default.Save();
-        }
+        private void PersistRecentFilesToSettings() =>
+            AppSettingsPersistence.SaveRecentFiles(recentFiles.Reverse());
 
         private NavigationDrawerItem _recentFileRemoveTarget;
 
@@ -2454,24 +2432,7 @@ namespace IndigoMovieManager
                 return;
             }
 
-            switch (listBox.Name)
-            {
-                case nameof(PrimaryNavList):
-                    ExecutePrimaryNavigation(item.Id);
-                    break;
-                case nameof(RecentNavList):
-                    OpenRecentFile(item.Id);
-                    break;
-                case nameof(SettingsNavList):
-                    ExecuteSettingsNavigation(item.Id);
-                    break;
-                case nameof(ToolNavList):
-                    ExecuteToolNavigation(item.Id);
-                    break;
-                case nameof(ExitNavList):
-                    BtnExit_Click(sender, e);
-                    break;
-            }
+            ExecuteNavigation(item.Id);
 
             listBox.SelectedIndex = -1;
             e.Handled = true;
@@ -2497,15 +2458,31 @@ namespace IndigoMovieManager
             return null;
         }
 
-        private void ExecutePrimaryNavigation(string actionId)
+        private void ExecuteNavigation(string id)
         {
-            switch (actionId)
+            switch (id)
             {
                 case NavigationActionIds.New:
-                    BtnNew_Click(this, new RoutedEventArgs());
+                    CreateNewDatabase();
                     break;
                 case NavigationActionIds.Open:
-                    BtnOpen_Click(this, new RoutedEventArgs());
+                    OpenDatabaseFile();
+                    break;
+                case NavigationActionIds.Exit:
+                    RequestApplicationExit();
+                    break;
+                case NavigationMenuIds.CommonSettings:
+                case NavigationMenuIds.DatabaseSettings:
+                    ExecuteSettingsNavigation(id);
+                    break;
+                case NavigationMenuIds.WatchFolderEdit:
+                case NavigationMenuIds.WatchFolderCheck:
+                case NavigationMenuIds.RecreateAllThumbnails:
+                case NavigationMenuIds.RefreshAllFileInfo:
+                    ExecuteToolNavigation(id);
+                    break;
+                default:
+                    OpenRecentFile(id);
                     break;
             }
         }
@@ -2526,8 +2503,7 @@ namespace IndigoMovieManager
 
             ReStackRecentTree(path);
             OpenDatafile(path);
-            Properties.Settings.Default.LastDoc = path;
-            Properties.Settings.Default.Save();
+            AppSettingsPersistence.SaveLastDoc(path);
         }
 
         private void ExecuteSettingsNavigation(string menuId)
@@ -2647,7 +2623,7 @@ namespace IndigoMovieManager
             return Directory.GetCurrentDirectory();
         }
 
-        private void BtnOpen_Click(object sender, RoutedEventArgs e)
+        private void OpenDatabaseFile()
         {
             var ofd = new OpenFileDialog
             {
@@ -2666,8 +2642,7 @@ namespace IndigoMovieManager
             if (result == true)
             {
                 ReStackRecentTree(ofd.FileName);
-                Properties.Settings.Default.LastDoc = ofd.FileName;
-                Properties.Settings.Default.Save();
+                AppSettingsPersistence.SaveLastDoc(ofd.FileName);
                 OpenDatafile(ofd.FileName);
             }
         }

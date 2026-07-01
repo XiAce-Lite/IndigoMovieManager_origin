@@ -11,12 +11,6 @@ using Microsoft.Web.WebView2.Core;
 
 namespace IndigoMovieManager.UserControls
 {
-    public enum SkinViewMode
-    {
-        SmallWeb,
-        GridWeb,
-    }
-
     public sealed class SkinPlayRequestEventArgs : EventArgs
     {
         public long MovieId { get; init; }
@@ -42,7 +36,7 @@ namespace IndigoMovieManager.UserControls
         private bool _initialized;
         private bool _initializing;
         private bool _ready;
-        private bool IsWhiteBrowserCompat => SkinTabIndexHelper.IsWhiteBrowserCompatTab(SkinTabIndex);
+        private bool IsWhiteBrowserCompat => SkinTabIndexHelper.IsWebSkinTab(SkinTabIndex);
         private string _thumbRoot = "";
         private string _imagesRoot = "";
         private IEnumerable<MovieRecords> _lastItems;
@@ -56,25 +50,12 @@ namespace IndigoMovieManager.UserControls
         private const int RenderFirstBatchSize = 48;
         private const int RenderAppendBatchSize = 240;
 
-        public static readonly DependencyProperty ModeProperty =
-            DependencyProperty.Register(
-                nameof(Mode),
-                typeof(SkinViewMode),
-                typeof(SkinView),
-                new PropertyMetadata(SkinViewMode.SmallWeb));
-
         public static readonly DependencyProperty SkinTabIndexProperty =
             DependencyProperty.Register(
                 nameof(SkinTabIndex),
                 typeof(int),
                 typeof(SkinView),
                 new PropertyMetadata(SkinTabIndexHelper.WbSkinTabIndex));
-
-        public SkinViewMode Mode
-        {
-            get => (SkinViewMode)GetValue(ModeProperty);
-            set => SetValue(ModeProperty, value);
-        }
 
         public int SkinTabIndex
         {
@@ -106,7 +87,7 @@ namespace IndigoMovieManager.UserControls
                 return;
             }
 
-            _expectedConfig = SkinTabIndexHelper.GetDefaultConfig(SkinTabIndex);
+            _expectedConfig = SkinConfig.DefaultGridWeb();
             if (IsWhiteBrowserCompat)
             {
                 _expectedConfig = WhiteBrowserSkinSettings.ParseSkinConfig(WhiteBrowserSkinSettings.ActiveSkinFolder);
@@ -194,7 +175,7 @@ namespace IndigoMovieManager.UserControls
                             CoreWebView2HostResourceAccessKind.Allow);
                     }
 
-                    string folder = SkinTabIndexHelper.GetSkinFolderName(SkinTabIndex);
+                    string folder = WhiteBrowserSkinSettings.ActiveSkinFolder;
                     string entry = $"https://{SkinVirtualHost}/{folder}/{folder}.htm";
                     core.Navigate(entry);
                 }

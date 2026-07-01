@@ -15,16 +15,6 @@ namespace IndigoMovieManager.Services
         public int SheetWidth => ThumbWidth * ThumbColumn;
         public int SheetHeight => ThumbHeight * ThumbRow;
 
-        public static SkinConfig DefaultSmallWeb() => new()
-        {
-            ThumbWidth = 120,
-            ThumbHeight = 90,
-            ThumbColumn = 3,
-            ThumbRow = 1,
-            MultiSelect = 1,
-            SeamlessScroll = 0,
-        };
-
         public static SkinConfig DefaultGridWeb() => new()
         {
             ThumbWidth = 160,
