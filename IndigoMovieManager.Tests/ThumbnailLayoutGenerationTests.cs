@@ -9,9 +9,13 @@ using static IndigoMovieManager.Tools;
 
 namespace IndigoMovieManager.Tests;
 
+[CollectionDefinition("ThumbnailLayoutGeneration", DisableParallelization = true)]
+public sealed class ThumbnailLayoutGenerationCollection;
+
 /// <summary>
 /// WPF スキン / TabInfo で定義した W×H×C×R に従いサムネイルが生成されることを検証する。
 /// </summary>
+[Collection("ThumbnailLayoutGeneration")]
 public class ThumbnailLayoutGenerationTests
 {
     [Theory]
@@ -177,7 +181,7 @@ public class ThumbnailLayoutGenerationTests
             const int width = 640;
             const int height = 360;
             const int fps = 10;
-            const int frameCount = 30;
+            const int frameCount = 300;
 
             using var writer = new VideoWriter(destPath, FourCC.FromString("MJPG"), fps, new OpenCvSharp.Size(width, height));
             if (!writer.IsOpened())
@@ -185,9 +189,11 @@ public class ThumbnailLayoutGenerationTests
                 return false;
             }
 
-            using Mat frame = new(height, width, MatType.CV_8UC3, new Scalar(40, 120, 200));
+            using Mat frame = new(height, width, MatType.CV_8UC3);
             for (int i = 0; i < frameCount; i++)
             {
+                // パネルごとに色が変わるようフレームを変化させ、B-6 重複検出で落ちないようにする。
+                frame.SetTo(new Scalar((i * 17) % 256, (i * 29) % 256, (i * 43) % 256));
                 writer.Write(frame);
             }
 
@@ -205,7 +211,7 @@ public class ThumbnailLayoutGenerationTests
         List<string> args =
         [
             "-y", "-hide_banner", "-loglevel", "error",
-            "-f", "lavfi", "-i", "testsrc=duration=3:size=1920x1080:rate=30",
+            "-f", "lavfi", "-i", "testsrc=duration=30:size=1920x1080:rate=30",
             "-pix_fmt", "yuv420p",
             destPath,
         ];
