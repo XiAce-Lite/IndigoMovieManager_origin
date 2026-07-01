@@ -23,7 +23,7 @@ public class ThumbnailProgressRegistryTests
     public void DismissAll_disposes_registered_sessions()
     {
         ThumbnailProgressRegistry.DismissAll();
-        var session = new ThumbnailProgressSession(0, 0);
+        var session = new ThumbnailProgressSession("160x120x1x1", 0);
         ThumbnailProgressRegistry.Register(session);
         ThumbnailProgressRegistry.DismissAll();
         Assert.False(session.IsVisible);

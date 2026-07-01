@@ -1,6 +1,5 @@
 using System.IO;
 using System.Windows;
-using IndigoMovieManager.Services;
 using IndigoMovieManager.Thumbnail;
 
 namespace IndigoMovieManager.Services
@@ -11,7 +10,7 @@ namespace IndigoMovieManager.Services
             Point clickOnImage,
             double imageControlWidth,
             double imageControlHeight,
-            int tabIndex,
+            SkinEngine engine,
             MovieRecords mv,
             ref int returnPos)
         {
@@ -21,7 +20,7 @@ namespace IndigoMovieManager.Services
                 return 0;
             }
 
-            string currentThumbPath = GetThumbPathForTab(mv, tabIndex);
+            string currentThumbPath = GetThumbPathForEngine(mv, engine);
             if (string.IsNullOrWhiteSpace(currentThumbPath) || !File.Exists(currentThumbPath))
             {
                 returnPos = 0;
@@ -45,24 +44,9 @@ namespace IndigoMovieManager.Services
             return 0;
         }
 
-        public static string GetThumbPathForTab(MovieRecords mv, int tabIndex)
-        {
-            if (SkinTabIndexHelper.IsWpfSkinTab(tabIndex))
-            {
-                return mv.ThumbPathWpfSkin;
-            }
-
-            int resolvedTab = SkinTabIndexHelper.GetThumbnailTabIndex(tabIndex);
-            return resolvedTab switch
-            {
-                0 => mv.ThumbPathSmall,
-                1 => mv.ThumbPathBig,
-                2 => mv.ThumbPathGrid,
-                3 => mv.ThumbPathList,
-                4 => mv.ThumbPathBig10,
-                SkinTabIndexHelper.WpfSkinThumbnailSlotIndex => mv.ThumbPathWpfSkin,
-                _ => null,
-            };
-        }
+        public static string GetThumbPathForEngine(MovieRecords mv, SkinEngine engine) =>
+            engine == SkinEngine.Wb
+                ? mv.ThumbPathWb
+                : mv.ThumbPathWpfSkin;
     }
 }

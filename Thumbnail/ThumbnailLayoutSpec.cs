@@ -2,6 +2,8 @@ using System;
 using System.IO;
 using IndigoMovieManager.Services.WpfSkin;
 
+using IndigoMovieManager.Services;
+
 namespace IndigoMovieManager.Thumbnail
 {
     /// <summary>
@@ -9,6 +11,9 @@ namespace IndigoMovieManager.Thumbnail
     /// </summary>
     public sealed class ThumbnailLayoutSpec : IEquatable<ThumbnailLayoutSpec>
     {
+        /// <summary>詳細ペイン用（WB 互換の 120×90×1×1）。</summary>
+        public static ThumbnailLayoutSpec DetailPaneLayout { get; } = new(120, 90, 1, 1);
+
         public int Width { get; }
         public int Height { get; }
         public int Columns { get; }
@@ -26,18 +31,6 @@ namespace IndigoMovieManager.Thumbnail
             Rows = Math.Max(1, rows);
         }
 
-        public static ThumbnailLayoutSpec FromTabIndex(int tabIndex) =>
-            tabIndex switch
-            {
-                0 => new ThumbnailLayoutSpec(120, 90, 3, 1),
-                1 => new ThumbnailLayoutSpec(200, 150, 3, 1),
-                2 => new ThumbnailLayoutSpec(160, 120, 1, 1),
-                3 => new ThumbnailLayoutSpec(56, 42, 5, 1),
-                4 => new ThumbnailLayoutSpec(120, 90, 5, 2),
-                99 => new ThumbnailLayoutSpec(120, 90, 1, 1),
-                _ => new ThumbnailLayoutSpec(160, 120, 1, 1),
-            };
-
         public static ThumbnailLayoutSpec FromWpfSkinThumbnail(WpfSkinThumbnail thumbnail)
         {
             if (thumbnail == null)
@@ -50,6 +43,16 @@ namespace IndigoMovieManager.Thumbnail
                 thumbnail.Height,
                 thumbnail.Columns > 0 ? thumbnail.Columns : 1,
                 thumbnail.Rows > 0 ? thumbnail.Rows : 1);
+        }
+
+        internal static ThumbnailLayoutSpec FromSkinConfig(SkinConfig config)
+        {
+            SkinConfig resolved = (config ?? SkinConfig.DefaultGridWeb()).WithFallback(SkinConfig.DefaultGridWeb());
+            return new ThumbnailLayoutSpec(
+                resolved.ThumbWidth,
+                resolved.ThumbHeight,
+                resolved.ThumbColumn,
+                resolved.ThumbRow);
         }
 
         public string GetOutPath(string dbName, string thumbFolder) =>

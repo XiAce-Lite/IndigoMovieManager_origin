@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using IndigoMovieManager.Services;
 
 namespace IndigoMovieManager.Services
 {
@@ -10,11 +11,12 @@ namespace IndigoMovieManager.Services
     public interface IMainWindowActions
     {
         ComboBox SearchBox { get; }
-        TabControl Tabs { get; }
+        SkinEngine CurrentSkinEngine { get; }
+        bool IsMovieListActive { get; }
         Task SearchByKeywordAsync(string keyword, bool addToHistory = true);
         void PlayMovie_Click(object sender, RoutedEventArgs e);
         void DeleteBookmark(object sender, RoutedEventArgs e);
-        void RefreshActiveList(int tabIndex);
+        void RefreshActiveList(SkinEngine engine);
         void RefreshExtDetail();
         void RequestDetailThumbnailRecreate();
         string DbFullPath { get; }

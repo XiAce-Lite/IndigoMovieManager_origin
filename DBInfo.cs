@@ -1,5 +1,7 @@
 ﻿using System.ComponentModel;
 
+using IndigoMovieManager.Services;
+
 namespace IndigoMovieManager
 {
     public class DBInfo : INotifyPropertyChanged
@@ -13,7 +15,7 @@ namespace IndigoMovieManager
         private string bookmarkFolder = "";
         private string excludeExt = "";
         private int searchCount = 0;
-        private int currentTabIndex = -1;
+        private SkinEngine currentSkinEngine = SkinEngine.Wpf;
 
         /// <summary>
         /// SQLiteデータベースのフルパス
@@ -69,10 +71,10 @@ namespace IndigoMovieManager
             set { searchKeyword = value; OnPropertyChanged(nameof(SearchKeyword)); }
         }
 
-        public int CurrentTabIndex
+        public SkinEngine CurrentSkinEngine
         {
-            get => currentTabIndex; 
-            set { currentTabIndex = value; OnPropertyChanged(nameof(CurrentTabIndex)); }
+            get => currentSkinEngine;
+            set { currentSkinEngine = value; OnPropertyChanged(nameof(CurrentSkinEngine)); }
         }
 
         public string Sort

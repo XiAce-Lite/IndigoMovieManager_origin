@@ -1,6 +1,8 @@
 using System.Data;
 using System.IO;
 using System.Text.RegularExpressions;
+using IndigoMovieManager.Services;
+using IndigoMovieManager.Services.WpfSkin;
 using IndigoMovieManager.Thumbnail;
 
 namespace IndigoMovieManager
@@ -13,22 +15,34 @@ namespace IndigoMovieManager
         public static MovieRecords FromDataRow(
             DataRow row,
             ThumbnailLayoutCache cache,
-            int tabCount,
-            int? resolveTabIndexOnly = null)
+            SkinEngine? resolveEngineOnly = null)
         {
-            string[] thumbPath = new string[tabCount];
             string hash = row["hash"].ToString();
             string movieFullPath = row["movie_path"].ToString();
             string thumbFile = ThumbnailLayoutCache.GetThumbFileName(row["movie_name"].ToString(), hash);
 
-            for (int i = 0; i < tabCount; i++)
+            bool resolveAll = resolveEngineOnly == null;
+            string thumbPathWpf = null;
+            string thumbPathWb = null;
+            string thumbPathDetail = null;
+
+            if (resolveAll || resolveEngineOnly == SkinEngine.Wpf)
             {
-                bool checkExists = resolveTabIndexOnly == null || resolveTabIndexOnly == i;
-                thumbPath[i] = cache.BuildThumbPath(i, thumbFile, checkExists);
+                ThumbnailLayoutSpec wpfSpec = WpfSkinSettings.CurrentThumbnailLayout
+                    ?? new ThumbnailLayoutSpec(400, 225, 1, 1);
+                thumbPathWpf = cache.BuildThumbPath(wpfSpec, thumbFile, checkExists: true);
             }
 
-            bool checkDetailExists = resolveTabIndexOnly == null;
-            string thumbPathDetail = cache.BuildThumbPath(99, thumbFile, checkDetailExists);
+            if (resolveAll || resolveEngineOnly == SkinEngine.Wb)
+            {
+                ThumbnailLayoutSpec wbSpec = WhiteBrowserSkinSettings.GetThumbnailLayoutSpec();
+                thumbPathWb = cache.BuildThumbPath(wbSpec, thumbFile, checkExists: true);
+            }
+
+            if (resolveAll)
+            {
+                thumbPathDetail = cache.ResolveDetailThumbPath(thumbFile, checkExists: true);
+            }
 
             string tags = row["tag"].ToString();
             List<string> tagArray = [];
@@ -83,11 +97,8 @@ namespace IndigoMovieManager
                 Comment1 = row["comment1"].ToString(),
                 Comment2 = row["comment2"].ToString(),
                 Comment3 = row["comment3"].ToString(),
-                ThumbPathSmall = thumbPath[0],
-                ThumbPathBig = thumbPath[1],
-                ThumbPathGrid = thumbPath[2],
-                ThumbPathList = thumbPath[3],
-                ThumbPathBig10 = thumbPath[4],
+                ThumbPathWpfSkin = thumbPathWpf,
+                ThumbPathWb = thumbPathWb,
                 ThumbDetail = thumbPathDetail,
                 Drive = Path.GetPathRoot(row["movie_path"].ToString()),
                 Dir = Path.GetDirectoryName(row["movie_path"].ToString()),
@@ -99,13 +110,12 @@ namespace IndigoMovieManager
         public static List<MovieRecords> MapAll(
             DataTable movieTable,
             ThumbnailLayoutCache cache,
-            int tabCount,
-            int? resolveTabIndexOnly = null)
+            SkinEngine? resolveEngineOnly = null)
         {
             var records = new List<MovieRecords>(movieTable.Rows.Count);
             foreach (DataRow row in movieTable.Rows)
             {
-                records.Add(FromDataRow(row, cache, tabCount, resolveTabIndexOnly));
+                records.Add(FromDataRow(row, cache, resolveEngineOnly));
             }
 
             return records;

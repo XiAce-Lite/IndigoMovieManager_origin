@@ -1,4 +1,5 @@
 using System.IO;
+using IndigoMovieManager.Services;
 
 namespace IndigoMovieManager.Thumbnail
 {
@@ -7,28 +8,29 @@ namespace IndigoMovieManager.Thumbnail
     /// </summary>
     internal static class ThumbnailTabErrorDetector
     {
-        public static bool IsErrorForTab(MovieRecords item, int tabIndex, ThumbnailLayoutCache cache)
+        public static bool IsErrorForEngine(MovieRecords item, SkinEngine engine, ThumbnailLayoutCache cache)
         {
             if (item == null || cache == null)
             {
                 return false;
             }
 
-            if (tabIndex == 99)
-            {
-                return IsDetailThumbnailError(item, cache);
-            }
+            ThumbnailLayoutSpec spec = ThumbnailLayoutResolver.GetActiveListLayout(engine);
+            return IsErrorForLayout(item, spec, cache);
+        }
 
-            if (tabIndex < 0 || tabIndex >= cache.TabOutPaths.Length)
+        public static bool IsErrorForLayout(MovieRecords item, ThumbnailLayoutSpec spec, ThumbnailLayoutCache cache)
+        {
+            if (item == null || spec == null || cache == null)
             {
                 return false;
             }
 
             return IsErrorThumbnailState(
                 item,
-                cache.GetExpectedThumbPath(tabIndex, GetMovieBody(item), item.Hash),
-                cache.GetErrorPath(tabIndex),
-                cache.GetNoFilePath(tabIndex));
+                cache.GetExpectedThumbPath(spec, GetMovieBody(item), item.Hash),
+                cache.GetErrorPath(2),
+                cache.GetNoFilePath(2));
         }
 
         public static bool IsDetailThumbnailError(MovieRecords item, ThumbnailLayoutCache cache)
@@ -40,9 +42,9 @@ namespace IndigoMovieManager.Thumbnail
 
             return IsErrorThumbnailState(
                 item,
-                cache.GetExpectedThumbPath(99, GetMovieBody(item), item.Hash),
-                cache.GetErrorPath(99),
-                cache.GetNoFilePath(99));
+                cache.GetExpectedDetailThumbPath(GetMovieBody(item), item.Hash),
+                cache.GetErrorPath(2),
+                cache.GetNoFilePath(2));
         }
 
         private static bool IsErrorThumbnailState(

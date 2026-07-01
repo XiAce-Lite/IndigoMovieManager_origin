@@ -3,7 +3,7 @@ using System.IO;
 namespace IndigoMovieManager.Thumbnail
 {
     /// <summary>
-    /// タブ別サムネ出力パスのキャッシュとパス解決。
+    /// レイアウトキー別サムネ出力パスのキャッシュとパス解決。
     /// </summary>
     internal sealed class ThumbnailLayoutCache
     {
@@ -25,78 +25,22 @@ namespace IndigoMovieManager.Thumbnail
             "noFileBig.jpg",
         ];
 
+        /// <summary>WB DefaultGrid 互換の 1×1 一覧（詳細欠落時の読み取りフォールバック用）。</summary>
+        private static readonly ThumbnailLayoutSpec DefaultGridListLayout = new(160, 120, 1, 1);
+
         public string ImagesBasePath { get; private set; } = "";
-        public string[] TabOutPaths { get; private set; } = [];
-        public string DetailOutPath { get; private set; } = "";
+        public string ThumbRootPath { get; private set; } = "";
+        public string DetailPaneOutPath { get; private set; } = "";
         public string DbName { get; private set; } = "";
         public string ThumbFolder { get; private set; } = "";
 
-        public void Refresh(string dbName, string thumbFolder, int tabCount)
+        public void Refresh(string dbName, string thumbFolder)
         {
             DbName = dbName ?? "";
             ThumbFolder = thumbFolder ?? "";
             ImagesBasePath = ApplicationPaths.ImagesDirectory;
-            TabOutPaths = new string[tabCount];
-            for (int i = 0; i < tabCount; i++)
-            {
-                TabOutPaths[i] = new TabInfo(i, dbName, thumbFolder).OutPath;
-            }
-
-            DetailOutPath = new TabInfo(99, dbName, thumbFolder).OutPath;
-        }
-
-        public string BuildThumbPath(int tabIndex, string thumbFileName, bool checkExists)
-        {
-            string fullPath = tabIndex == 99
-                ? Path.Combine(DetailOutPath, thumbFileName)
-                : Path.Combine(TabOutPaths[tabIndex], thumbFileName);
-
-            if (!checkExists)
-            {
-                return GetErrorPath(tabIndex);
-            }
-
-            return File.Exists(fullPath)
-                ? fullPath
-                : GetErrorPath(tabIndex);
-        }
-
-        public string GetErrorPath(int tabIndex)
-        {
-            int errorIndex = tabIndex == 99 ? 2 : tabIndex;
-            if (errorIndex < 0 || errorIndex >= ErrorFileNames.Length)
-            {
-                errorIndex = 0;
-            }
-
-            return Path.Combine(ImagesBasePath, ErrorFileNames[errorIndex]);
-        }
-
-        public string GetNoFilePath(int tabIndex)
-        {
-            int noFileIndex = tabIndex == 99 ? 2 : tabIndex;
-            if (noFileIndex < 0 || noFileIndex >= NoFileFileNames.Length)
-            {
-                noFileIndex = 0;
-            }
-
-            return Path.Combine(ImagesBasePath, NoFileFileNames[noFileIndex]);
-        }
-
-        public string GetExpectedThumbPath(int tabIndex, string movieNameWithoutExt, string hash)
-        {
-            string thumbFileName = GetThumbFileName(movieNameWithoutExt, hash);
-            if (tabIndex == 99)
-            {
-                return Path.Combine(DetailOutPath, thumbFileName);
-            }
-
-            if (tabIndex < 0 || tabIndex >= TabOutPaths.Length)
-            {
-                return Path.Combine(TabOutPaths[0], thumbFileName);
-            }
-
-            return Path.Combine(TabOutPaths[tabIndex], thumbFileName);
+            ThumbRootPath = ApplicationPaths.ResolveThumbRoot(dbName, thumbFolder);
+            DetailPaneOutPath = ThumbnailLayoutSpec.DetailPaneLayout.GetOutPath(dbName, thumbFolder);
         }
 
         public string BuildThumbPath(ThumbnailLayoutSpec spec, string thumbFileName, bool checkExists)
@@ -115,29 +59,67 @@ namespace IndigoMovieManager.Thumbnail
             return File.Exists(fullPath) ? fullPath : GetErrorPath(2);
         }
 
+        public string BuildDetailThumbPath(string thumbFileName, bool checkExists) =>
+            BuildThumbPath(ThumbnailLayoutSpec.DetailPaneLayout, thumbFileName, checkExists);
+
+        /// <summary>
+        /// 詳細ペイン表示用。正規の <c>120x90x1x1</c> を優先し、無いときのみ 1×1 一覧レイアウトへ読み取りフォールバックする。
+        /// </summary>
+        public string ResolveDetailThumbPath(
+            string thumbFileName,
+            bool checkExists,
+            ThumbnailLayoutSpec singlePanelListFallback = null)
+        {
+            if (!checkExists)
+            {
+                return GetErrorPath(2);
+            }
+
+            string primaryPath = Path.Combine(DetailPaneOutPath, thumbFileName);
+            if (IsDisplayableThumb(primaryPath))
+            {
+                return primaryPath;
+            }
+
+            ThumbnailLayoutSpec fallback = singlePanelListFallback?.DivCount == 1
+                ? singlePanelListFallback
+                : DefaultGridListLayout;
+            string fallbackPath = Path.Combine(fallback.GetOutPath(DbName, ThumbFolder), thumbFileName);
+            if (IsDisplayableThumb(fallbackPath))
+            {
+                return fallbackPath;
+            }
+
+            return File.Exists(primaryPath) ? primaryPath : GetErrorPath(2);
+        }
+
         public string GetExpectedThumbPath(ThumbnailLayoutSpec spec, string movieNameWithoutExt, string hash)
         {
             string thumbFileName = GetThumbFileName(movieNameWithoutExt, hash);
             return Path.Combine(spec.GetOutPath(DbName, ThumbFolder), thumbFileName);
         }
 
-        public static int GetTabIndexFromSkin(string skin)
+        public string GetExpectedDetailThumbPath(string movieNameWithoutExt, string hash) =>
+            GetExpectedThumbPath(ThumbnailLayoutSpec.DetailPaneLayout, movieNameWithoutExt, hash);
+
+        public string GetErrorPath(int errorIndex)
         {
-            if (string.IsNullOrWhiteSpace(skin))
+            if (errorIndex < 0 || errorIndex >= ErrorFileNames.Length)
             {
-                return 0;
+                errorIndex = 2;
             }
 
-            string normalized = skin.Replace(" ", "");
-            return normalized switch
+            return Path.Combine(ImagesBasePath, ErrorFileNames[errorIndex]);
+        }
+
+        public string GetNoFilePath(int noFileIndex)
+        {
+            if (noFileIndex < 0 || noFileIndex >= NoFileFileNames.Length)
             {
-                "DefaultSmall" => 0,
-                "DefaultBig" => 1,
-                "DefaultGrid" => 2,
-                "DefaultList" => 3,
-                "DefaultBig10" => 4,
-                _ => 0,
-            };
+                noFileIndex = 2;
+            }
+
+            return Path.Combine(ImagesBasePath, NoFileFileNames[noFileIndex]);
         }
 
         public static string GetThumbFileName(string movieNameWithoutExt, string hash)
@@ -145,5 +127,10 @@ namespace IndigoMovieManager.Thumbnail
             string body = (movieNameWithoutExt ?? "").ToLowerInvariant();
             return $"{body}.#{hash}.jpg";
         }
+
+        private static bool IsDisplayableThumb(string path) =>
+            !string.IsNullOrWhiteSpace(path)
+            && File.Exists(path)
+            && ThumbnailValidityHelper.LooksLikeCompositeThumbnail(path);
     }
 }

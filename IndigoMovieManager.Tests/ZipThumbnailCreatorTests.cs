@@ -75,7 +75,7 @@ public class ZipThumbnailCreatorTests
             Assert.True(ZipImageCatalog.TryGetImageEntries(zipPath, out IReadOnlyList<string> entries));
             Assert.Single(entries);
 
-            TabInfo tabInfo = new(2, "testdb", thumbRoot);
+            TabInfo tabInfo = new(new ThumbnailLayoutSpec(160, 120, 1, 1), "testdb", thumbRoot);
             string saveThumb = Path.Combine(tabInfo.OutPath, "sample.#hash.jpg");
             Directory.CreateDirectory(tabInfo.OutPath);
 
@@ -155,7 +155,7 @@ public class ZipThumbnailCreatorTests
             Assert.True(ZipImageCatalog.TryGetImageEntries(zipPath, out IReadOnlyList<string> entries));
             Assert.Single(entries);
 
-            TabInfo tabInfo = new(2, "testdb", thumbRoot);
+            TabInfo tabInfo = new(new ThumbnailLayoutSpec(160, 120, 1, 1), "testdb", thumbRoot);
             string saveThumb = Path.Combine(tabInfo.OutPath, "sample.#hash.jpg");
             Directory.CreateDirectory(tabInfo.OutPath);
 

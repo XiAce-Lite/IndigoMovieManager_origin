@@ -54,7 +54,7 @@ public class ZipDetailThumbnailMaterializerTests
     }
 
     [Fact]
-    public void TryCopyFromExistingTabThumbs_uses_layout_cache_paths()
+    public void TryCopyFromExistingListThumbs_uses_layout_cache_paths()
     {
         string tempDir = Path.Combine(Path.GetTempPath(), "imm-zip-detail-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);
@@ -62,17 +62,18 @@ public class ZipDetailThumbnailMaterializerTests
         try
         {
             var cache = new ThumbnailLayoutCache();
-            cache.Refresh("testdb", tempDir, tabCount: 5);
+            cache.Refresh("testdb", tempDir);
 
             string movieBody = "sample";
             string hash = "abc123";
-            string sourcePath = cache.GetExpectedThumbPath(2, movieBody, hash);
-            string detailPath = cache.GetExpectedThumbPath(99, movieBody, hash);
+            var listLayout = new ThumbnailLayoutSpec(160, 120, 1, 1);
+            string sourcePath = cache.GetExpectedThumbPath(listLayout, movieBody, hash);
+            string detailPath = cache.GetExpectedDetailThumbPath(movieBody, hash);
 
             Directory.CreateDirectory(Path.GetDirectoryName(sourcePath)!);
             WriteCompositeThumb(sourcePath);
 
-            Assert.True(ZipDetailThumbnailMaterializer.TryCopyFromExistingTabThumbs(
+            Assert.True(ZipDetailThumbnailMaterializer.TryCopyFromExistingListThumbs(
                 cache,
                 movieBody,
                 hash,

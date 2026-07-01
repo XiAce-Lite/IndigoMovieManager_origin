@@ -5,6 +5,8 @@ namespace IndigoMovieManager.Tests;
 
 public class ThumbnailTabErrorDetectorTests
 {
+    private static readonly ThumbnailLayoutSpec ListLayout = new(120, 90, 3, 1);
+
     private static MovieRecords CreateRecord(string name, string path, string hash = "abc123") =>
         new()
         {
@@ -19,15 +21,9 @@ public class ThumbnailTabErrorDetectorTests
         thumbRoot = Path.Combine(Path.GetTempPath(), $"imm-err-{Guid.NewGuid():N}");
         Directory.CreateDirectory(thumbRoot);
         var cache = new ThumbnailLayoutCache();
-        cache.Refresh("testdb", thumbRoot, 5);
+        cache.Refresh("testdb", thumbRoot);
         return cache;
     }
-
-    private static string GetExpectedThumbPath(ThumbnailLayoutCache cache, int tabIndex, string movieName, string hash) =>
-        cache.GetExpectedThumbPath(
-            tabIndex,
-            Path.GetFileNameWithoutExtension(movieName).ToLowerInvariant(),
-            hash);
 
     private static void WriteCompositePlaceholder(string path)
     {
@@ -43,13 +39,13 @@ public class ThumbnailTabErrorDetectorTests
     }
 
     [Fact]
-    public void IsErrorForTab_returns_false_when_movie_file_missing()
+    public void IsErrorForLayout_returns_false_when_movie_file_missing()
     {
         var cache = CreateCache(out string thumbRoot);
         try
         {
             var record = CreateRecord("movie", @"C:\missing\movie.mp4");
-            Assert.False(ThumbnailTabErrorDetector.IsErrorForTab(record, 0, cache));
+            Assert.False(ThumbnailTabErrorDetector.IsErrorForLayout(record, ListLayout, cache));
         }
         finally
         {
@@ -61,7 +57,7 @@ public class ThumbnailTabErrorDetectorTests
     }
 
     [Fact]
-    public void IsErrorForTab_returns_true_when_thumb_missing_but_movie_exists()
+    public void IsErrorForLayout_returns_true_when_thumb_missing_but_movie_exists()
     {
         string moviePath = Path.Combine(Path.GetTempPath(), $"imm-movie-{Guid.NewGuid():N}.mp4");
         var cache = CreateCache(out string thumbRoot);
@@ -70,7 +66,7 @@ public class ThumbnailTabErrorDetectorTests
             File.WriteAllText(moviePath, "movie");
             var record = CreateRecord("movie", moviePath);
 
-            Assert.True(ThumbnailTabErrorDetector.IsErrorForTab(record, 0, cache));
+            Assert.True(ThumbnailTabErrorDetector.IsErrorForLayout(record, ListLayout, cache));
         }
         finally
         {
@@ -87,7 +83,7 @@ public class ThumbnailTabErrorDetectorTests
     }
 
     [Fact]
-    public void IsErrorForTab_returns_true_when_error_placeholder_written()
+    public void IsErrorForLayout_returns_true_when_error_placeholder_written()
     {
         string moviePath = Path.Combine(Path.GetTempPath(), $"imm-movie-{Guid.NewGuid():N}.mp4");
         var cache = CreateCache(out string thumbRoot);
@@ -96,15 +92,15 @@ public class ThumbnailTabErrorDetectorTests
             File.WriteAllText(moviePath, "movie");
             var record = CreateRecord("movie", moviePath);
 
-            string expectedThumb = GetExpectedThumbPath(cache, 0, "movie", "abc123");
-            string errorTemplate = cache.GetErrorPath(0);
+            string expectedThumb = cache.GetExpectedThumbPath(ListLayout, "movie", "abc123");
+            string errorTemplate = cache.GetErrorPath(2);
             Assert.True(File.Exists(errorTemplate), $"error template missing: {errorTemplate}");
 
             string directory = Path.GetDirectoryName(expectedThumb);
             Directory.CreateDirectory(directory!);
             File.Copy(errorTemplate, expectedThumb, true);
 
-            Assert.True(ThumbnailTabErrorDetector.IsErrorForTab(record, 0, cache));
+            Assert.True(ThumbnailTabErrorDetector.IsErrorForLayout(record, ListLayout, cache));
         }
         finally
         {
@@ -121,7 +117,7 @@ public class ThumbnailTabErrorDetectorTests
     }
 
     [Fact]
-    public void IsErrorForTab_returns_false_when_nofile_placeholder_written()
+    public void IsErrorForLayout_returns_false_when_nofile_placeholder_written()
     {
         string moviePath = Path.Combine(Path.GetTempPath(), $"imm-movie-{Guid.NewGuid():N}.mp4");
         var cache = CreateCache(out string thumbRoot);
@@ -130,15 +126,15 @@ public class ThumbnailTabErrorDetectorTests
             File.WriteAllText(moviePath, "movie");
             var record = CreateRecord("movie", moviePath);
 
-            string expectedThumb = GetExpectedThumbPath(cache, 0, "movie", "abc123");
-            string noFileTemplate = cache.GetNoFilePath(0);
+            string expectedThumb = cache.GetExpectedThumbPath(ListLayout, "movie", "abc123");
+            string noFileTemplate = cache.GetNoFilePath(2);
             Assert.True(File.Exists(noFileTemplate), $"nofile template missing: {noFileTemplate}");
 
             string directory = Path.GetDirectoryName(expectedThumb);
             Directory.CreateDirectory(directory!);
             File.Copy(noFileTemplate, expectedThumb, true);
 
-            Assert.False(ThumbnailTabErrorDetector.IsErrorForTab(record, 0, cache));
+            Assert.False(ThumbnailTabErrorDetector.IsErrorForLayout(record, ListLayout, cache));
         }
         finally
         {
@@ -165,7 +161,6 @@ public class ThumbnailTabErrorDetectorTests
             var record = CreateRecord("movie", moviePath);
 
             Assert.True(ThumbnailTabErrorDetector.IsDetailThumbnailError(record, cache));
-            Assert.True(ThumbnailTabErrorDetector.IsErrorForTab(record, 99, cache));
         }
         finally
         {
@@ -182,7 +177,7 @@ public class ThumbnailTabErrorDetectorTests
     }
 
     [Fact]
-    public void IsErrorForTab_returns_false_when_valid_composite_thumb_exists()
+    public void IsErrorForLayout_returns_false_when_valid_composite_thumb_exists()
     {
         string moviePath = Path.Combine(Path.GetTempPath(), $"imm-movie-{Guid.NewGuid():N}.mp4");
         var cache = CreateCache(out string thumbRoot);
@@ -191,10 +186,10 @@ public class ThumbnailTabErrorDetectorTests
             File.WriteAllText(moviePath, "movie");
             var record = CreateRecord("movie", moviePath);
 
-            string expectedThumb = GetExpectedThumbPath(cache, 0, "movie", "abc123");
+            string expectedThumb = cache.GetExpectedThumbPath(ListLayout, "movie", "abc123");
             WriteCompositePlaceholder(expectedThumb);
 
-            Assert.False(ThumbnailTabErrorDetector.IsErrorForTab(record, 0, cache));
+            Assert.False(ThumbnailTabErrorDetector.IsErrorForLayout(record, ListLayout, cache));
         }
         finally
         {

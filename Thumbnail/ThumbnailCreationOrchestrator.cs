@@ -39,17 +39,14 @@ namespace IndigoMovieManager.Thumbnail
                 null,
                 movieForProgress?.Video);
 
-            TabInfo tbi = queueObj.ThumbnailLayout != null
-                ? new TabInfo(queueObj.ThumbnailLayout, host.DbName, host.ThumbFolder)
-                : new TabInfo(queueObj.Tabindex, host.DbName, host.ThumbFolder);
+            ThumbnailLayoutSpec layout = queueObj.ThumbnailLayout ?? ThumbnailLayoutSpec.DetailPaneLayout;
+            TabInfo tbi = new(layout, host.DbName, host.ThumbFolder);
             string movieFullPath = MediaPathNormalizer.Normalize(queueObj.MovieFullPath);
             string hash = GetHashCRC32(movieFullPath);
             string fileBody = Path.GetFileNameWithoutExtension(movieFullPath).ToLowerInvariant();
-            string saveThumbFileName = queueObj.ThumbnailLayout != null && host.LayoutCache != null
-                ? host.LayoutCache.GetExpectedThumbPath(queueObj.ThumbnailLayout, fileBody, hash)
-                : host.LayoutCache != null
-                    ? host.LayoutCache.GetExpectedThumbPath(queueObj.Tabindex, fileBody, hash)
-                    : Path.Combine(tbi.OutPath, ThumbnailLayoutCache.GetThumbFileName(fileBody, hash));
+            string saveThumbFileName = host.LayoutCache != null
+                ? host.LayoutCache.GetExpectedThumbPath(layout, fileBody, hash)
+                : Path.Combine(tbi.OutPath, ThumbnailLayoutCache.GetThumbFileName(fileBody, hash));
 
             if (isManual && !Path.Exists(saveThumbFileName))
             {
@@ -70,7 +67,7 @@ namespace IndigoMovieManager.Thumbnail
                 return;
             }
 
-            string tempFileBody = $"{fileBody}_{hash}_tab{queueObj.Tabindex}_temp";
+            string tempFileBody = $"{fileBody}_{hash}_{layout.Key}_temp";
             string tempPath = ApplicationPaths.TempDirectory;
 
             if (!Path.Exists(tbi.OutPath))
@@ -82,18 +79,7 @@ namespace IndigoMovieManager.Thumbnail
             {
                 if (!Path.Exists(saveThumbFileName))
                 {
-                    string noFileJpeg = ApplicationPaths.ImagesDirectory;
-                    noFileJpeg = queueObj.Tabindex switch
-                    {
-                        0 => Path.Combine(noFileJpeg, "noFileSmall.jpg"),
-                        1 => Path.Combine(noFileJpeg, "noFileBig.jpg"),
-                        2 => Path.Combine(noFileJpeg, "noFileGrid.jpg"),
-                        3 => Path.Combine(noFileJpeg, "noFileList.jpg"),
-                        4 => Path.Combine(noFileJpeg, "noFileBig.jpg"),
-                        SkinTabIndexHelper.WpfSkinThumbnailSlotIndex => Path.Combine(noFileJpeg, "noFileGrid.jpg"),
-                        99 => Path.Combine(noFileJpeg, "noFileGrid.jpg"),
-                        _ => Path.Combine(noFileJpeg, "noFileSmall.jpg"),
-                    };
+                    string noFileJpeg = Path.Combine(ApplicationPaths.ImagesDirectory, "noFileGrid.jpg");
                     File.Copy(noFileJpeg, saveThumbFileName, true);
                 }
 
@@ -297,7 +283,8 @@ namespace IndigoMovieManager.Thumbnail
             CancellationToken cts)
         {
             if (sourceObj == null
-                || sourceObj.Tabindex is < 0 or > 4
+                || sourceObj.ThumbnailLayout == null
+                || sourceObj.ThumbnailLayout.Equals(ThumbnailLayoutSpec.DetailPaneLayout)
                 || !IsSessionActive(host)
                 || string.IsNullOrWhiteSpace(sourceObj.MovieFullPath))
             {
@@ -312,15 +299,16 @@ namespace IndigoMovieManager.Thumbnail
 
             string fileBody = Path.GetFileNameWithoutExtension(sourceObj.MovieFullPath).ToLowerInvariant();
             string detailPath = host.LayoutCache != null
-                ? host.LayoutCache.GetExpectedThumbPath(99, fileBody, hash)
-                : Path.Combine(new TabInfo(99, host.DbName, host.ThumbFolder).OutPath,
+                ? host.LayoutCache.GetExpectedDetailThumbPath(fileBody, hash)
+                : Path.Combine(
+                    new TabInfo(ThumbnailLayoutSpec.DetailPaneLayout, host.DbName, host.ThumbFolder).OutPath,
                     ThumbnailLayoutCache.GetThumbFileName(fileBody, hash));
 
             var detailObj = new QueueObj
             {
                 MovieId = sourceObj.MovieId,
                 MovieFullPath = sourceObj.MovieFullPath,
-                Tabindex = 99,
+                ThumbnailLayout = ThumbnailLayoutSpec.DetailPaneLayout,
                 DbFullPath = sourceObj.DbFullPath,
                 WorkGeneration = sourceObj.WorkGeneration,
             };
@@ -331,7 +319,7 @@ namespace IndigoMovieManager.Thumbnail
                 if (!copied
                     && host.LayoutCache != null)
                 {
-                    copied = ZipDetailThumbnailMaterializer.TryCopyFromExistingTabThumbs(
+                    copied = ZipDetailThumbnailMaterializer.TryCopyFromExistingListThumbs(
                         host.LayoutCache,
                         fileBody,
                         hash,

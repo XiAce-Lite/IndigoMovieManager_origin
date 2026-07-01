@@ -90,16 +90,16 @@ namespace IndigoMovieManager.Services
                     return true;
 
                 case "error":
-                    int tabIndex = context?.CurrentTabIndex ?? -1;
                     ThumbnailLayoutCache cache = context?.ThumbnailCache;
-                    if (tabIndex < 0 || cache == null)
+                    if (cache == null)
                     {
                         filtered = [];
                     }
                     else
                     {
+                        SkinEngine engine = context.CurrentSkinEngine;
                         filtered = [.. source.Where(x =>
-                            ThumbnailTabErrorDetector.IsErrorForTab(x, tabIndex, cache))];
+                            ThumbnailTabErrorDetector.IsErrorForEngine(x, engine, cache))];
                     }
 
                     return true;

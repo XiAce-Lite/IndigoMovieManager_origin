@@ -1,5 +1,6 @@
 namespace IndigoMovieManager.Tests;
 
+using IndigoMovieManager.Services;
 using IndigoMovieManager.Thumbnail;
 using Xunit;
 
@@ -191,7 +192,7 @@ public class MovieListFilterTests
       File.WriteAllText(moviePath, "movie");
 
       var cache = new ThumbnailLayoutCache();
-      cache.Refresh("testdb", thumbRoot, 5);
+      cache.Refresh("testdb", thumbRoot);
 
       var source = new[]
       {
@@ -199,18 +200,19 @@ public class MovieListFilterTests
         CreateRecord("ok.mp4", moviePath, hash: "okhash"),
       };
 
-      string okThumb = cache.GetExpectedThumbPath(0, "ok", "okhash");
+      var context = new MovieListFilterContext
+      {
+        CurrentSkinEngine = SkinEngine.Wpf,
+        ThumbnailCache = cache,
+      };
+
+      var wpfLayout = new ThumbnailLayoutSpec(400, 225, 1, 1);
+      string okThumb = cache.GetExpectedThumbPath(wpfLayout, "ok", "okhash");
       string directory = Path.GetDirectoryName(okThumb);
       Directory.CreateDirectory(directory!);
       byte[] composite = new byte[128];
       BitConverter.GetBytes((ushort)1).CopyTo(composite, composite.Length - 60);
       File.WriteAllBytes(okThumb, composite);
-
-      var context = new MovieListFilterContext
-      {
-        CurrentTabIndex = 0,
-        ThumbnailCache = cache,
-      };
 
       var result = MovieListFilter.Build(source, "{::error}", "1", context);
 

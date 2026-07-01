@@ -6,13 +6,11 @@ namespace IndigoMovieManager.Services
     {
         public static WhiteBrowserMovieDto ToWhiteBrowserDto(
             MovieRecords rec,
-            int tabIndex,
             Func<string, string> toThumbUrl,
             IReadOnlyCollection<long> selectedIds,
             long? focusedId)
         {
-            int thumbTab = SkinTabIndexHelper.GetThumbnailTabIndex(tabIndex);
-            string thumbPath = PlayPositionResolver.GetThumbPathForTab(rec, thumbTab);
+            string thumbPath = PlayPositionResolver.GetThumbPathForEngine(rec, SkinEngine.Wb);
             bool selected = selectedIds.Contains(rec.Movie_Id);
 
             return new WhiteBrowserMovieDto
@@ -39,35 +37,6 @@ namespace IndigoMovieManager.Services
                     rec.Comment2 ?? "",
                     rec.Comment3 ?? "",
                 ],
-            };
-        }
-
-        public static SkinMovieDto ToDto(
-            MovieRecords rec,
-            int tabIndex,
-            Func<string, string> toThumbUrl,
-            IReadOnlyCollection<long> selectedIds,
-            long? focusedId)
-        {
-            int thumbTab = SkinTabIndexHelper.GetThumbnailTabIndex(tabIndex);
-            string thumbPath = PlayPositionResolver.GetThumbPathForTab(rec, thumbTab);
-
-            return new SkinMovieDto
-            {
-                Id = rec.Movie_Id,
-                MovieName = rec.Movie_Name ?? "",
-                MovieBody = rec.Movie_Body ?? "",
-                Ext = rec.Ext ?? "",
-                MoviePath = rec.Movie_Path ?? "",
-                Thumb = string.IsNullOrEmpty(thumbPath) ? "" : toThumbUrl(thumbPath),
-                Score = rec.Score,
-                FileDate = rec.File_Date ?? "",
-                SizeText = FormatFileSize(rec.Movie_Size),
-                Length = rec.Movie_Length ?? "",
-                Tags = rec.Tag?.ToArray() ?? [],
-                Exists = rec.IsExists,
-                Selected = selectedIds.Contains(rec.Movie_Id),
-                Focused = focusedId == rec.Movie_Id,
             };
         }
 

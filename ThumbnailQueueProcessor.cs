@@ -526,7 +526,8 @@ namespace IndigoMovieManager
         setActiveProgressJobId,
         setLastReportUtc,
         jobId,
-        snapshot.PrimaryTabIndex,
+        snapshot.PrimaryLayoutKey,
+        snapshot.DisplayTitle,
         jobSwitchToken).ConfigureAwait(false);
 
       if (session == null)
@@ -599,7 +600,8 @@ namespace IndigoMovieManager
       Action<int> setActiveProgressJobId,
       Action<DateTime> setLastReportUtc,
       int jobIdToShow,
-      int primaryTabIndex,
+      string primaryLayoutKey,
+      string displayTitle,
       int jobSwitchToken)
     {
       ThumbnailProgressSession Activate()
@@ -621,7 +623,7 @@ namespace IndigoMovieManager
             return null;
           }
 
-          ThumbnailProgressSession session = new(primaryTabIndex, jobSwitchToken);
+          ThumbnailProgressSession session = new(primaryLayoutKey ?? "", displayTitle, jobSwitchToken);
           setActiveProgress(session);
           setActiveProgressJobId(jobIdToShow);
           setLastReportUtc(DateTime.MinValue);

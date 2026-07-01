@@ -14,10 +14,15 @@ namespace IndigoMovieManager
         private StatusBarProgressCoordinator.ThumbnailSlotHandle _handle;
         private bool _disposed;
 
-        public ThumbnailProgressSession(int primaryTabIndex, int jobSwitchToken)
+        public ThumbnailProgressSession(string primaryLayoutKey, string displayTitle, int jobSwitchToken)
         {
-            _baseTitle = GetBaseTitle(primaryTabIndex);
+            _baseTitle = ResolveBaseTitle(primaryLayoutKey, displayTitle);
             _jobSwitchToken = jobSwitchToken;
+        }
+
+        public ThumbnailProgressSession(string primaryLayoutKey, int jobSwitchToken)
+            : this(primaryLayoutKey, null, jobSwitchToken)
+        {
         }
 
         public bool IsVisible => _handle != null;
@@ -115,17 +120,16 @@ namespace IndigoMovieManager
             ThumbnailProgressRegistry.Register(this);
         }
 
-        private static string GetBaseTitle(int tabIndex)
+        private static string ResolveBaseTitle(string layoutKey, string displayTitle)
         {
-            return tabIndex switch
+            if (!string.IsNullOrWhiteSpace(displayTitle))
             {
-                0 => "サムネイル作成中(Small)",
-                1 => "サムネイル作成中(Big)",
-                2 => "サムネイル作成中(Grid)",
-                3 => "サムネイル作成中(List)",
-                4 => "サムネイル作成中(Big10)",
-                _ => "サムネイル作成中",
-            };
+                return $"サムネイル作成中 ({displayTitle})";
+            }
+
+            return string.IsNullOrEmpty(layoutKey)
+                ? "サムネイル作成中"
+                : "サムネイル作成中";
         }
     }
 }
