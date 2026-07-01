@@ -46,7 +46,7 @@ public class ZipRealFileDiagnosticTests
 
         try
         {
-            TabInfo tabInfo = new(0, "testdb", thumbRoot);
+            TabInfo tabInfo = new(new ThumbnailLayoutSpec(120, 90, 3, 1), "testdb", thumbRoot);
             string saveThumb = Path.Combine(tabInfo.OutPath, "sample.#hash.jpg");
             Directory.CreateDirectory(tabInfo.OutPath);
 
@@ -106,7 +106,7 @@ public class ZipRealFileDiagnosticTests
 
         try
         {
-            TabInfo tabInfo = new(2, "testdb", thumbRoot);
+            TabInfo tabInfo = new(new ThumbnailLayoutSpec(160, 120, 1, 1), "testdb", thumbRoot);
             string saveThumb = Path.Combine(tabInfo.OutPath, "sample.#hash.jpg");
             Directory.CreateDirectory(tabInfo.OutPath);
 

@@ -77,9 +77,6 @@ namespace IndigoMovieManager
             set { currentSkinEngine = value; OnPropertyChanged(nameof(CurrentSkinEngine)); }
         }
 
-        /// <summary>サムネ解決用の旧タブ番号（フェーズ B で廃止予定）。</summary>
-        public int CurrentTabIndex => SkinEngineHelper.ToLegacyThumbTabIndex(currentSkinEngine);
-
         public string Sort
         {
             get => sort;

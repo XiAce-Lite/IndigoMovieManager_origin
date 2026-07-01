@@ -19,15 +19,17 @@ public class MainWindowSessionStateTests
 
 public class ThumbnailJobCoordinatorTests
 {
+    private static readonly ThumbnailLayoutSpec ListLayout = new(160, 120, 1, 1);
+
     [Fact]
     public void BeginJob_cancels_previous_job_token()
     {
         var coordinator = new ThumbnailJobCoordinator();
-        int firstJobId = coordinator.BeginJob(0);
+        int firstJobId = coordinator.BeginJob(ListLayout.Key);
         CancellationToken firstToken = coordinator.GetJobCancellationToken(firstJobId);
         Assert.False(firstToken.IsCancellationRequested);
 
-        coordinator.BeginJob(1);
+        coordinator.BeginJob("other-layout");
 
         Assert.True(firstToken.IsCancellationRequested);
     }
@@ -36,10 +38,15 @@ public class ThumbnailJobCoordinatorTests
     public void AbandonAndClearQueue_marks_previous_job_abandoned()
     {
         var scheduler = new ThumbnailQueueScheduler();
-        var firstJobItem = new QueueObj { MovieId = 1, Tabindex = 0, DbFullPath = @"C:\a\db.sqlite" };
-        scheduler.EnqueueWork(firstJobItem, 0, beginNewJob: true);
+        var firstJobItem = new QueueObj
+        {
+            MovieId = 1,
+            ThumbnailLayout = ListLayout,
+            DbFullPath = @"C:\a\db.sqlite",
+        };
+        scheduler.EnqueueWork(firstJobItem, ListLayout.Key, beginNewJob: true);
 
-        scheduler.AbandonAndClearQueue(1);
+        scheduler.AbandonAndClearQueue("other-layout");
 
         Assert.False(scheduler.JobCoordinator.ShouldProcess(firstJobItem));
     }
@@ -48,10 +55,10 @@ public class ThumbnailJobCoordinatorTests
     public void TryRegisterManualWork_allows_requeue_when_not_in_flight()
     {
         var coordinator = new ThumbnailJobCoordinator();
-        var first = new QueueObj { MovieId = 1, Tabindex = 0 };
+        var first = new QueueObj { MovieId = 1, ThumbnailLayout = ListLayout };
         Assert.True(coordinator.TryRegisterSilentWork(first));
 
-        var manual = new QueueObj { MovieId = 1, Tabindex = 0, IsManual = true };
+        var manual = new QueueObj { MovieId = 1, ThumbnailLayout = ListLayout, IsManual = true };
         Assert.True(coordinator.TryRegisterManualWork(manual));
     }
 
@@ -59,20 +66,20 @@ public class ThumbnailJobCoordinatorTests
     public void CancelTrackedForMovie_removes_pending_work()
     {
         var coordinator = new ThumbnailJobCoordinator();
-        var item = new QueueObj { MovieId = 99, Tabindex = 2 };
+        var item = new QueueObj { MovieId = 99, ThumbnailLayout = ListLayout };
         coordinator.TryRegisterSilentWork(item);
         coordinator.CancelTrackedForMovie(99);
-        Assert.False(coordinator.IsTracked(99, 2));
+        Assert.False(coordinator.IsTracked(99, ListLayout.Key));
     }
 
     [Fact]
     public void ClearSilentQueue_preserves_visible_job_items()
     {
         var scheduler = new ThumbnailQueueScheduler();
-        var visible = new QueueObj { MovieId = 1, Tabindex = 0, DbFullPath = @"C:\a\db.sqlite" };
-        var silent = new QueueObj { MovieId = 2, Tabindex = 0, DbFullPath = @"C:\a\db.sqlite" };
+        var visible = new QueueObj { MovieId = 1, ThumbnailLayout = ListLayout, DbFullPath = @"C:\a\db.sqlite" };
+        var silent = new QueueObj { MovieId = 2, ThumbnailLayout = ListLayout, DbFullPath = @"C:\a\db.sqlite" };
 
-        scheduler.EnqueueWork(visible, 0, beginNewJob: true);
+        scheduler.EnqueueWork(visible, ListLayout.Key, beginNewJob: true);
         scheduler.EnqueueSilentWork(silent);
 
         Assert.Equal(2, scheduler.Queue.Count);
@@ -81,7 +88,7 @@ public class ThumbnailJobCoordinatorTests
 
         Assert.Single(scheduler.Queue);
         Assert.True(scheduler.JobCoordinator.ShouldProcess(visible));
-        Assert.False(scheduler.JobCoordinator.IsTracked(2, 0));
+        Assert.False(scheduler.JobCoordinator.IsTracked(2, ListLayout.Key));
     }
 
     [Fact]
@@ -96,7 +103,7 @@ public class ThumbnailJobCoordinatorTests
             await File.WriteAllTextAsync(moviePath, "test");
 
             var cache = new ThumbnailLayoutCache();
-            cache.Refresh("testdb", thumbRoot, 5);
+            cache.Refresh("testdb", thumbRoot);
 
             var records = new List<MovieRecords>
             {
@@ -110,7 +117,13 @@ public class ThumbnailJobCoordinatorTests
             };
 
             int buildEpoch = scheduler.TabSwitchBuildGeneration;
-            await scheduler.StartTabSwitchJobAsync(0, records, cache, @"C:\fake\db.wb", workGeneration: 1, buildEpoch);
+            await scheduler.StartTabSwitchJobAsync(
+                ListLayout,
+                records,
+                cache,
+                @"C:\fake\db.wb",
+                workGeneration: 1,
+                buildEpoch);
 
             Assert.Single(scheduler.Queue);
             scheduler.Queue.TryDequeue(out QueueObj item);
@@ -143,7 +156,7 @@ public class ThumbnailJobCoordinatorTests
         try
         {
             var cache = new ThumbnailLayoutCache();
-            cache.Refresh("testdb", thumbRoot, 5);
+            cache.Refresh("testdb", thumbRoot);
 
             var largeScope = new List<MovieRecords>();
             for (int i = 0; i < 300; i++)
@@ -161,14 +174,26 @@ public class ThumbnailJobCoordinatorTests
 
             var smallScope = new List<MovieRecords> { largeScope[0] };
 
-            scheduler.AbandonAndClearQueue(0);
+            scheduler.AbandonAndClearQueue(ListLayout.Key);
             int staleEpoch = scheduler.TabSwitchBuildGeneration;
-            Task staleBuild = scheduler.StartTabSwitchJobAsync(0, largeScope, cache, @"C:\fake\db.wb", workGeneration: 1, staleEpoch);
-            scheduler.AbandonAndClearQueue(0);
+            Task staleBuild = scheduler.StartTabSwitchJobAsync(
+                ListLayout,
+                largeScope,
+                cache,
+                @"C:\fake\db.wb",
+                workGeneration: 1,
+                staleEpoch);
+            scheduler.AbandonAndClearQueue(ListLayout.Key);
             await staleBuild.ConfigureAwait(true);
 
             int currentEpoch = scheduler.TabSwitchBuildGeneration;
-            await scheduler.StartTabSwitchJobAsync(0, smallScope, cache, @"C:\fake\db.wb", workGeneration: 1, currentEpoch);
+            await scheduler.StartTabSwitchJobAsync(
+                ListLayout,
+                smallScope,
+                cache,
+                @"C:\fake\db.wb",
+                workGeneration: 1,
+                currentEpoch);
 
             Assert.Single(scheduler.Queue);
         }
@@ -195,7 +220,7 @@ public class ThumbnailJobCoordinatorTests
         try
         {
             var cache = new ThumbnailLayoutCache();
-            cache.Refresh("testdb", thumbRoot, 5);
+            cache.Refresh("testdb", thumbRoot);
 
             var records = new List<MovieRecords>
             {
@@ -208,7 +233,12 @@ public class ThumbnailJobCoordinatorTests
                 },
             };
 
-            List<QueueObj> work = scheduler.BuildTabSwitchWork(0, records, cache, @"C:\fake\db.wb", workGeneration: 1);
+            List<QueueObj> work = scheduler.BuildTabSwitchWork(
+                ListLayout,
+                records,
+                cache,
+                @"C:\fake\db.wb",
+                workGeneration: 1);
 
             Assert.Empty(work);
         }

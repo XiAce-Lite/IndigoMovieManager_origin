@@ -41,7 +41,7 @@ namespace IndigoMovieManager
 
             if (resolveAll)
             {
-                thumbPathDetail = cache.BuildThumbPath(99, thumbFile, checkExists: true);
+                thumbPathDetail = cache.ResolveDetailThumbPath(thumbFile, checkExists: true);
             }
 
             string tags = row["tag"].ToString();

@@ -44,16 +44,7 @@ namespace IndigoMovieManager.Services
             }
         }
 
-        public static string GetTrackLayoutKey(QueueObj queueObj)
-        {
-            if (queueObj?.ThumbnailLayout != null)
-            {
-                return queueObj.ThumbnailLayout.Key;
-            }
-
-            return queueObj?.Tabindex == 99
-                ? ThumbnailLayoutSpec.FromTabIndex(99).Key
-                : $"legacy-tab:{queueObj?.Tabindex ?? -1}";
-        }
+        public static string GetTrackLayoutKey(QueueObj queueObj) =>
+            queueObj?.ThumbnailLayout?.Key ?? "";
     }
 }

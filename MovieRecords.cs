@@ -39,11 +39,6 @@ namespace IndigoMovieManager
         private string comment1 = "";
         private string comment2 = "";
         private string comment3 = "";
-        private string thumbPathSmall = "";
-        private string thumbPathBig = "";
-        private string thumbPathGrid = "";
-        private string thumbPathList = "";
-        private string thumbPathBig10 = "";
         private string thumbPathWpfSkin = "";
         private string thumbPathWb = "";
         private string thumbDetail = "";
@@ -240,36 +235,6 @@ namespace IndigoMovieManager
         {
             get { return comment3; }
             set { comment3 = value; OnPropertyChanged(nameof(Comment3)); }
-        }
-
-        public string ThumbPathSmall
-        {
-            get { return thumbPathSmall; }
-            set { thumbPathSmall = value; OnPropertyChanged(nameof(ThumbPathSmall)); }
-        }
-
-        public string ThumbPathBig
-        {
-            get { return thumbPathBig; }
-            set { thumbPathBig = value; OnPropertyChanged(nameof(ThumbPathBig)); }
-        }
-
-        public string ThumbPathGrid
-        {
-            get { return thumbPathGrid; }
-            set { thumbPathGrid = value; OnPropertyChanged(nameof(ThumbPathGrid)); }
-        }
-
-        public string ThumbPathList
-        {
-            get { return thumbPathList; }
-            set { thumbPathList = value; OnPropertyChanged(nameof(ThumbPathList)); }
-        }
-
-        public string ThumbPathBig10
-        {
-            get { return thumbPathBig10; }
-            set { thumbPathBig10 = value; OnPropertyChanged(nameof(ThumbPathBig10)); }
         }
 
         public string ThumbPathWpfSkin

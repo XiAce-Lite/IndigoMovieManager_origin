@@ -192,7 +192,7 @@ public class MovieListFilterTests
       File.WriteAllText(moviePath, "movie");
 
       var cache = new ThumbnailLayoutCache();
-      cache.Refresh("testdb", thumbRoot, 5);
+      cache.Refresh("testdb", thumbRoot);
 
       var source = new[]
       {

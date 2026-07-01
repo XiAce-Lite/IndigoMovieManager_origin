@@ -11,6 +11,9 @@ namespace IndigoMovieManager.Thumbnail
     /// </summary>
     public sealed class ThumbnailLayoutSpec : IEquatable<ThumbnailLayoutSpec>
     {
+        /// <summary>詳細ペイン用（WB 互換の 120×90×1×1）。</summary>
+        public static ThumbnailLayoutSpec DetailPaneLayout { get; } = new(120, 90, 1, 1);
+
         public int Width { get; }
         public int Height { get; }
         public int Columns { get; }
@@ -27,18 +30,6 @@ namespace IndigoMovieManager.Thumbnail
             Columns = Math.Max(1, columns);
             Rows = Math.Max(1, rows);
         }
-
-        public static ThumbnailLayoutSpec FromTabIndex(int tabIndex) =>
-            tabIndex switch
-            {
-                0 => new ThumbnailLayoutSpec(120, 90, 3, 1),
-                1 => new ThumbnailLayoutSpec(200, 150, 3, 1),
-                2 => new ThumbnailLayoutSpec(160, 120, 1, 1),
-                3 => new ThumbnailLayoutSpec(56, 42, 5, 1),
-                4 => new ThumbnailLayoutSpec(120, 90, 5, 2),
-                99 => new ThumbnailLayoutSpec(120, 90, 1, 1),
-                _ => new ThumbnailLayoutSpec(160, 120, 1, 1),
-            };
 
         public static ThumbnailLayoutSpec FromWpfSkinThumbnail(WpfSkinThumbnail thumbnail)
         {

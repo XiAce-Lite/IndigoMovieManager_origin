@@ -44,7 +44,7 @@ public class ThumbnailLayoutGenerationTests
             }
 
             var cache = new ThumbnailLayoutCache();
-            cache.Refresh("testdb", thumbRoot, SkinTabIndexHelper.PhysicalThumbTabCount);
+            cache.Refresh("testdb", thumbRoot);
 
             var spec = new ThumbnailLayoutSpec(panelWidth, panelHeight, columns, rows);
             var tabInfo = new TabInfo(spec, "testdb", thumbRoot);
@@ -65,7 +65,6 @@ public class ThumbnailLayoutGenerationTests
             {
                 MovieId = movie.Movie_Id,
                 MovieFullPath = videoPath,
-                Tabindex = SkinTabIndexHelper.WpfSkinThumbnailSlotIndex,
                 ThumbnailLayout = spec,
                 DbFullPath = Path.Combine(workDir, "test.db"),
                 WorkGeneration = 1,

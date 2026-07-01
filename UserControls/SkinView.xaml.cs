@@ -25,7 +25,6 @@ namespace IndigoMovieManager.UserControls
     {
         private const string ThumbVirtualHost = "imm-thumb.local";
         private const string ImagesVirtualHost = "imm-images.local";
-        private const string SkinVirtualHost = "imm-skin.local";
 
         private static readonly JsonSerializerOptions JsonOptions = new()
         {
@@ -36,7 +35,6 @@ namespace IndigoMovieManager.UserControls
         private bool _initialized;
         private bool _initializing;
         private bool _ready;
-        private bool IsWhiteBrowserCompat => SkinTabIndexHelper.IsWebSkinTab(SkinTabIndex);
         private string _thumbRoot = "";
         private string _imagesRoot = "";
         private IEnumerable<MovieRecords> _lastItems;
@@ -49,19 +47,6 @@ namespace IndigoMovieManager.UserControls
 
         private const int RenderFirstBatchSize = 48;
         private const int RenderAppendBatchSize = 240;
-
-        public static readonly DependencyProperty SkinTabIndexProperty =
-            DependencyProperty.Register(
-                nameof(SkinTabIndex),
-                typeof(int),
-                typeof(SkinView),
-                new PropertyMetadata(SkinTabIndexHelper.WbSkinTabIndex));
-
-        public int SkinTabIndex
-        {
-            get => (int)GetValue(SkinTabIndexProperty);
-            set => SetValue(SkinTabIndexProperty, value);
-        }
 
         internal SkinConfig Config => _config;
 
@@ -87,11 +72,7 @@ namespace IndigoMovieManager.UserControls
                 return;
             }
 
-            _expectedConfig = SkinConfig.DefaultGridWeb();
-            if (IsWhiteBrowserCompat)
-            {
-                _expectedConfig = WhiteBrowserSkinSettings.ParseSkinConfig(WhiteBrowserSkinSettings.ActiveSkinFolder);
-            }
+            _expectedConfig = WhiteBrowserSkinSettings.ParseSkinConfig(WhiteBrowserSkinSettings.ActiveSkinFolder);
             await EnsureInitializedAsync().ConfigureAwait(true);
         }
 
@@ -144,41 +125,23 @@ namespace IndigoMovieManager.UserControls
                         CoreWebView2HostResourceAccessKind.Allow);
                 }
 
-                if (IsWhiteBrowserCompat)
+                string wbRoot = WhiteBrowserSkinSettings.GetWbHostRoot();
+                if (Directory.Exists(wbRoot))
                 {
-                    string wbRoot = WhiteBrowserSkinSettings.GetWbHostRoot();
-                    if (Directory.Exists(wbRoot))
-                    {
-                        core.SetVirtualHostNameToFolderMapping(
-                            WhiteBrowserSkinSettings.WbHostVirtualHost,
-                            wbRoot,
-                            CoreWebView2HostResourceAccessKind.Allow);
-                    }
-
-                    string compatScript = WhiteBrowserSkinSettings.GetCompatScriptPath();
-                    if (File.Exists(compatScript))
-                    {
-                        string script = await File.ReadAllTextAsync(compatScript).ConfigureAwait(true);
-                        await core.AddScriptToExecuteOnDocumentCreatedAsync(script).ConfigureAwait(true);
-                    }
-
-                    core.Navigate(WhiteBrowserSkinSettings.GetEntryUrl());
+                    core.SetVirtualHostNameToFolderMapping(
+                        WhiteBrowserSkinSettings.WbHostVirtualHost,
+                        wbRoot,
+                        CoreWebView2HostResourceAccessKind.Allow);
                 }
-                else
+
+                string compatScript = WhiteBrowserSkinSettings.GetCompatScriptPath();
+                if (File.Exists(compatScript))
                 {
-                    string skinsRoot = Path.Combine(AppContext.BaseDirectory, "Skins");
-                    if (Directory.Exists(skinsRoot))
-                    {
-                        core.SetVirtualHostNameToFolderMapping(
-                            SkinVirtualHost,
-                            skinsRoot,
-                            CoreWebView2HostResourceAccessKind.Allow);
-                    }
-
-                    string folder = WhiteBrowserSkinSettings.ActiveSkinFolder;
-                    string entry = $"https://{SkinVirtualHost}/{folder}/{folder}.htm";
-                    core.Navigate(entry);
+                    string script = await File.ReadAllTextAsync(compatScript).ConfigureAwait(true);
+                    await core.AddScriptToExecuteOnDocumentCreatedAsync(script).ConfigureAwait(true);
                 }
+
+                core.Navigate(WhiteBrowserSkinSettings.GetEntryUrl());
 
                 _initialized = true;
                 ErrorText.Visibility = Visibility.Collapsed;
@@ -224,11 +187,6 @@ namespace IndigoMovieManager.UserControls
 
         public async Task ReloadWhiteBrowserSkinAsync()
         {
-            if (!IsWhiteBrowserCompat)
-            {
-                return;
-            }
-
             _expectedConfig = WhiteBrowserSkinSettings.ParseSkinConfig(WhiteBrowserSkinSettings.ActiveSkinFolder);
             _ready = false;
             _renderGeneration++;
@@ -261,29 +219,14 @@ namespace IndigoMovieManager.UserControls
             long[] selectedIds = _selectedIds.ToArray();
             long? focusedId = _focusedId;
 
-            if (IsWhiteBrowserCompat)
-            {
-                if (list.Count <= RenderFirstBatchSize)
-                {
-                    PostWbRenderMessage(generation, list, 0, list.Count, selectedIds, focusedId, reset: true);
-                    return;
-                }
-
-                PostWbRenderMessage(generation, list, 0, RenderFirstBatchSize, selectedIds, focusedId, reset: true);
-                ScheduleWbRenderAppend(generation, list, RenderFirstBatchSize, selectedIds, focusedId);
-                return;
-            }
-
-            object config = ToJsConfig(_config ?? _expectedConfig);
-
             if (list.Count <= RenderFirstBatchSize)
             {
-                PostRenderMessage(generation, config, list, 0, list.Count, selectedIds, focusedId, complete: true);
+                PostWbRenderMessage(generation, list, 0, list.Count, selectedIds, focusedId, reset: true);
                 return;
             }
 
-            PostRenderMessage(generation, config, list, 0, RenderFirstBatchSize, selectedIds, focusedId, complete: false);
-            ScheduleRenderAppend(generation, config, list, RenderFirstBatchSize, selectedIds, focusedId);
+            PostWbRenderMessage(generation, list, 0, RenderFirstBatchSize, selectedIds, focusedId, reset: true);
+            ScheduleWbRenderAppend(generation, list, RenderFirstBatchSize, selectedIds, focusedId);
         }
 
         private void ScheduleWbRenderAppend(
@@ -342,101 +285,13 @@ namespace IndigoMovieManager.UserControls
             Browser.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(payload, JsonOptions));
         }
 
-        private void ScheduleRenderAppend(
-            int generation,
-            object config,
-            IReadOnlyList<MovieRecords> list,
-            int offset,
-            long[] selectedIds,
-            long? focusedId)
-        {
-            Dispatcher.BeginInvoke(() =>
-            {
-                if (generation != _renderGeneration || !_ready || Browser.CoreWebView2 == null)
-                {
-                    return;
-                }
-
-                int count = Math.Min(RenderAppendBatchSize, list.Count - offset);
-                if (count <= 0)
-                {
-                    return;
-                }
-
-                int nextOffset = offset + count;
-                bool complete = nextOffset >= list.Count;
-                PostRenderAppend(generation, config, list, offset, count, selectedIds, focusedId, complete);
-
-                if (!complete)
-                {
-                    ScheduleRenderAppend(generation, config, list, nextOffset, selectedIds, focusedId);
-                }
-            }, DispatcherPriority.Background);
-        }
-
-        private void PostRenderMessage(
-            int generation,
-            object config,
-            IReadOnlyList<MovieRecords> list,
-            int offset,
-            int count,
-            long[] selectedIds,
-            long? focusedId,
-            bool complete)
-        {
-            if (generation != _renderGeneration || Browser.CoreWebView2 == null)
-            {
-                return;
-            }
-
-            var dtoItems = MapDtoRange(list, offset, count);
-            var payload = new
-            {
-                type = "render",
-                config,
-                items = dtoItems,
-                selectedIds,
-                focusedId,
-                partial = !complete,
-                total = list.Count,
-            };
-            Browser.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(payload, JsonOptions));
-        }
-
-        private void PostRenderAppend(
-            int generation,
-            object config,
-            IReadOnlyList<MovieRecords> list,
-            int offset,
-            int count,
-            long[] selectedIds,
-            long? focusedId,
-            bool complete)
-        {
-            if (generation != _renderGeneration || Browser.CoreWebView2 == null)
-            {
-                return;
-            }
-
-            var dtoItems = MapDtoRange(list, offset, count);
-            var payload = new
-            {
-                type = "renderAppend",
-                items = dtoItems,
-                complete,
-            };
-            Browser.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(payload, JsonOptions));
-        }
-
         private object[] MapDtoRange(IReadOnlyList<MovieRecords> list, int offset, int count)
         {
             var dtoItems = new object[count];
             for (int i = 0; i < count; i++)
             {
                 MovieRecords rec = list[offset + i];
-                dtoItems[i] = IsWhiteBrowserCompat
-                    ? SkinMovieMapper.ToWhiteBrowserDto(rec, SkinTabIndex, MapThumbUrl, _selectedIds, _focusedId)
-                    : SkinMovieMapper.ToDto(rec, SkinTabIndex, MapThumbUrl, _selectedIds, _focusedId);
+                dtoItems[i] = SkinMovieMapper.ToWhiteBrowserDto(rec, MapThumbUrl, _selectedIds, _focusedId);
             }
 
             return dtoItems;
@@ -461,16 +316,8 @@ namespace IndigoMovieManager.UserControls
                 return;
             }
 
-            if (IsWhiteBrowserCompat)
-            {
-                var payload = new { type = "wbUpdateThum", id = movieId, thum = MapThumbUrl(thumbFullPath) };
-                Browser.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(payload, JsonOptions));
-            }
-            else
-            {
-                var payload = new { type = "updateThumb", id = movieId, thumb = MapThumbUrl(thumbFullPath) };
-                Browser.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(payload, JsonOptions));
-            }
+            var payload = new { type = "wbUpdateThum", id = movieId, thum = MapThumbUrl(thumbFullPath) };
+            Browser.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(payload, JsonOptions));
         }
 
         public void SelectFirstItem(IEnumerable<MovieRecords> items)
@@ -645,36 +492,7 @@ namespace IndigoMovieManager.UserControls
 
         private void ApplyConfigFromMessage(JsonElement root)
         {
-            if (IsWhiteBrowserCompat)
-            {
-                _config = _expectedConfig;
-                return;
-            }
-
-            if (!root.TryGetProperty("config", out JsonElement cfg))
-            {
-                _config = _expectedConfig;
-                return;
-            }
-
-            var parsed = new SkinConfig
-            {
-                SkinVersion = cfg.TryGetProperty("skinVersion", out JsonElement sv) ? sv.GetInt32() : 1,
-                ThumbWidth = cfg.TryGetProperty("thumbWidth", out JsonElement tw) ? tw.GetInt32() : _expectedConfig.ThumbWidth,
-                ThumbHeight = cfg.TryGetProperty("thumbHeight", out JsonElement th) ? th.GetInt32() : _expectedConfig.ThumbHeight,
-                ThumbColumn = cfg.TryGetProperty("thumbColumn", out JsonElement tc) ? tc.GetInt32() : _expectedConfig.ThumbColumn,
-                ThumbRow = cfg.TryGetProperty("thumbRow", out JsonElement tr) ? tr.GetInt32() : _expectedConfig.ThumbRow,
-                MultiSelect = cfg.TryGetProperty("multiSelect", out JsonElement ms) ? ms.GetInt32() : 1,
-                SeamlessScroll = cfg.TryGetProperty("seamlessScroll", out JsonElement ss) ? ss.GetInt32() : 0,
-                ScrollId = cfg.TryGetProperty("scrollId", out JsonElement sid) ? sid.GetString() : "view",
-            }.WithFallback(_expectedConfig);
-
-            if (!parsed.Matches(_expectedConfig))
-            {
-                parsed = _expectedConfig;
-            }
-
-            _config = parsed;
+            _config = _expectedConfig;
         }
 
         private void ApplySelectionFromMessage(JsonElement root)
@@ -710,16 +528,8 @@ namespace IndigoMovieManager.UserControls
                 return;
             }
 
-            if (IsWhiteBrowserCompat)
-            {
-                var payload = new { type = "wbSelection", ids = _selectedIds.ToArray(), focusedId = _focusedId };
-                Browser.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(payload, JsonOptions));
-            }
-            else
-            {
-                var payload = new { type = "selection", ids = _selectedIds.ToArray(), focusedId = _focusedId };
-                Browser.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(payload, JsonOptions));
-            }
+            var payload = new { type = "wbSelection", ids = _selectedIds.ToArray(), focusedId = _focusedId };
+            Browser.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(payload, JsonOptions));
         }
 
         private string MapThumbUrl(string fullPath)
@@ -732,19 +542,5 @@ namespace IndigoMovieManager.UserControls
 
             return SkinMovieMapper.ToVirtualImageUrl(fullPath, _imagesRoot, ImagesVirtualHost);
         }
-
-        private static object ToJsConfig(SkinConfig config) => new
-        {
-            skinVersion = config.SkinVersion,
-            thumbWidth = config.ThumbWidth,
-            thumbHeight = config.ThumbHeight,
-            thumbColumn = config.ThumbColumn,
-            thumbRow = config.ThumbRow,
-            multiSelect = config.MultiSelect,
-            seamlessScroll = config.SeamlessScroll,
-            scrollId = config.ScrollId,
-            sheetWidth = config.SheetWidth,
-            sheetHeight = config.SheetHeight,
-        };
     }
 }

@@ -103,9 +103,6 @@ namespace IndigoMovieManager
     public int BeginJob(string primaryLayoutKey) =>
       BeginJob(primaryLayoutKey, null);
 
-    public int BeginJob(int primaryTabIndex) =>
-      BeginJob($"legacy-tab:{primaryTabIndex}");
-
     /// <summary>
     /// タブ/スキン切替でジョブが放棄されたとき、実行中ワーカーへキャンセルを伝える。
     /// </summary>
@@ -237,8 +234,7 @@ namespace IndigoMovieManager
     }
 
     /// <summary>
-    /// 指定タブの追跡（tracked / inFlight）をまとめて解除する。
-    /// スキン切替で旧レイアウト向けの生成を破棄し、新ジョブが全件を登録し直せるようにする。
+    /// 指定レイアウトの追跡（tracked / inFlight）をまとめて解除する。
     /// </summary>
     public void ClearTrackingForLayoutKey(string layoutKey)
     {
@@ -253,9 +249,6 @@ namespace IndigoMovieManager
         _inFlight.RemoveWhere(k => k.LayoutKey == layoutKey);
       }
     }
-
-    public void ClearTrackingForTab(int tabIndex) =>
-      ClearTrackingForLayoutKey($"legacy-tab:{tabIndex}");
 
     public void CancelTrackedForMovie(long movieId)
     {
@@ -282,9 +275,6 @@ namespace IndigoMovieManager
       }
     }
 
-    public bool IsInFlight(long movieId, int tabIndex) =>
-      IsInFlight(movieId, $"legacy-tab:{tabIndex}");
-
     public void UntrackIfNotInFlight(long movieId, string layoutKey)
     {
       lock (_lock)
@@ -296,9 +286,6 @@ namespace IndigoMovieManager
         }
       }
     }
-
-    public void UntrackIfNotInFlight(long movieId, int tabIndex) =>
-      UntrackIfNotInFlight(movieId, $"legacy-tab:{tabIndex}");
 
     public List<QueueObj> RegisterWork(int jobId, IReadOnlyList<QueueObj> items)
     {
@@ -439,9 +426,6 @@ namespace IndigoMovieManager
       }
     }
 
-    public bool IsTracked(long movieId, int tabIndex) =>
-      IsTracked(movieId, $"legacy-tab:{tabIndex}");
-
     public Snapshot GetSnapshot()
     {
       lock (_lock)
@@ -460,24 +444,9 @@ namespace IndigoMovieManager
 
     private Snapshot CreateSnapshot(int jobId)
     {
-      if (jobId == SilentJobId || !_jobs.TryGetValue(jobId, out JobState state))
+      if (jobId <= 0 || !_jobs.TryGetValue(jobId, out JobState state))
       {
-        return new Snapshot
-        {
-          JobId = jobId,
-          PrimaryLayoutKey = "",
-          DisplayTitle = "",
-          Total = 0,
-          Completed = 0,
-          InFlight = 0,
-        };
-      }
-
-      int total = state.Total;
-      int completed = state.Completed;
-      if (total < completed)
-      {
-        total = completed;
+        return new Snapshot { JobId = jobId };
       }
 
       return new Snapshot
@@ -485,8 +454,8 @@ namespace IndigoMovieManager
         JobId = jobId,
         PrimaryLayoutKey = state.PrimaryLayoutKey,
         DisplayTitle = state.DisplayTitle,
-        Total = total,
-        Completed = completed,
+        Total = state.Total,
+        Completed = state.Completed,
         InFlight = state.InFlight,
         Abandoned = state.Abandoned,
       };
@@ -494,16 +463,14 @@ namespace IndigoMovieManager
 
     private void TryRemoveFinishedJob(int jobId, JobState state)
     {
-      if (jobId == _jobId)
+      if (state.Abandoned && state.InFlight <= 0)
       {
+        _jobs.Remove(jobId);
+        DisposeJobCancellationLocked(jobId);
         return;
       }
 
-      bool finished = state.Abandoned
-        ? state.InFlight <= 0
-        : state.Total > 0 && state.Completed >= state.Total && state.InFlight <= 0;
-
-      if (finished)
+      if (state.Total > 0 && state.Completed >= state.Total && state.InFlight <= 0)
       {
         _jobs.Remove(jobId);
         DisposeJobCancellationLocked(jobId);

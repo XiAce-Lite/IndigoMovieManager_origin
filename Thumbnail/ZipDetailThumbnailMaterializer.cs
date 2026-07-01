@@ -3,7 +3,7 @@ using System.IO;
 namespace IndigoMovieManager.Thumbnail
 {
     /// <summary>
-    /// ZIP の詳細タブ（99）サムネを、既存タブの出力から複製する。
+    /// ZIP の詳細ペイン用サムネを、既存一覧レイアウトの出力から複製する。
     /// リスト用サムネは別フォルダ（例: 120x90x3x1）のため、詳細用（120x90x1x1）は別途必要。
     /// </summary>
     internal static class ZipDetailThumbnailMaterializer
@@ -34,7 +34,7 @@ namespace IndigoMovieManager.Thumbnail
             }
         }
 
-        public static bool TryCopyFromExistingTabThumbs(
+        public static bool TryCopyFromExistingListThumbs(
             ThumbnailLayoutCache cache,
             string movieBody,
             string hash,
@@ -43,14 +43,24 @@ namespace IndigoMovieManager.Thumbnail
             if (cache == null
                 || string.IsNullOrWhiteSpace(movieBody)
                 || string.IsNullOrWhiteSpace(hash)
-                || string.IsNullOrWhiteSpace(detailPath))
+                || string.IsNullOrWhiteSpace(detailPath)
+                || string.IsNullOrWhiteSpace(cache.ThumbRootPath)
+                || !Directory.Exists(cache.ThumbRootPath))
             {
                 return false;
             }
 
-            for (int tabIndex = 0; tabIndex < cache.TabOutPaths.Length; tabIndex++)
+            string thumbFileName = ThumbnailLayoutCache.GetThumbFileName(movieBody, hash);
+            string detailFolderName = ThumbnailLayoutSpec.DetailPaneLayout.Key;
+
+            foreach (string layoutDir in Directory.EnumerateDirectories(cache.ThumbRootPath))
             {
-                string sourcePath = cache.GetExpectedThumbPath(tabIndex, movieBody, hash);
+                if (string.Equals(Path.GetFileName(layoutDir), detailFolderName, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                string sourcePath = Path.Combine(layoutDir, thumbFileName);
                 if (!File.Exists(sourcePath))
                 {
                     continue;

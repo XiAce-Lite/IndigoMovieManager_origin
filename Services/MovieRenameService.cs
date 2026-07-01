@@ -28,11 +28,9 @@ namespace IndigoMovieManager.Services
             {
                 string oldFilePath = thumbFile.FullName;
                 string newFilePath = oldFilePath.Replace(checkFileName, newMovieName, StringComparison.CurrentCultureIgnoreCase);
-                if (item.ThumbPathSmall == oldFilePath) { item.ThumbPathSmall = newFilePath; }
-                if (item.ThumbPathBig == oldFilePath) { item.ThumbPathBig = newFilePath; }
-                if (item.ThumbPathGrid == oldFilePath) { item.ThumbPathGrid = newFilePath; }
-                if (item.ThumbPathList == oldFilePath) { item.ThumbPathList = newFilePath; }
-                if (item.ThumbPathBig10 == oldFilePath) { item.ThumbPathBig10 = newFilePath; }
+                if (item.ThumbPathWpfSkin == oldFilePath) { item.ThumbPathWpfSkin = newFilePath; }
+                if (item.ThumbPathWb == oldFilePath) { item.ThumbPathWb = newFilePath; }
+                if (item.ThumbDetail == oldFilePath) { item.ThumbDetail = newFilePath; }
                 thumbFile.MoveTo(newFilePath, true);
             }
         }

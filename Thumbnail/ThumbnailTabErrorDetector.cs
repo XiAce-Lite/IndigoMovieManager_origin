@@ -33,30 +33,6 @@ namespace IndigoMovieManager.Thumbnail
                 cache.GetNoFilePath(2));
         }
 
-        public static bool IsErrorForTab(MovieRecords item, int tabIndex, ThumbnailLayoutCache cache)
-        {
-            if (item == null || cache == null)
-            {
-                return false;
-            }
-
-            if (tabIndex == 99)
-            {
-                return IsDetailThumbnailError(item, cache);
-            }
-
-            if (tabIndex < 0 || tabIndex >= cache.TabOutPaths.Length)
-            {
-                return false;
-            }
-
-            return IsErrorThumbnailState(
-                item,
-                cache.GetExpectedThumbPath(tabIndex, GetMovieBody(item), item.Hash),
-                cache.GetErrorPath(tabIndex),
-                cache.GetNoFilePath(tabIndex));
-        }
-
         public static bool IsDetailThumbnailError(MovieRecords item, ThumbnailLayoutCache cache)
         {
             if (item == null || cache == null)
@@ -66,9 +42,9 @@ namespace IndigoMovieManager.Thumbnail
 
             return IsErrorThumbnailState(
                 item,
-                cache.GetExpectedThumbPath(99, GetMovieBody(item), item.Hash),
-                cache.GetErrorPath(99),
-                cache.GetNoFilePath(99));
+                cache.GetExpectedDetailThumbPath(GetMovieBody(item), item.Hash),
+                cache.GetErrorPath(2),
+                cache.GetNoFilePath(2));
         }
 
         private static bool IsErrorThumbnailState(

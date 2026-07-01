@@ -637,8 +637,7 @@
                                         Visibility="Collapsed">
                                         <view:SkinView
                                             x:Name="SkinViewGridWb"
-                                            SelectionChanged="SkinView_SelectionChanged"
-                                            SkinTabIndex="6" />
+                                            SelectionChanged="SkinView_SelectionChanged" />
                                     </DockPanel>
                                 </Grid>
                             </avalonDock:LayoutDocument>

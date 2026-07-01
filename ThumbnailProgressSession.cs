@@ -25,11 +25,6 @@ namespace IndigoMovieManager
         {
         }
 
-        public ThumbnailProgressSession(int primaryTabIndex, int jobSwitchToken)
-            : this($"legacy-tab:{primaryTabIndex}", null, jobSwitchToken)
-        {
-        }
-
         public bool IsVisible => _handle != null;
 
         public bool TryReport(
@@ -132,35 +127,9 @@ namespace IndigoMovieManager
                 return $"サムネイル作成中 ({displayTitle})";
             }
 
-            return GetBaseTitle(layoutKey);
-        }
-
-        private static string GetBaseTitle(string layoutKey)
-        {
-            if (string.IsNullOrEmpty(layoutKey))
-            {
-                return "サムネイル作成中";
-            }
-
-            if (layoutKey.StartsWith("legacy-tab:", StringComparison.Ordinal))
-            {
-                return GetLegacyTabTitle(layoutKey["legacy-tab:".Length..]);
-            }
-
-            return "サムネイル作成中";
-        }
-
-        private static string GetLegacyTabTitle(string tabPart) =>
-            int.TryParse(tabPart, out int tabIndex)
-                ? tabIndex switch
-                {
-                    0 => "サムネイル作成中(Small)",
-                    1 => "サムネイル作成中(Big)",
-                    2 => "サムネイル作成中(Grid)",
-                    3 => "サムネイル作成中(List)",
-                    4 => "サムネイル作成中(Big10)",
-                    _ => "サムネイル作成中",
-                }
+            return string.IsNullOrEmpty(layoutKey)
+                ? "サムネイル作成中"
                 : "サムネイル作成中";
+        }
     }
 }
