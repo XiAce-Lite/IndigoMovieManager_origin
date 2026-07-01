@@ -21,6 +21,11 @@ namespace IndigoMovieManager.Services
         private readonly ConcurrentQueue<QueueObj> _queue = new();
         private readonly ThumbnailJobCoordinator _jobCoordinator = new();
         private readonly object _sync = new();
+        private Task _tabSwitchJobChain = Task.CompletedTask;
+        private readonly object _tabSwitchChainGate = new();
+        private int _tabSwitchBuildGeneration;
+
+        public int TabSwitchBuildGeneration => Volatile.Read(ref _tabSwitchBuildGeneration);
 
         public ConcurrentQueue<QueueObj> Queue => _queue;
         public ThumbnailJobCoordinator JobCoordinator => _jobCoordinator;
@@ -83,6 +88,7 @@ namespace IndigoMovieManager.Services
         /// </summary>
         public void AbandonAndClearQueue(int primaryTabIndex = 0)
         {
+            Interlocked.Increment(ref _tabSwitchBuildGeneration);
             ThumbnailQueueProcessor.RequestDismissProgress();
 
             lock (_sync)
@@ -221,11 +227,12 @@ namespace IndigoMovieManager.Services
             IEnumerable<MovieRecords> filterList,
             ThumbnailLayoutCache cache,
             string dbFullPath,
-            int workGeneration)
+            int workGeneration,
+            int buildEpoch = -1)
         {
             if (tabIndex == SkinTabIndexHelper.WpfSkinThumbnailSlotIndex)
             {
-                return BuildWpfSkinTabSwitchWork(filterList, cache, dbFullPath, workGeneration);
+                return BuildWpfSkinTabSwitchWork(filterList, cache, dbFullPath, workGeneration, buildEpoch);
             }
 
             List<QueueObj> work = [];
@@ -236,36 +243,24 @@ namespace IndigoMovieManager.Services
 
             foreach (MovieRecords item in filterList)
             {
-                if (string.IsNullOrWhiteSpace(item.Movie_Path) || string.IsNullOrWhiteSpace(item.Hash))
+                if (!IsTabSwitchBuildCurrent(buildEpoch))
+                {
+                    return work;
+                }
+
+                if (!ShouldEnqueueTabSwitchWork(item, tabIndex, cache, out _))
                 {
                     continue;
                 }
 
-                if (!File.Exists(item.Movie_Path))
+                work.Add(new QueueObj
                 {
-                    continue;
-                }
-
-                string fileBody = Path.GetFileNameWithoutExtension(item.Movie_Name ?? item.Movie_Path ?? string.Empty)
-                    .ToLowerInvariant();
-                string hash = item.Hash;
-                string expectedPath = cache.GetExpectedThumbPath(tabIndex, fileBody, hash);
-                if (File.Exists(expectedPath))
-                {
-                    continue;
-                }
-
-                if (!_jobCoordinator.IsTracked(item.Movie_Id, tabIndex))
-                {
-                    work.Add(new QueueObj
-                    {
-                        MovieId = item.Movie_Id,
-                        MovieFullPath = item.Movie_Path,
-                        Tabindex = tabIndex,
-                        DbFullPath = dbFullPath,
-                        WorkGeneration = workGeneration,
-                    });
-                }
+                    MovieId = item.Movie_Id,
+                    MovieFullPath = item.Movie_Path,
+                    Tabindex = tabIndex,
+                    DbFullPath = dbFullPath,
+                    WorkGeneration = workGeneration,
+                });
             }
 
             return work;
@@ -275,7 +270,8 @@ namespace IndigoMovieManager.Services
             IEnumerable<MovieRecords> filterList,
             ThumbnailLayoutCache cache,
             string dbFullPath,
-            int workGeneration)
+            int workGeneration,
+            int buildEpoch)
         {
             List<QueueObj> work = [];
             ThumbnailLayoutSpec spec = WpfSkinSettings.CurrentThumbnailLayout;
@@ -287,39 +283,95 @@ namespace IndigoMovieManager.Services
             int tabIndex = SkinTabIndexHelper.WpfSkinThumbnailSlotIndex;
             foreach (MovieRecords item in filterList)
             {
-                if (string.IsNullOrWhiteSpace(item.Movie_Path) || string.IsNullOrWhiteSpace(item.Hash))
+                if (!IsTabSwitchBuildCurrent(buildEpoch))
+                {
+                    return work;
+                }
+
+                if (!ShouldEnqueueTabSwitchWork(item, tabIndex, cache, out ThumbnailLayoutSpec layoutSpec))
                 {
                     continue;
                 }
 
-                if (!File.Exists(item.Movie_Path))
+                work.Add(new QueueObj
                 {
-                    continue;
-                }
-
-                string fileBody = Path.GetFileNameWithoutExtension(item.Movie_Name ?? item.Movie_Path ?? string.Empty)
-                    .ToLowerInvariant();
-                string expectedPath = cache.GetExpectedThumbPath(spec, fileBody, item.Hash);
-                if (File.Exists(expectedPath))
-                {
-                    continue;
-                }
-
-                if (!_jobCoordinator.IsTracked(item.Movie_Id, tabIndex))
-                {
-                    work.Add(new QueueObj
-                    {
-                        MovieId = item.Movie_Id,
-                        MovieFullPath = item.Movie_Path,
-                        Tabindex = tabIndex,
-                        ThumbnailLayout = spec,
-                        DbFullPath = dbFullPath,
-                        WorkGeneration = workGeneration,
-                    });
-                }
+                    MovieId = item.Movie_Id,
+                    MovieFullPath = item.Movie_Path,
+                    Tabindex = tabIndex,
+                    ThumbnailLayout = layoutSpec,
+                    DbFullPath = dbFullPath,
+                    WorkGeneration = workGeneration,
+                });
             }
 
             return work;
+        }
+
+        private bool IsTabSwitchBuildCurrent(int buildEpoch) =>
+            buildEpoch < 0 || buildEpoch == Volatile.Read(ref _tabSwitchBuildGeneration);
+
+        private static bool ShouldEnqueueTabSwitchWork(
+            MovieRecords item,
+            int tabIndex,
+            ThumbnailLayoutCache cache,
+            out ThumbnailLayoutSpec wpfSpec)
+        {
+            wpfSpec = null;
+            if (item == null
+                || cache == null
+                || string.IsNullOrWhiteSpace(item.Movie_Path)
+                || string.IsNullOrWhiteSpace(item.Hash)
+                || !File.Exists(item.Movie_Path))
+            {
+                return false;
+            }
+
+            string fileBody = Path.GetFileNameWithoutExtension(item.Movie_Name ?? item.Movie_Path ?? string.Empty)
+                .ToLowerInvariant();
+
+            if (tabIndex == SkinTabIndexHelper.WpfSkinThumbnailSlotIndex)
+            {
+                wpfSpec = WpfSkinSettings.CurrentThumbnailLayout;
+                if (wpfSpec == null)
+                {
+                    return false;
+                }
+
+                string expectedPath = cache.GetExpectedThumbPath(wpfSpec, fileBody, item.Hash);
+                return NeedsThumbnailGeneration(item, expectedPath, tabIndex, cache);
+            }
+
+            if (tabIndex < 0 || tabIndex >= cache.TabOutPaths.Length)
+            {
+                return false;
+            }
+
+            string slotPath = cache.GetExpectedThumbPath(tabIndex, fileBody, item.Hash);
+            return NeedsThumbnailGeneration(item, slotPath, tabIndex, cache);
+        }
+
+        private static bool NeedsThumbnailGeneration(
+            MovieRecords item,
+            string expectedPath,
+            int tabIndex,
+            ThumbnailLayoutCache cache)
+        {
+            if (string.IsNullOrWhiteSpace(expectedPath))
+            {
+                return true;
+            }
+
+            if (!File.Exists(expectedPath))
+            {
+                return true;
+            }
+
+            if (tabIndex >= 0 && tabIndex < cache.TabOutPaths.Length)
+            {
+                return ThumbnailTabErrorDetector.IsErrorForTab(item, tabIndex, cache);
+            }
+
+            return !ThumbnailValidityHelper.LooksLikeCompositeThumbnail(expectedPath);
         }
 
         public void StartTabSwitchJob(
@@ -327,9 +379,47 @@ namespace IndigoMovieManager.Services
             IEnumerable<MovieRecords> filterList,
             ThumbnailLayoutCache cache,
             string dbFullPath,
-            int workGeneration)
+            int workGeneration,
+            int buildEpoch)
         {
-            _ = StartTabSwitchJobAsync(tabIndex, filterList, cache, dbFullPath, workGeneration);
+            lock (_tabSwitchChainGate)
+            {
+                _tabSwitchJobChain = RunTabSwitchJobAfterAsync(
+                    _tabSwitchJobChain,
+                    tabIndex,
+                    filterList,
+                    cache,
+                    dbFullPath,
+                    workGeneration,
+                    buildEpoch);
+            }
+        }
+
+        private async Task RunTabSwitchJobAfterAsync(
+            Task prior,
+            int tabIndex,
+            IEnumerable<MovieRecords> filterList,
+            ThumbnailLayoutCache cache,
+            string dbFullPath,
+            int workGeneration,
+            int buildEpoch)
+        {
+            try
+            {
+                await prior.ConfigureAwait(false);
+            }
+            catch
+            {
+                // 先行ジョブの失敗で後続のタブ切替サムネ投入を止めない。
+            }
+
+            await StartTabSwitchJobAsync(
+                tabIndex,
+                filterList,
+                cache,
+                dbFullPath,
+                workGeneration,
+                buildEpoch).ConfigureAwait(false);
         }
 
         public async Task StartTabSwitchJobAsync(
@@ -337,20 +427,40 @@ namespace IndigoMovieManager.Services
             IEnumerable<MovieRecords> filterList,
             ThumbnailLayoutCache cache,
             string dbFullPath,
-            int workGeneration)
+            int workGeneration,
+            int buildEpoch)
         {
+            if (!IsTabSwitchBuildCurrent(buildEpoch))
+            {
+                return;
+            }
+
             ClearSilentQueue();
 
             IReadOnlyList<MovieRecords> snapshot = filterList as IReadOnlyList<MovieRecords> ?? [.. filterList];
             List<QueueObj> work = await Task.Run(() =>
-                BuildTabSwitchWork(tabIndex, snapshot, cache, dbFullPath, workGeneration)).ConfigureAwait(false);
+                BuildTabSwitchWork(tabIndex, snapshot, cache, dbFullPath, workGeneration, buildEpoch)).ConfigureAwait(false);
+
+            if (!IsTabSwitchBuildCurrent(buildEpoch))
+            {
+                return;
+            }
 
             if (work.Count == 0)
             {
                 return;
             }
 
-            EnqueueWork(work, tabIndex, beginNewJob: true);
+            lock (_sync)
+            {
+                if (!IsTabSwitchBuildCurrent(buildEpoch))
+                {
+                    return;
+                }
+
+                ClearTrackingForTab(tabIndex);
+                EnqueueWork(work, tabIndex, beginNewJob: true);
+            }
         }
 
         public static int GetMaxParallelism()

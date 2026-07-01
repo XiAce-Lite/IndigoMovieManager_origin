@@ -109,7 +109,8 @@ public class ThumbnailJobCoordinatorTests
                 },
             };
 
-            await scheduler.StartTabSwitchJobAsync(0, records, cache, @"C:\fake\db.wb", workGeneration: 1);
+            int buildEpoch = scheduler.TabSwitchBuildGeneration;
+            await scheduler.StartTabSwitchJobAsync(0, records, cache, @"C:\fake\db.wb", workGeneration: 1, buildEpoch);
 
             Assert.Single(scheduler.Queue);
             scheduler.Queue.TryDequeue(out QueueObj item);
@@ -122,6 +123,60 @@ public class ThumbnailJobCoordinatorTests
             if (File.Exists(moviePath))
             {
                 File.Delete(moviePath);
+            }
+
+            if (Directory.Exists(thumbRoot))
+            {
+                Directory.Delete(thumbRoot, true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task StartTabSwitchJobAsync_discards_build_superseded_by_abandon()
+    {
+        var scheduler = new ThumbnailQueueScheduler();
+        string thumbRoot = Path.Combine(Path.GetTempPath(), $"imm-tab-{Guid.NewGuid():N}");
+        string movieDir = Path.Combine(Path.GetTempPath(), $"imm-movies-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(thumbRoot);
+        Directory.CreateDirectory(movieDir);
+        try
+        {
+            var cache = new ThumbnailLayoutCache();
+            cache.Refresh("testdb", thumbRoot, 5);
+
+            var largeScope = new List<MovieRecords>();
+            for (int i = 0; i < 300; i++)
+            {
+                string moviePath = Path.Combine(movieDir, $"movie{i}.mod");
+                await File.WriteAllTextAsync(moviePath, "test");
+                largeScope.Add(new MovieRecords
+                {
+                    Movie_Id = i + 1,
+                    Movie_Path = moviePath,
+                    Movie_Name = $"movie{i}",
+                    Hash = $"hash{i}",
+                });
+            }
+
+            var smallScope = new List<MovieRecords> { largeScope[0] };
+
+            scheduler.AbandonAndClearQueue(0);
+            int staleEpoch = scheduler.TabSwitchBuildGeneration;
+            Task staleBuild = scheduler.StartTabSwitchJobAsync(0, largeScope, cache, @"C:\fake\db.wb", workGeneration: 1, staleEpoch);
+            scheduler.AbandonAndClearQueue(0);
+            await staleBuild.ConfigureAwait(true);
+
+            int currentEpoch = scheduler.TabSwitchBuildGeneration;
+            await scheduler.StartTabSwitchJobAsync(0, smallScope, cache, @"C:\fake\db.wb", workGeneration: 1, currentEpoch);
+
+            Assert.Single(scheduler.Queue);
+        }
+        finally
+        {
+            if (Directory.Exists(movieDir))
+            {
+                Directory.Delete(movieDir, true);
             }
 
             if (Directory.Exists(thumbRoot))

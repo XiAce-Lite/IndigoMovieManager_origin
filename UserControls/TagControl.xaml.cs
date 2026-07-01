@@ -99,20 +99,19 @@ namespace IndigoMovieManager.UserControls
             var item = (Hyperlink)sender;
             if (actions != null && item != null)
             {
-                if (actions.Tabs.SelectedItem == null) return;
+                if (!actions.IsMovieListActive) return;
                 if (itemData is not MovieRecords mv) return;
 
                 if (mv.Tag.Contains(item.DataContext))
                 {
                     mv.Tag.Remove(item.DataContext.ToString());
                     mv.Tags = ConvertTagsWithNewLine(mv.Tag);
-                    int index = actions.Tabs.SelectedIndex;
 
                     actions.UpdateMovieColumn(mv.Movie_Id, MovieColumn.Tag, mv.Tags);
 
                     try
                     {
-                        actions.RefreshActiveList(index);
+                        actions.RefreshActiveList(actions.CurrentSkinEngine);
                         actions.RefreshExtDetail();
                     }
                     catch (Exception)

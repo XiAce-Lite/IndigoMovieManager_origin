@@ -31,7 +31,7 @@ namespace IndigoMovieManager
     /// <summary>
     /// Interaction logic for MainWindow.xaml
     /// </summary>
-    public partial class MainWindow : System.Windows.Window, IMainWindowActions, IMainWindowTabViews
+    public partial class MainWindow : System.Windows.Window, IMainWindowActions, IMainWindowListHost
     {
         //監視モードは FolderCheckMode（Services/FolderCheckService.cs）を使用
         private Task _processorTask;
@@ -45,12 +45,16 @@ namespace IndigoMovieManager
         private bool _openingDatabase;
         private bool _suppressSkinComboChange;
         private bool _suppressSkinModeChange;
-        private const string SkinEngineWpf = "WPF";
-        private const string SkinEngineWb = "WB";
+        private SkinEngine _currentSkinEngine = SkinEngine.Wpf;
+        private DispatcherTimer _wbDrawerRestoreTimer;
+        private const string SkinEngineWpf = SkinEngineHelper.SettingWpf;
+        private const string SkinEngineWb = SkinEngineHelper.SettingWb;
 
         private Stack<string> recentFiles = new();
 
         private IEnumerable<MovieRecords> filterList = [];
+
+        private string _lastThumbnailSearchKeyword;
 
         private string _cachedAllItemsSortId;
         private List<MovieRecords> _cachedAllItems;
@@ -193,9 +197,10 @@ namespace IndigoMovieManager
             string savedWpfSkin = Properties.Settings.Default.LastWpfSkinName;
             ApplyWpfSkin(string.IsNullOrWhiteSpace(savedWpfSkin) ? null : savedWpfSkin);
             UpdateWbSkinTabTag();
-            int initialSkinTabIndex = GetSavedSkinEngineTabIndex();
-            Tabs.SelectedIndex = initialSkinTabIndex;
-            UpdateSkinToolbarForTab(initialSkinTabIndex);
+            SkinEngine initialEngine = GetSavedSkinEngine();
+            ApplySkinEngineVisibility(initialEngine);
+            SwitchSkinEngine(initialEngine, refreshList: false);
+            UpdateSkinToolbar(initialEngine);
 
             // WebView2 はネイティブ HWND のため WPF オーバーレイより前面に出る（エアスペース問題）。
             // ドロワー（ハンバーガーメニュー）表示中は SkinView を隠して被りを防ぐ。
@@ -204,56 +209,103 @@ namespace IndigoMovieManager
         }
 
         private void UpdateWbSkinTabTag() =>
-            TabGridWb.Tag = WhiteBrowserSkinSettings.GetThumbnailTag();
+            WbSkinHost.Tag = WhiteBrowserSkinSettings.GetThumbnailTag();
 
         private static bool IsWbEngine(string value) =>
             string.Equals(value, SkinEngineWb, StringComparison.OrdinalIgnoreCase);
 
-        private int GetSavedSkinEngineTabIndex() =>
-            IsWbEngine(Properties.Settings.Default.LastSkinEngine)
-                ? SkinTabIndexHelper.WbSkinTabIndex
-                : SkinTabIndexHelper.WpfSkinTabIndex;
+        private SkinEngine GetSavedSkinEngine() =>
+            SkinEngineHelper.FromSetting(Properties.Settings.Default.LastSkinEngine);
 
-        private void SaveSkinEngine(int tabIndex)
+        private void SaveSkinEngine(SkinEngine engine)
         {
-            string engine = SkinTabIndexHelper.IsWebSkinTab(tabIndex) ? SkinEngineWb : SkinEngineWpf;
-            AppSettingsPersistence.SaveSkinEngineIfChanged(engine);
+            AppSettingsPersistence.SaveSkinEngineIfChanged(SkinEngineHelper.ToSetting(engine));
+        }
+
+        private void ApplySkinEngineVisibility(SkinEngine engine)
+        {
+            bool isWpf = engine == SkinEngine.Wpf;
+            WpfSkinHost.Visibility = isWpf ? Visibility.Visible : Visibility.Collapsed;
+            WbSkinHost.Visibility = isWpf ? Visibility.Collapsed : Visibility.Visible;
         }
 
         /// <summary>
-        /// 共通スキンツールバー（方式トグル＋スキン Combo）を、選択中タブに合わせて更新する。
-        /// 統合一覧では WPF / WB のどちらかを必ず選択状態にする。
+        /// 共通スキンツールバー（方式トグル＋スキン Combo）を、選択中エンジンに合わせて更新する。
         /// </summary>
-        private void UpdateSkinToolbarForTab(int index)
+        private void UpdateSkinToolbar(SkinEngine engine)
         {
-            if (SkinToolbar == null)
+            if (HeaderZone == null)
             {
                 return;
             }
 
-            bool isWpf = index == SkinTabIndexHelper.WpfSkinTabIndex;
-            bool isWb = index == SkinTabIndexHelper.WbSkinTabIndex;
-
-            if (!isWpf && !isWb)
-            {
-                index = GetSavedSkinEngineTabIndex();
-                isWpf = index == SkinTabIndexHelper.WpfSkinTabIndex;
-                isWb = index == SkinTabIndexHelper.WbSkinTabIndex;
-            }
-
-            SkinToolbar.Visibility = Visibility.Visible;
-            SaveSkinEngine(index);
+            SaveSkinEngine(engine);
 
             _suppressSkinModeChange = true;
-            ModeWpfRadio.IsChecked = isWpf;
-            ModeWbRadio.IsChecked = isWb;
+            ModeWpfRadio.IsChecked = engine == SkinEngine.Wpf;
+            ModeWbRadio.IsChecked = engine == SkinEngine.Wb;
             _suppressSkinModeChange = false;
 
-            // Reload は WPF スキン専用機能。WB では Hidden にしてレイアウト領域を保持し、
-            // モード切替でツールバー高さが変動（ピコピコ）しないようにする。
-            ReloadSkinButton.Visibility = isWpf ? Visibility.Visible : Visibility.Hidden;
+            ReloadSkinButton.Visibility = engine == SkinEngine.Wpf
+                ? Visibility.Visible
+                : Visibility.Collapsed;
 
-            RebuildSkinCombo(isWpf);
+            RebuildSkinCombo(engine == SkinEngine.Wpf);
+        }
+
+        private IReadOnlyList<MovieRecords> GetActiveFilterRecords()
+        {
+            if (filterList == null)
+            {
+                return [];
+            }
+
+            return filterList as IReadOnlyList<MovieRecords> ?? [.. filterList];
+        }
+
+        private void RestartThumbnailsForActiveFilter()
+        {
+            if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
+            {
+                return;
+            }
+
+            IReadOnlyList<MovieRecords> records = GetActiveFilterRecords();
+            if (records.Count == 0)
+            {
+                return;
+            }
+
+            int legacyTab = SkinEngineHelper.ToLegacyThumbTabIndex(_currentSkinEngine);
+            ResolveThumbPathsForTab(legacyTab, records);
+
+            if (_currentSkinEngine == SkinEngine.Wb)
+            {
+                SkinViewGridWb.Tag = records;
+                SkinViewGridWb.RenderItems(records);
+            }
+            else
+            {
+                WpfSkinList.ItemsSource = records;
+            }
+
+            StartTabSwitchThumbnailJob(legacyTab, records);
+        }
+
+        private void SwitchSkinEngine(SkinEngine engine, bool refreshList = true)
+        {
+            _currentSkinEngine = engine;
+            MainVM.DbInfo.CurrentSkinEngine = engine;
+            ApplySkinEngineVisibility(engine);
+            UpdateSkinToolbar(engine);
+
+            if (!refreshList || _openingDatabase)
+            {
+                return;
+            }
+
+            RestartThumbnailsForActiveFilter();
+            SelectFirstItem();
         }
 
         private void RebuildSkinCombo(bool isWpf)
@@ -282,20 +334,18 @@ namespace IndigoMovieManager
                 return;
             }
 
-            int target = ReferenceEquals(sender, ModeWpfRadio)
-                ? SkinTabIndexHelper.WpfSkinTabIndex
-                : SkinTabIndexHelper.WbSkinTabIndex;
+            SkinEngine target = ReferenceEquals(sender, ModeWpfRadio)
+                ? SkinEngine.Wpf
+                : SkinEngine.Wb;
 
-            if (Tabs.SelectedIndex != target)
+            if (_currentSkinEngine != target)
             {
-                // タブ切替に伴い Tabs_SelectionChangedAsync → UpdateSkinToolbarForTab が走り、
-                // ツールバーと Combo が同期される。
-                Tabs.SelectedIndex = target;
+                SwitchSkinEngine(target);
             }
             else
             {
                 SaveSkinEngine(target);
-                UpdateSkinToolbarForTab(target);
+                UpdateSkinToolbar(target);
             }
         }
 
@@ -342,15 +392,12 @@ namespace IndigoMovieManager
                 return;
             }
 
-            if (Tabs.SelectedIndex != SkinTabIndexHelper.WbSkinTabIndex || filterList == null || !filterList.Any())
+            if (_currentSkinEngine != SkinEngine.Wb)
             {
                 return;
             }
 
-            ResolveThumbPathsForTab(SkinTabIndexHelper.WbSkinTabIndex);
-            SkinViewGridWb.Tag = filterList;
-            SkinViewGridWb.RenderItems(filterList);
-            StartTabSwitchThumbnailJob(SkinTabIndexHelper.WbSkinTabIndex);
+            RestartThumbnailsForActiveFilter();
         }
 
         private static string MapLegacySkinToWpfSkinName(string skin) =>
@@ -366,10 +413,10 @@ namespace IndigoMovieManager
                     _ => skin,
                 };
 
-        private int PrepareStartupSkinMode(string dbSkin)
+        private SkinEngine PrepareStartupSkinMode(string dbSkin)
         {
-            int targetTabIndex = GetSavedSkinEngineTabIndex();
-            if (targetTabIndex == SkinTabIndexHelper.WpfSkinTabIndex)
+            SkinEngine engine = GetSavedSkinEngine();
+            if (engine == SkinEngine.Wpf)
             {
                 string mappedSkin = MapLegacySkinToWpfSkinName(dbSkin);
                 string skinName = !string.IsNullOrWhiteSpace(mappedSkin)
@@ -383,17 +430,35 @@ namespace IndigoMovieManager
                 }
             }
 
-            Tabs.SelectedIndex = targetTabIndex;
-            UpdateSkinToolbarForTab(targetTabIndex);
-            return targetTabIndex;
+            _currentSkinEngine = engine;
+            MainVM.DbInfo.CurrentSkinEngine = engine;
+            ApplySkinEngineVisibility(engine);
+            UpdateSkinToolbar(engine);
+            return engine;
         }
 
         private void MenuToggleButton_DrawerStateChanged(object sender, RoutedEventArgs e)
         {
-            Visibility visibility = MenuToggleButton.IsChecked == true
-                ? Visibility.Hidden
-                : Visibility.Visible;
-            SkinViewGridWb.Visibility = visibility;
+            _wbDrawerRestoreTimer?.Stop();
+
+            if (MenuToggleButton.IsChecked == true)
+            {
+                SkinViewGridWb.Visibility = Visibility.Hidden;
+                return;
+            }
+
+            _wbDrawerRestoreTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(320) };
+            _wbDrawerRestoreTimer.Tick += OnWbDrawerRestoreTimerTick;
+            _wbDrawerRestoreTimer.Start();
+        }
+
+        private void OnWbDrawerRestoreTimerTick(object sender, EventArgs e)
+        {
+            _wbDrawerRestoreTimer?.Stop();
+            if (MenuToggleButton.IsChecked != true)
+            {
+                SkinViewGridWb.Visibility = Visibility.Visible;
+            }
         }
 
         private Services.WpfSkin.WpfSkinDefinition _wpfSkin;
@@ -414,14 +479,9 @@ namespace IndigoMovieManager
 
         private void RefreshWpfSkinItemsForCurrentFilter()
         {
-            if (Tabs.SelectedIndex == SkinTabIndexHelper.WpfSkinTabIndex && filterList != null)
+            if (_currentSkinEngine == SkinEngine.Wpf)
             {
-                // スキンが変わると出力レイアウト（W×H×C×R＝保存先フォルダ）が変わる。
-                // StartTabSwitchThumbnailJob が旧スキン向けの進行中・キュー・追跡を清潔に
-                // 放棄してから新スキンの全件を作り直すので、分母も正しくなる。
-                ResolveThumbPathsForTab(SkinTabIndexHelper.WpfSkinTabIndex);
-                WpfSkinList.ItemsSource = filterList;
-                StartTabSwitchThumbnailJob(SkinTabIndexHelper.WpfSkinTabIndex);
+                RestartThumbnailsForActiveFilter();
             }
         }
 
@@ -816,24 +876,34 @@ namespace IndigoMovieManager
             _thumbnailScheduler.CancelTrackedForMovie(movieId);
 
         private int GetCurrentThumbnailTabIndex() =>
-            SkinTabIndexHelper.GetThumbnailTabIndex(Tabs.SelectedIndex);
+            SkinTabIndexHelper.GetThumbnailTabIndex(
+                SkinEngineHelper.ToLegacyThumbTabIndex(_currentSkinEngine));
 
-        private void StartTabSwitchThumbnailJob(int tabIndex)
+        private bool IsMovieListActive => !string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath);
+
+        private void StartTabSwitchThumbnailJob(int tabIndex, IReadOnlyList<MovieRecords> records = null)
         {
             int thumbTab = SkinTabIndexHelper.GetThumbnailTabIndex(tabIndex);
+            IReadOnlyList<MovieRecords> target = records ?? GetActiveFilterRecords();
+            if (target.Count == 0)
+            {
+                return;
+            }
 
             // タブ（またはスキン）を切り替えたら、まず直前タブ向けの生成を止める。
             // 切替先に未生成分が無い場合でも確実に旧ジョブを放棄するため、ここで明示的に行う。
             // （従来は新規ジョブ投入時しか旧ジョブを放棄できず、切替先が生成済みだと
             //   旧タブの生成が走り続けてステータスバーが更新され続けていた）
             AbandonTabThumbnailWork(thumbTab);
+            int buildEpoch = _thumbnailScheduler.TabSwitchBuildGeneration;
 
             _thumbnailScheduler.StartTabSwitchJob(
                 thumbTab,
-                filterList,
+                target,
                 _thumbLayoutCache,
                 MainVM.DbInfo.DBFullPath,
-                _sessionState.ThumbnailWorkGeneration);
+                _sessionState.ThumbnailWorkGeneration,
+                buildEpoch);
         }
 
         /// <summary>
@@ -1091,8 +1161,7 @@ namespace IndigoMovieManager
             _openingDatabase = true;
             try
             {
-                //強制的に-1にする。前回のタブが0だった場合の対応
-                Tabs.SelectedIndex = -1;
+                // DB 切替中は一覧更新を抑止する（_openingDatabase）。
                 CancelActiveThumbnailWork();
                 _fileWatcherManager.Clear();
                 _discoveredFileRegistrationGate.Clear();
@@ -1112,9 +1181,10 @@ namespace IndigoMovieManager
                     MainVM.MovieRecs.Clear();
                     GetHistoryTable(dbFullPath, session);
 
-                    int startupTabIndex = PrepareStartupSkinMode(MainVM.DbInfo.Skin);
+                    SkinEngine startupEngine = PrepareStartupSkinMode(MainVM.DbInfo.Skin);
                     string sortId = MainVM.DbInfo.Sort ?? "1";
-                    await FilterAndSortAsync(sortId, true, startupTabIndex).ConfigureAwait(true);
+                    int legacyTab = SkinEngineHelper.ToLegacyThumbTabIndex(startupEngine);
+                    await FilterAndSortAsync(sortId, true, legacyTab).ConfigureAwait(true);
 
                     GetBookmarkTable(session);
                     GetTagBarTable(session);
@@ -1122,11 +1192,8 @@ namespace IndigoMovieManager
 
                 SetSkinViewRoots();
 
-                // DB オープン/切替時は、タブ設定が _openingDatabase 中に行われるため
-                // Tabs_SelectionChangedAsync が早期 return し、現在モードのサムネ生成が
-                // 起動されない（旧 SwitchTab 相当の起点が無くなったことによるデグレ）。
-                // ここでアクティブモードの生成ジョブを明示起動して未生成分を作る。
-                StartTabSwitchThumbnailJob(Tabs.SelectedIndex);
+                // DB オープン中は SwitchSkinEngine が早期 return するため、ここでサムネ生成を起動する。
+                StartTabSwitchThumbnailJob(SkinEngineHelper.ToLegacyThumbTabIndex(_currentSkinEngine));
 
                 // DB オープン/切替直後は何も選択されておらず Avalon 詳細ペインが空になる。
                 // 現在の表示モード（WPF/WB）とドロップダウン状態のまま先頭レコードを選択し、
@@ -1419,34 +1486,17 @@ namespace IndigoMovieManager
 
         private void UpdateSkin()
         {
-            if (SkinTabIndexHelper.IsWebSkinTab(Tabs.SelectedIndex))
+            if (_currentSkinEngine == SkinEngine.Wb)
             {
                 return;
             }
 
-            if (SkinTabIndexHelper.IsWpfSkinTab(Tabs.SelectedIndex))
+            string skinName = _wpfSkin?.Name;
+            if (!string.IsNullOrWhiteSpace(skinName))
             {
-                string skinName = _wpfSkin?.Name;
-                if (!string.IsNullOrWhiteSpace(skinName))
-                {
-                    UpsertSystemTable(Properties.Settings.Default.LastDoc, "skin", skinName);
-                }
-                return;
+                UpsertSystemTable(Properties.Settings.Default.LastDoc, "skin", skinName);
             }
-
-            //5x2はあえて書き込まない。互換性の関係で。
-            string tabName = Tabs.SelectedIndex switch
-            {
-                0 => "DefaultSmall",
-                1 => "DefaultBig",
-                2 => "DefaultGrid",
-                3 => "DefaultList",
-                _ => "DefaultSmall",
-            };
-            UpsertSystemTable(Properties.Settings.Default.LastDoc, "skin", tabName);
         }
-
-        private void SwitchTab(string skin) => TabSelectionHelper.SwitchTab(this, skin);
 
         public void SelectFirstItem() => TabSelectionHelper.SelectFirstItem(this);
 
@@ -1484,56 +1534,17 @@ namespace IndigoMovieManager
             return false;
         }
 
-        private void SetActiveTabItemsSource(IEnumerable<MovieRecords> items)
+        private void SetActiveListItemsSource(IEnumerable<MovieRecords> items)
         {
-            switch (Tabs?.SelectedIndex ?? 0)
+            switch (_currentSkinEngine)
             {
-                case 0:
-                    SmallList.ItemsSource = items;
-                    break;
-                case 1:
-                    BigList.ItemsSource = items;
-                    break;
-                case 2:
-                    GridList.ItemsSource = items;
-                    break;
-                case 3:
-                    ListDataGrid.ItemsSource = items;
-                    break;
-                case 4:
-                    BigList10.ItemsSource = items;
-                    break;
-                case SkinTabIndexHelper.WpfSkinTabIndex:
+                case SkinEngine.Wpf:
                     ResolveThumbPathsForTab(SkinTabIndexHelper.WpfSkinTabIndex, items);
                     WpfSkinList.ItemsSource = items;
                     break;
-                case SkinTabIndexHelper.WbSkinTabIndex:
+                case SkinEngine.Wb:
                     RenderSkinViewForCurrentFilter(SkinTabIndexHelper.WbSkinTabIndex, deferUntilVisible: true);
                     break;
-                default:
-                    SmallList.ItemsSource = items;
-                    break;
-            }
-        }
-
-        private void SetAllTabItemsSource(IEnumerable<MovieRecords> items)
-        {
-            SmallList.ItemsSource = items;
-            BigList.ItemsSource = items;
-            GridList.ItemsSource = items;
-            ListDataGrid.ItemsSource = items;
-            BigList10.ItemsSource = items;
-            WpfSkinList.ItemsSource = items;
-            SkinViewGridWb.Tag = items;
-
-            if (SkinTabIndexHelper.IsWebSkinTab(Tabs.SelectedIndex))
-            {
-                RenderSkinViewForCurrentFilter(Tabs.SelectedIndex, deferUntilVisible: false);
-            }
-            else if (SkinTabIndexHelper.IsWpfSkinTab(Tabs.SelectedIndex))
-            {
-                ResolveThumbPathsForTab(SkinTabIndexHelper.WpfSkinTabIndex, items);
-                WpfSkinList.ItemsSource = items;
             }
         }
 
@@ -1580,17 +1591,21 @@ namespace IndigoMovieManager
             }
         }
 
-        private async Task FilterAndSortAsync(string id, bool isGetNew = false, int? resolveTabIndexOnly = null)
+        private async Task FilterAndSortAsync(
+            string id,
+            bool isGetNew = false,
+            int? resolveTabIndexOnly = null,
+            bool forceThumbnailRestart = false)
         {
             if (!_movieRecordsLoaded || isGetNew)
             {
                 await ReloadMovieRecordsAsync(id, resolveTabIndexOnly).ConfigureAwait(true);
             }
 
-            await ApplyFilterAndSortAsync(id).ConfigureAwait(true);
+            await ApplyFilterAndSortAsync(id, forceThumbnailRestart).ConfigureAwait(true);
         }
 
-        private async Task ApplyFilterAndSortAsync(string id)
+        private async Task ApplyFilterAndSortAsync(string id, bool forceThumbnailRestart = false)
         {
 #if DEBUG
             var sw = Stopwatch.StartNew();
@@ -1614,7 +1629,8 @@ namespace IndigoMovieManager
                 try
                 {
                     List<MovieRecords> snapshot = [.. MainVM.MovieRecs];
-                    int currentTabIndex = Tabs?.SelectedIndex ?? MainVM.DbInfo.CurrentTabIndex;
+                    int currentTabIndex = SkinEngineHelper.ToLegacyThumbTabIndex(
+                        _currentSkinEngine != default ? _currentSkinEngine : MainVM.DbInfo.CurrentSkinEngine);
                     var filterContext = new MovieListFilterContext
                     {
                         CurrentTabIndex = currentTabIndex,
@@ -1647,14 +1663,19 @@ namespace IndigoMovieManager
                 ? Visibility.Collapsed
                 : Visibility.Visible;
 
-            if (showAll)
+            SetActiveListItemsSource(filterList);
+            if (!showAll)
             {
-                SetActiveTabItemsSource(filterList);
-            }
-            else
-            {
-                SetAllTabItemsSource(filterList);
                 Refresh();
+            }
+
+            bool searchScopeChanged = !string.Equals(_lastThumbnailSearchKeyword, searchKeyword, StringComparison.Ordinal);
+            _lastThumbnailSearchKeyword = searchKeyword;
+            if (!_openingDatabase
+                && IsMovieListActive
+                && (forceThumbnailRestart || searchScopeChanged))
+            {
+                RestartThumbnailsForActiveFilter();
             }
 #if DEBUG
             sw.Stop();
@@ -1675,7 +1696,7 @@ namespace IndigoMovieManager
 
         private void RenderSkinViewForCurrentFilter(int tabIndex, bool deferUntilVisible)
         {
-            UserControls.SkinView skinView = TabSelectionHelper.GetSkinView(this, tabIndex);
+            UserControls.SkinView skinView = TabSelectionHelper.GetSkinView(this);
             if (skinView == null)
             {
                 return;
@@ -1697,52 +1718,6 @@ namespace IndigoMovieManager
             }
 
             Render();
-        }
-
-        private void Tabs_SelectionChangedAsync(object sender, SelectionChangedEventArgs e)
-        {
-            if (sender as TabControl != null && e.OriginalSource is TabControl)
-            {
-                var tabControl = sender as TabControl;
-                int index = tabControl.SelectedIndex;
-                if (index == -1) return;
-
-                MainVM.DbInfo.CurrentTabIndex = index;
-
-                UpdateSkinToolbarForTab(index);
-
-                if (filterList == null || _openingDatabase)
-                {
-                    return;
-                }
-
-                object[] listControls = [
-                    SmallList,
-                    BigList,
-                    GridList,
-                    ListDataGrid,
-                    BigList10,
-                    WpfSkinList,
-                    SkinViewGridWb,
-                ];
-
-                if (index >= 0 && index < listControls.Length)
-                {
-                    ResolveThumbPathsForTab(index);
-
-                    if (SkinTabIndexHelper.IsWebSkinTab(index))
-                    {
-                        RenderSkinViewForCurrentFilter(index, deferUntilVisible: true);
-                    }
-                    else if (listControls[index] is ItemsControl itemsControl)
-                    {
-                        itemsControl.ItemsSource = filterList;
-                    }
-
-                    StartTabSwitchThumbnailJob(index);
-                    SelectFirstItem();
-                }
-            }
         }
 
         private void TagCopy_Click(object sender, RoutedEventArgs e)
@@ -1775,7 +1750,7 @@ namespace IndigoMovieManager
 
         private void TagAdd_Click(object sender, RoutedEventArgs e)
         {
-            if (Tabs.SelectedItem == null) { return; }
+            if (!IsMovieListActive) { return; }
 
             MovieRecords dt = new();
             var tagEditWindow = new TagEdit
@@ -1810,7 +1785,7 @@ namespace IndigoMovieManager
 
         private void TagDelete_Click(object sender, RoutedEventArgs e)
         {
-            if (Tabs.SelectedItem == null) { return; }
+            if (!IsMovieListActive) { return; }
 
             MovieRecords mvSelected = GetSelectedItemByTabIndex();
             if (mvSelected == null) { return; }
@@ -1851,7 +1826,7 @@ namespace IndigoMovieManager
 
         private void TagEdit_Click(object sender, RoutedEventArgs e)
         {
-            if (Tabs.SelectedItem == null) { return; }
+            if (!IsMovieListActive) { return; }
 
             MovieRecords mv = GetSelectedItemByTabIndex();
             if (mv == null) { return; }
@@ -1900,7 +1875,7 @@ namespace IndigoMovieManager
 
             if (ret == true)
             {
-                if (Tabs.SelectedItem == null) { return; }
+                if (!IsMovieListActive) { return; }
 
                 List<MovieRecords> mv;
                 mv = GetSelectedItemsByTabIndex();
@@ -1960,7 +1935,7 @@ namespace IndigoMovieManager
                 keyName = menuItem.Name;
             }
 
-            if (Tabs.SelectedItem == null) { return; }
+            if (!IsMovieListActive) { return; }
 
             MovieRecords mv = GetSelectedItemByTabIndex();
             if (mv == null) { return; }
@@ -1980,7 +1955,7 @@ namespace IndigoMovieManager
 
         private void OpenParentFolder_Click(object sender, RoutedEventArgs e)
         {
-            if (Tabs.SelectedItem == null) { return; }
+            if (!IsMovieListActive) { return; }
 
             MovieRecords mv = GetSelectedItemByTabIndex();
             if (mv == null) { return; }
@@ -2014,7 +1989,7 @@ namespace IndigoMovieManager
                 return;
             }
 
-            if (Tabs.SelectedItem == null) { return; }
+            if (!IsMovieListActive) { return; }
             MovieRecords mv = GetSelectedItemByTabIndex();
             if (mv == null) { return; }
 
@@ -2115,7 +2090,7 @@ namespace IndigoMovieManager
                 return;
             }
 
-            if (Tabs.SelectedItem == null) { return; }
+            if (!IsMovieListActive) { return; }
 
             List<MovieRecords> mv;
             mv = GetSelectedItemsByTabIndex();
@@ -2203,7 +2178,7 @@ namespace IndigoMovieManager
                 return;
             }
 
-            if (Tabs.SelectedItem == null) { return; }
+            if (!IsMovieListActive) { return; }
 
             var dialogWindow = new MessageBoxEx(this)
             {
@@ -2578,7 +2553,7 @@ namespace IndigoMovieManager
                     break;
 
                 case NavigationMenuIds.RecreateAllThumbnails:
-                    if (Tabs.SelectedItem == null) { return; }
+                    if (!IsMovieListActive) { return; }
 
                     var dialogWindow = new MessageBoxEx(this)
                     {
@@ -2673,7 +2648,7 @@ namespace IndigoMovieManager
             BookmarkList.Items.Refresh();
             GetTagBarTable();
             TagBarList.Items.Refresh();
-            await FilterAndSortAsync(MainVM.DbInfo.Sort, true).ConfigureAwait(true);
+            await FilterAndSortAsync(MainVM.DbInfo.Sort, isGetNew: true, forceThumbnailRestart: true).ConfigureAwait(true);
             Refresh();
         }
 
@@ -2707,7 +2682,7 @@ namespace IndigoMovieManager
 
             if (notBookmark)
             {
-                if (Tabs.SelectedItem == null) { return; }
+                if (!IsMovieListActive) { return; }
 
                 mv = GetSelectedItemByTabIndex();
                 if (mv == null) { return; }
@@ -2721,9 +2696,9 @@ namespace IndigoMovieManager
 
                 if (sender is MenuItem senderObj && senderObj.Name == "PlayFromThumb")
                 {
-                    if (!TryResolvePlayPositionFromThumb(mv, Tabs.SelectedIndex, out _, out msec))
+                    if (!TryResolvePlayPositionFromThumb(mv, SkinEngineHelper.ToLegacyThumbTabIndex(_currentSkinEngine), out _, out msec))
                     {
-                        msec = GetPlayPosition(Tabs.SelectedIndex, mv, ref secPos);
+                        msec = GetPlayPosition(SkinEngineHelper.ToLegacyThumbTabIndex(_currentSkinEngine), mv, ref secPos);
                     }
                 }
 
@@ -2772,7 +2747,7 @@ namespace IndigoMovieManager
             if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath)) { return; }
             if (_isApplyingSearchKeyword) { return; }
 
-            if (Tabs.SelectedItem == null) { return; }
+            if (!IsMovieListActive) { return; }
 
             MovieRecords mv = GetSelectedItemByTabIndex();
             if (mv == null) { return; }
@@ -3584,7 +3559,7 @@ namespace IndigoMovieManager
                 return;
             }
 
-            int tabIndex = Tabs.SelectedIndex;
+            int tabIndex = SkinEngineHelper.ToLegacyThumbTabIndex(_currentSkinEngine);
             int secPos = 0;
             if (!TryResolvePlayPositionFromThumb(mv, tabIndex, out _, out int msec))
             {
@@ -3630,11 +3605,6 @@ namespace IndigoMovieManager
             mv.Tags = ConvertTagsWithNewLine(mv.Tag);
             UpdateMovieSingleColumn(MainVM.DbInfo.DBFullPath, mv.Movie_Id, MovieColumn.Tag, mv.Tags);
             Refresh();
-        }
-
-        private void ListDataGrid_BeginningEdit(object sender, DataGridBeginningEditEventArgs e)
-        {
-            e.Cancel = true;
         }
 
         private int GetPlayPosition(int tabIndex, MovieRecords mv, ref int returnPos)
@@ -3818,27 +3788,12 @@ namespace IndigoMovieManager
                 return;
             }
 
-            switch (Tabs.SelectedIndex)
+            switch (_currentSkinEngine)
             {
-                case 0:
-                    SmallList.SelectedItem = record;
-                    break;
-                case 1:
-                    BigList.SelectedItem = record;
-                    break;
-                case 2:
-                    GridList.SelectedItem = record;
-                    break;
-                case 3:
-                    ListDataGrid.SelectedItem = record;
-                    break;
-                case 4:
-                    BigList10.SelectedItem = record;
-                    break;
-                case SkinTabIndexHelper.WpfSkinTabIndex:
+                case SkinEngine.Wpf:
                     WpfSkinList.SelectedItem = record;
                     break;
-                case SkinTabIndexHelper.WbSkinTabIndex:
+                case SkinEngine.Wb:
                     SkinViewGridWb.SelectMovie(record, filterList);
                     break;
             }
@@ -3895,7 +3850,7 @@ namespace IndigoMovieManager
             if (sender is Label label && label.DataContext is MovieRecords record)
             {
                 // DataGridの選択状態を強制的にセット
-                ListDataGrid.SelectedItem = record;
+                WpfSkinList.SelectedItem = record;
                 lbClickPoint = e.GetPosition(label);
                 _lastClickedThumbImage = FindDescendant<System.Windows.Controls.Image>(label);
                 if (_lastClickedThumbImage != null)
@@ -3910,15 +3865,14 @@ namespace IndigoMovieManager
             }
         }
 
-        private void Tab_PreviewKeyDown(object sender, KeyEventArgs e)
+        private void MovieListHost_PreviewKeyDown(object sender, KeyEventArgs e)
         {
-            if (Tabs.SelectedIndex == -1) { return; }
-            if (Tabs.SelectedItem == null) { return; }
+            if (!IsMovieListActive) { return; }
 
-            if (SkinTabIndexHelper.IsWebSkinTab(Tabs.SelectedIndex)
+            if (_currentSkinEngine == SkinEngine.Wb
                 && e.Key is Key.Home or Key.End)
             {
-                TabSelectionHelper.GetSkinView(this, Tabs.SelectedIndex)
+                TabSelectionHelper.GetSkinView(this)
                     ?.ForwardKeyNav(e.Key, (Keyboard.Modifiers & ModifierKeys.Control) != 0);
                 e.Handled = true;
                 return;
@@ -3970,55 +3924,6 @@ namespace IndigoMovieManager
                         await ApplyFilterAndSortAsync(id).ConfigureAwait(true);
                         SelectFirstItem();
                     }
-                }
-            }
-        }
-
-        // SmallListのアイテム内要素クリック時に選択状態にするイベントハンドラ
-        private void SmallListItem_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-        {
-            if (sender is ListViewItem item)
-            {
-                // Ctrlキー押下時は選択状態を変更しない（WPF標準の複数選択動作に任せる）
-                if ((Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
-                    return;
-
-                if (!item.IsSelected)
-                {
-                    item.IsSelected = true;
-                    SmallList.SelectedItem = item.DataContext;
-                }
-            }
-        }
-
-        // BigListのアイテム内要素クリック時に選択状態にするイベントハンドラ
-        private void BigListItem_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-        {
-            if (sender is ListViewItem item)
-            {
-                if ((Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
-                    return;
-
-                if (!item.IsSelected)
-                {
-                    item.IsSelected = true;
-                    BigList.SelectedItem = item.DataContext;
-                }
-            }
-        }
-
-        // BigList10のアイテム内要素クリック時に選択状態にするイベントハンドラ
-        private void BigList10Item_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-        {
-            if (sender is ListViewItem item)
-            {
-                if ((Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
-                    return;
-
-                if (!item.IsSelected)
-                {
-                    item.IsSelected = true;
-                    BigList10.SelectedItem = item.DataContext;
                 }
             }
         }
@@ -4449,16 +4354,16 @@ namespace IndigoMovieManager
                     }
                 }
 
-                if (SkinTabIndexHelper.IsWebSkinTab(Tabs.SelectedIndex)
-                    && SkinTabIndexHelper.GetThumbnailTabIndex(Tabs.SelectedIndex) == queueObj.Tabindex)
+                if (_currentSkinEngine == SkinEngine.Wb
+                    && SkinTabIndexHelper.GetThumbnailTabIndex(SkinTabIndexHelper.WbSkinTabIndex) == queueObj.Tabindex)
                 {
                     MovieRecords webMv = mv ?? MainVM.MovieRecs.FirstOrDefault(x => x.Movie_Id == queueObj.MovieId);
                     if (webMv != null)
                     {
-                        UserControls.SkinView skinView = TabSelectionHelper.GetSkinView(this, Tabs.SelectedIndex);
+                        UserControls.SkinView skinView = TabSelectionHelper.GetSkinView(this);
                         string thumbPath = PlayPositionResolver.GetThumbPathForTab(
                             webMv,
-                            SkinTabIndexHelper.GetThumbnailTabIndex(Tabs.SelectedIndex));
+                            SkinTabIndexHelper.GetThumbnailTabIndex(SkinTabIndexHelper.WbSkinTabIndex));
                         skinView?.UpdateThumb(webMv.Movie_Id, thumbPath);
                     }
                 }
@@ -4476,7 +4381,7 @@ namespace IndigoMovieManager
         /// <param name="e"></param>
         private void CreateThumb_EqualInterval(object sender, RoutedEventArgs e)
         {
-            if (Tabs.SelectedItem == null) { return; }
+            if (!IsMovieListActive) { return; }
 
             // 複数選択対応: 選択中の全アイテムを取得
             List<MovieRecords> selectedItems = GetSelectedItemsByTabIndex();
@@ -4622,7 +4527,7 @@ namespace IndigoMovieManager
             //QueueObj 作って、サムネ作成する。どのパネルか、秒数はどこか、差し替える画像はどれか。
             //その辺は、サムネ作成側の処理で判断。
 
-            if (Tabs.SelectedItem == null) { return; }
+            if (!IsMovieListActive) { return; }
 
             MovieRecords mv = GetSelectedItemByTabIndex();
             if (mv == null) { return; }
@@ -4685,7 +4590,7 @@ namespace IndigoMovieManager
             //QueueObj 作って、サムネ作成する。どのパネルか、秒数はどこか、差し替える画像はどれか。
             //その辺は、サムネ作成側の処理で判断。
 
-            if (Tabs.SelectedItem == null) { return; }
+            if (!IsMovieListActive) { return; }
 
             MovieRecords mv = null;
             if (_manualPreview.IsOpen)
@@ -4735,7 +4640,7 @@ namespace IndigoMovieManager
 
         private async void ManualThumbnail_Click(object sender, RoutedEventArgs e)
         {
-            if (Tabs.SelectedItem == null) { return; }
+            if (!IsMovieListActive) { return; }
 
             MovieRecords mv = _contextMenuMovie ?? GetSelectedItemByTabIndex();
             if (mv == null) { return; }
@@ -4754,7 +4659,7 @@ namespace IndigoMovieManager
                         _contextMenuThumbClick,
                         _contextMenuThumbImage.ActualWidth,
                         _contextMenuThumbImage.ActualHeight,
-                        PlayPositionResolver.GetThumbPathForTab(mv, Tabs.SelectedIndex),
+                        PlayPositionResolver.GetThumbPathForTab(mv, SkinEngineHelper.ToLegacyThumbTabIndex(_currentSkinEngine)),
                         ZipMediaKind.IsZipRecord(mv),
                         out int panelIndex,
                         out msec))
@@ -4763,7 +4668,7 @@ namespace IndigoMovieManager
                 }
                 else
                 {
-                    msec = GetPlayPosition(Tabs.SelectedIndex, mv, ref manualPos);
+                    msec = GetPlayPosition(SkinEngineHelper.ToLegacyThumbTabIndex(_currentSkinEngine), mv, ref manualPos);
                 }
             }
 
@@ -4981,13 +4886,11 @@ namespace IndigoMovieManager
         #endregion
 
         ComboBox IMainWindowActions.SearchBox => SearchBox;
-        TabControl IMainWindowActions.Tabs => Tabs;
+        SkinEngine IMainWindowActions.CurrentSkinEngine => _currentSkinEngine;
+        bool IMainWindowActions.IsMovieListActive => IsMovieListActive;
+        bool IMainWindowListViews.IsMovieListActive => IsMovieListActive;
+        SkinEngine IMainWindowListViews.CurrentSkinEngine => _currentSkinEngine;
         string IMainWindowActions.DbFullPath => MainVM.DbInfo.DBFullPath;
-        ListView IMainWindowListViews.SmallList => SmallList;
-        ListView IMainWindowListViews.BigList => BigList;
-        ListView IMainWindowListViews.GridList => GridList;
-        DataGrid IMainWindowListViews.ListDataGrid => ListDataGrid;
-        ListView IMainWindowListViews.BigList10 => BigList10;
         ListView IMainWindowListViews.WpfSkinList => WpfSkinList;
         UserControls.SkinView IMainWindowListViews.SkinViewGridWb => SkinViewGridWb;
 
@@ -4995,18 +4898,12 @@ namespace IndigoMovieManager
 
         void IMainWindowActions.RequestDetailThumbnailRecreate() => RequestDetailThumbnailRecreate();
 
-        void IMainWindowActions.RefreshActiveList(int tabIndex) =>
-            TabListRefreshHelper.RefreshListByTabIndex(tabIndex, this);
+        void IMainWindowActions.RefreshActiveList(SkinEngine engine) =>
+            TabListRefreshHelper.RefreshActiveList(engine, this);
 
         void IMainWindowActions.UpdateMovieColumn(long movieId, MovieColumn column, object value) =>
             UpdateMovieSingleColumn(MainVM.DbInfo.DBFullPath, movieId, column, value);
 
-        TabControl IMainWindowTabViews.Tabs => Tabs;
-        TabItem IMainWindowTabViews.TabSmall => TabSmall;
-        TabItem IMainWindowTabViews.TabBig => TabBig;
-        TabItem IMainWindowTabViews.TabGrid => TabGrid;
-        TabItem IMainWindowTabViews.TabList => TabList;
-        TabItem IMainWindowTabViews.TabBig10 => TabBig10;
-        UserControls.ExtDetail IMainWindowTabViews.ViewExtDetail => viewExtDetail;
+        UserControls.ExtDetail IMainWindowListHost.ViewExtDetail => viewExtDetail;
     }
 }
