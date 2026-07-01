@@ -34,4 +34,4 @@ ffmpeg/ffprobe.exe
 - `layout.xml` は exe と同じフォルダに保存されます
 - `Thumb` / `temp` / `bookmark` などは実行時に作成されます
 
-詳細はリポジトリの [README](https://github.com/XiAce-Lite/IndigoMovieManager_origin/blob/main/README.md) を参照してください。
+詳細はリポジトリの [README](https://github.com/XiAce-Lite/IndigoMovieManager_origin/blob/main/README.md)（使い方）および [ARCHITECTURE.md](https://github.com/XiAce-Lite/IndigoMovieManager_origin/blob/main/docs/ARCHITECTURE.md)（技術仕様）を参照してください。
