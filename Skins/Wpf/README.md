@@ -1,5 +1,7 @@
 # WPF版スキン（skin.json）の書き方
 
+アプリ全体の技術概要は [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md)、使い方は [README](../../README.md) を参照してください。
+
 WPF版スキンは `Skins/Wpf/<スキン名>/skin.json` に置きます。
 `スキン(WPF)` タブ上部のドロップダウンで切り替えられます。
 編集中の `skin.json` を反映したい場合は、同じタブ上部の `Reload` ボタンを押してください。
