@@ -35,6 +35,24 @@ public class ThumbnailJobCoordinatorTests
     }
 
     [Fact]
+    public void TryComplete_returns_final_counts_before_job_removal()
+    {
+        var coordinator = new ThumbnailJobCoordinator();
+        int jobId = coordinator.BeginJob(ListLayout.Key);
+        var item = new QueueObj { MovieId = 1, ThumbnailLayout = ListLayout };
+        coordinator.RegisterWork(jobId, [item]);
+        coordinator.MarkInFlight(item);
+
+        ThumbnailJobCoordinator.Snapshot snapshot = coordinator.TryComplete(item);
+
+        Assert.Equal(jobId, snapshot.JobId);
+        Assert.Equal(1, snapshot.Total);
+        Assert.Equal(1, snapshot.Completed);
+        Assert.True(snapshot.IsComplete);
+        Assert.Equal(0, coordinator.GetSnapshot(jobId).Total);
+    }
+
+    [Fact]
     public void AbandonAndClearQueue_marks_previous_job_abandoned()
     {
         var scheduler = new ThumbnailQueueScheduler();

@@ -410,7 +410,9 @@ namespace IndigoMovieManager
           {
             state.InFlight = Math.Max(0, state.InFlight - 1);
             state.Completed++;
+            Snapshot snapshot = CreateSnapshot(item.JobId);
             TryRemoveFinishedJob(item.JobId, state);
+            return snapshot;
           }
         }
 

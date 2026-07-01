@@ -112,6 +112,8 @@ namespace IndigoMovieManager
 
         private bool _isDeletingSearchHistory = false;
         private bool _isApplyingSearchKeyword = false;
+        // 検索キーワード変更時のサムネ生成スコープ判定用（ソート変更のみでは触らない）。
+        private string _lastThumbnailScopeSearchKeyword = "";
         // 検索履歴ドロップダウンのキーボードカーソル位置（SelectedIndex はTextバインドで-1にリセットされ得るため独自管理）。
         private int _historyCursor = -1;
         private int _fileInfoRefreshRunning = 0;
@@ -1433,6 +1435,7 @@ namespace IndigoMovieManager
                 _discoveredFileRegistrationGate.Clear();
                 watchData?.Clear();
                 MainVM.DbInfo.SearchKeyword = "";
+                _lastThumbnailScopeSearchKeyword = "";
                 _movieRecordsLoaded = false;
                 InvalidateAllItemsFilterCache();
                 _sessionState.SetActiveDb(dbFullPath);
@@ -1916,6 +1919,11 @@ namespace IndigoMovieManager
                 return;
             }
 
+            if (!string.Equals(searchKeyword, MainVM.DbInfo.SearchKeyword ?? "", StringComparison.Ordinal))
+            {
+                return;
+            }
+
             filterList = result.Items;
             MainVM.DbInfo.SearchCount = result.SearchCount;
 
@@ -1929,11 +1937,25 @@ namespace IndigoMovieManager
                 Refresh();
             }
 
-            if (!_openingDatabase
-                && IsMovieListActive
-                && forceThumbnailRestart)
+            if (!_openingDatabase && IsMovieListActive)
             {
-                RestartThumbnailsForActiveFilter();
+                string currentKeyword = MainVM.DbInfo.SearchKeyword ?? "";
+                bool keywordChanged = !string.Equals(
+                    _lastThumbnailScopeSearchKeyword,
+                    currentKeyword,
+                    StringComparison.Ordinal);
+
+                if (forceThumbnailRestart)
+                {
+                    _lastThumbnailScopeSearchKeyword = currentKeyword;
+                    RestartThumbnailsForActiveFilter(
+                        useFullLibrary: ShouldUseFullLibraryForThumbnailRestart());
+                }
+                else if (keywordChanged)
+                {
+                    _lastThumbnailScopeSearchKeyword = currentKeyword;
+                    RestartThumbnailsForActiveFilter(useFullLibrary: showAll);
+                }
             }
 #if DEBUG
             sw.Stop();
@@ -3049,6 +3071,7 @@ namespace IndigoMovieManager
             if (string.IsNullOrEmpty(text))
             {
                 MainVM.DbInfo.SearchKeyword = "";
+                _sessionState.BumpFilterGeneration();
                 await FilterAndSortAsync(MainVM.DbInfo.Sort, false).ConfigureAwait(true);
                 SelectFirstItem();
             }
@@ -3432,6 +3455,7 @@ namespace IndigoMovieManager
 
                 MainVM.DbInfo.SearchKeyword = text;
                 SearchBox.Text = text;
+                _sessionState.BumpFilterGeneration();
                 await FilterAndSortAsync(MainVM.DbInfo.Sort, false).ConfigureAwait(true);
                 SelectFirstItem();
                 SearchBox.Focus();
