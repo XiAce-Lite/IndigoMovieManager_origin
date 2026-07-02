@@ -157,7 +157,7 @@ dotnet publish IndigoMovieManager.csproj -c Release -p:Platform=x64 -p:StandardD
 
 ### バージョン番号
 
-- `IndigoMovieManager.csproj` の `FileVersion` / `AssemblyVersion`（`1.0.0.x` の **x**）は **main へのマージ（リリース）のたびに CI が +1** する
+- `IndigoMovieManager.csproj` の `FileVersion` / `AssemblyVersion`（`1.0.0.x` の **x**）は **main へアプリ本体の変更が入ったとき** CI の release ジョブが +1 する（`.github/` や `docs/` のみのマージではバージョンは上がらない）
 - develop 上の日常コミットではバージョンは上がらない
 - リリース後、main にバージョン更新コミットが `[skip ci]` 付きで push される
 - 手動: `.\tools\bump-version.ps1`（通常は不要）
