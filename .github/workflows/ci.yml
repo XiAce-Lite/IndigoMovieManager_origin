@@ -27,12 +27,21 @@ jobs:
 
   release:
     needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      !contains(github.event.head_commit.message, '[skip ci]')
     runs-on: windows-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
+
+      - name: Bump version for release
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & ./tools/bump-version.ps1 -RepoRoot $env:GITHUB_WORKSPACE
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -106,4 +115,16 @@ jobs:
           name: v${{ steps.release.outputs.version }}
           body_path: release-notes.md
           files: ${{ steps.release.outputs.zip_name }}
+
+      - name: Commit bumped version to main
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add IndigoMovieManager.csproj
+          if (-not (git diff --cached --quiet)) {
+            git commit -m "ci: リリース用にバージョンを更新 [skip ci]"
+            git push
+          }
 

@@ -155,6 +155,13 @@ dotnet publish IndigoMovieManager.csproj -c Release -p:Platform=x64 -p:StandardD
 - `IndigoMovieManager.Tests` — `dotnet test`（Release）
 - GitHub Actions: `main` push でビルド・テスト・リリース
 
+### バージョン番号
+
+- `IndigoMovieManager.csproj` の `FileVersion` / `AssemblyVersion`（`1.0.0.x` の **x**）は **main へのマージ（リリース）のたびに CI が +1** する
+- develop 上の日常コミットではバージョンは上がらない
+- リリース後、main にバージョン更新コミットが `[skip ci]` 付きで push される
+- 手動: `.\tools\bump-version.ps1`（通常は不要）
+
 ## 既知の制限
 
 - WhiteBrowser ホスト API の大部分は未実装
