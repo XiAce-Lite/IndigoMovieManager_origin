@@ -1,4 +1,5 @@
 # Increment the 4th part of FileVersion / AssemblyVersion in IndigoMovieManager.csproj.
+# 通常は main マージ時の CI (release ジョブ) から呼ばれる。手動実行も可。
 param(
     [string]$RepoRoot = ""
 )
