@@ -91,6 +91,50 @@ public class ThumbnailJobCoordinatorTests
     }
 
     [Fact]
+    public void Batch_enqueue_with_beginNewJob_sets_total_to_batch_size()
+    {
+        var scheduler = new ThumbnailQueueScheduler();
+        List<QueueObj> batch =
+        [
+            new() { MovieId = 1, ThumbnailLayout = ListLayout, DbFullPath = @"C:\a\db.sqlite" },
+            new() { MovieId = 2, ThumbnailLayout = ListLayout, DbFullPath = @"C:\a\db.sqlite" },
+            new() { MovieId = 3, ThumbnailLayout = ListLayout, DbFullPath = @"C:\a\db.sqlite" },
+        ];
+
+        scheduler.EnqueueWork(batch, ListLayout.Key, beginNewJob: true);
+
+        ThumbnailJobCoordinator.Snapshot snapshot = scheduler.JobCoordinator.GetSnapshot();
+        Assert.Equal(3, snapshot.Total);
+        Assert.Equal(3, scheduler.Queue.Count);
+    }
+
+    [Fact]
+    public void Sequential_enqueue_without_beginNewJob_accumulates_total()
+    {
+        var scheduler = new ThumbnailQueueScheduler();
+        var first = new QueueObj
+        {
+            MovieId = 1,
+            ThumbnailLayout = ListLayout,
+            DbFullPath = @"C:\a\db.sqlite",
+        };
+        var second = new QueueObj
+        {
+            MovieId = 2,
+            ThumbnailLayout = ListLayout,
+            DbFullPath = @"C:\a\db.sqlite",
+        };
+
+        scheduler.EnqueueWork(first, ListLayout.Key, beginNewJob: true);
+        scheduler.EnqueueWork(second, ListLayout.Key, beginNewJob: false);
+
+        ThumbnailJobCoordinator.Snapshot snapshot = scheduler.JobCoordinator.GetSnapshot();
+        Assert.Equal(2, snapshot.Total);
+        Assert.True(scheduler.JobCoordinator.ShouldProcess(first));
+        Assert.True(scheduler.JobCoordinator.ShouldProcess(second));
+    }
+
+    [Fact]
     public void ClearSilentQueue_preserves_visible_job_items()
     {
         var scheduler = new ThumbnailQueueScheduler();

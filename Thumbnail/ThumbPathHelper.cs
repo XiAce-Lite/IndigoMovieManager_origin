@@ -1,5 +1,4 @@
 using IndigoMovieManager.Services;
-using IndigoMovieManager.Services.WpfSkin;
 using IndigoMovieManager.Thumbnail;
 
 namespace IndigoMovieManager.Thumbnail
@@ -17,7 +16,8 @@ namespace IndigoMovieManager.Thumbnail
         public static void ApplyThumbPaths(
             IEnumerable<MovieRecords> records,
             QueueObj queueObj,
-            string saveThumbFileName)
+            string saveThumbFileName,
+            SkinEngine activeEngine)
         {
             if (queueObj?.ThumbnailLayout == null)
             {
@@ -30,7 +30,7 @@ namespace IndigoMovieManager.Thumbnail
                 {
                     item.ThumbDetail = saveThumbFileName;
                 }
-                else if (queueObj.ThumbnailLayout.Equals(WhiteBrowserSkinSettings.GetThumbnailLayoutSpec()))
+                else if (activeEngine == SkinEngine.Wb)
                 {
                     item.ThumbPathWb = saveThumbFileName;
                 }
