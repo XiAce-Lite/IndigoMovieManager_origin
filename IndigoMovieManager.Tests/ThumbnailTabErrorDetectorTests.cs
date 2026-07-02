@@ -92,7 +92,10 @@ public class ThumbnailTabErrorDetectorTests
             File.WriteAllText(moviePath, "movie");
             var record = CreateRecord("movie", moviePath);
 
-            string expectedThumb = cache.GetExpectedThumbPath(ListLayout, "movie", "abc123");
+            string expectedThumb = cache.GetExpectedThumbPath(
+                ListLayout,
+                ThumbnailMovieNaming.GetMovieBody(record),
+                "abc123");
             string errorTemplate = cache.GetErrorPath(2);
             Assert.True(File.Exists(errorTemplate), $"error template missing: {errorTemplate}");
 
@@ -126,7 +129,10 @@ public class ThumbnailTabErrorDetectorTests
             File.WriteAllText(moviePath, "movie");
             var record = CreateRecord("movie", moviePath);
 
-            string expectedThumb = cache.GetExpectedThumbPath(ListLayout, "movie", "abc123");
+            string expectedThumb = cache.GetExpectedThumbPath(
+                ListLayout,
+                ThumbnailMovieNaming.GetMovieBody(record),
+                "abc123");
             string noFileTemplate = cache.GetNoFilePath(2);
             Assert.True(File.Exists(noFileTemplate), $"nofile template missing: {noFileTemplate}");
 
@@ -186,7 +192,10 @@ public class ThumbnailTabErrorDetectorTests
             File.WriteAllText(moviePath, "movie");
             var record = CreateRecord("movie", moviePath);
 
-            string expectedThumb = cache.GetExpectedThumbPath(ListLayout, "movie", "abc123");
+            string expectedThumb = cache.GetExpectedThumbPath(
+                ListLayout,
+                ThumbnailMovieNaming.GetMovieBody(record),
+                "abc123");
             WriteCompositePlaceholder(expectedThumb);
 
             Assert.False(ThumbnailTabErrorDetector.IsErrorForLayout(record, ListLayout, cache));

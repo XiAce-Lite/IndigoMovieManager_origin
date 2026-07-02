@@ -184,21 +184,21 @@ public class MovieListFilterTests
   [Fact]
   public void Build_Error_FiltersErrorThumbnailsForCurrentTab()
   {
-    string moviePath = Path.Combine(Path.GetTempPath(), $"imm-movie-{Guid.NewGuid():N}.mp4");
+    string errorMoviePath = Path.Combine(Path.GetTempPath(), $"imm-error-{Guid.NewGuid():N}.mp4");
+    string okMoviePath = Path.Combine(Path.GetTempPath(), $"imm-ok-{Guid.NewGuid():N}.mp4");
     string thumbRoot = Path.Combine(Path.GetTempPath(), $"imm-filter-err-{Guid.NewGuid():N}");
     Directory.CreateDirectory(thumbRoot);
     try
     {
-      File.WriteAllText(moviePath, "movie");
+      File.WriteAllText(errorMoviePath, "movie");
+      File.WriteAllText(okMoviePath, "movie");
 
       var cache = new ThumbnailLayoutCache();
       cache.Refresh("testdb", thumbRoot);
 
-      var source = new[]
-      {
-        CreateRecord("error.mp4", moviePath, hash: "errhash"),
-        CreateRecord("ok.mp4", moviePath, hash: "okhash"),
-      };
+      var errorRecord = CreateRecord("error.mp4", errorMoviePath, hash: "errhash");
+      var okRecord = CreateRecord("ok.mp4", okMoviePath, hash: "okhash");
+      var source = new[] { errorRecord, okRecord };
 
       var context = new MovieListFilterContext
       {
@@ -207,9 +207,19 @@ public class MovieListFilterTests
       };
 
       var wpfLayout = new ThumbnailLayoutSpec(400, 225, 1, 1);
-      string okThumb = cache.GetExpectedThumbPath(wpfLayout, "ok", "okhash");
-      string directory = Path.GetDirectoryName(okThumb);
-      Directory.CreateDirectory(directory!);
+      string errorThumb = cache.GetExpectedThumbPath(
+        wpfLayout,
+        ThumbnailMovieNaming.GetMovieBody(errorRecord),
+        errorRecord.Hash);
+      string errorTemplate = cache.GetErrorPath(2);
+      Directory.CreateDirectory(Path.GetDirectoryName(errorThumb)!);
+      File.Copy(errorTemplate, errorThumb, true);
+
+      string okThumb = cache.GetExpectedThumbPath(
+        wpfLayout,
+        ThumbnailMovieNaming.GetMovieBody(okRecord),
+        okRecord.Hash);
+      Directory.CreateDirectory(Path.GetDirectoryName(okThumb)!);
       byte[] composite = new byte[128];
       BitConverter.GetBytes((ushort)1).CopyTo(composite, composite.Length - 60);
       File.WriteAllBytes(okThumb, composite);
@@ -221,9 +231,14 @@ public class MovieListFilterTests
     }
     finally
     {
-      if (File.Exists(moviePath))
+      if (File.Exists(errorMoviePath))
       {
-        File.Delete(moviePath);
+        File.Delete(errorMoviePath);
+      }
+
+      if (File.Exists(okMoviePath))
+      {
+        File.Delete(okMoviePath);
       }
 
       if (Directory.Exists(thumbRoot))
