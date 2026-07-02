@@ -104,6 +104,29 @@ namespace IndigoMovieManager
       BeginJob(primaryLayoutKey, null);
 
     /// <summary>
+    /// キュー投入先として有効なジョブか（削除済み・完了済み・放棄済みは false）。
+    /// </summary>
+    public bool IsAcceptingWork(int jobId)
+    {
+      if (jobId <= 0 || jobId == SilentJobId)
+      {
+        return false;
+      }
+
+      lock (_lock)
+      {
+        if (!_jobs.TryGetValue(jobId, out JobState state) || state.Abandoned)
+        {
+          return false;
+        }
+
+        return state.Total <= 0
+          || state.Completed < state.Total
+          || state.InFlight > 0;
+      }
+    }
+
+    /// <summary>
     /// タブ/スキン切替でジョブが放棄されたとき、実行中ワーカーへキャンセルを伝える。
     /// </summary>
     public CancellationToken GetJobCancellationToken(int jobId)

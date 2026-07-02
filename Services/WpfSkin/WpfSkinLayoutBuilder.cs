@@ -79,7 +79,9 @@ namespace IndigoMovieManager.Services.WpfSkin
                     Text = child.Header,
                     FontWeight = FontWeights.Bold,
                     FontFamily = new FontFamily("Yu Gothic UI"),
-                    Padding = new Thickness(4, 3, 4, 3),
+                    Padding = child.Padding != null && !child.Padding.IsEmpty
+                        ? child.Padding.ToThickness()
+                        : new Thickness(4, 3, 4, 3),
                     TextTrimming = TextTrimming.CharacterEllipsis,
                 };
                 Grid.SetColumn(header, child.Col);

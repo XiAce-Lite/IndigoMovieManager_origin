@@ -1,3 +1,4 @@
+using IndigoMovieManager;
 using IndigoMovieManager.Services;
 using IndigoMovieManager.Thumbnail;
 using Xunit;
@@ -151,6 +152,189 @@ public class ThumbnailJobCoordinatorTests
         Assert.Single(scheduler.Queue);
         Assert.True(scheduler.JobCoordinator.ShouldProcess(visible));
         Assert.False(scheduler.JobCoordinator.IsTracked(2, ListLayout.Key));
+    }
+
+    [Fact]
+    public async Task StartTabSwitchJobAsync_enqueues_all_pending_items()
+    {
+        var scheduler = new ThumbnailQueueScheduler();
+        string thumbRoot = Path.Combine(Path.GetTempPath(), $"imm-tab-multi-{Guid.NewGuid():N}");
+        string movieDir = Path.Combine(Path.GetTempPath(), $"imm-movies-multi-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(thumbRoot);
+        Directory.CreateDirectory(movieDir);
+        try
+        {
+            var cache = new ThumbnailLayoutCache();
+            cache.Refresh("testdb", thumbRoot);
+
+            var records = new List<MovieRecords>();
+            for (int i = 0; i < 5; i++)
+            {
+                string moviePath = Path.Combine(movieDir, $"movie{i}.mod");
+                await File.WriteAllTextAsync(moviePath, "test");
+                records.Add(new MovieRecords
+                {
+                    Movie_Id = i + 1,
+                    Movie_Path = moviePath,
+                    Movie_Name = $"movie{i}",
+                    Hash = $"hash{i}",
+                });
+            }
+
+            int buildEpoch = scheduler.TabSwitchBuildGeneration;
+            await scheduler.StartTabSwitchJobAsync(
+                ListLayout,
+                records,
+                cache,
+                @"C:\fake\db.wb",
+                workGeneration: 1,
+                buildEpoch);
+
+            Assert.Equal(5, scheduler.Queue.Count);
+            ThumbnailJobCoordinator.Snapshot snapshot = scheduler.JobCoordinator.GetSnapshot();
+            Assert.Equal(5, snapshot.Total);
+
+            int processable = 0;
+            while (scheduler.Queue.TryDequeue(out QueueObj item))
+            {
+                if (scheduler.JobCoordinator.ShouldProcess(item))
+                {
+                    processable++;
+                }
+            }
+
+            Assert.Equal(5, processable);
+        }
+        finally
+        {
+            if (Directory.Exists(movieDir))
+            {
+                Directory.Delete(movieDir, true);
+            }
+
+            if (Directory.Exists(thumbRoot))
+            {
+                Directory.Delete(thumbRoot, true);
+            }
+        }
+    }
+
+    [Fact]
+    public void IsAcceptingWork_returns_false_after_job_completes()
+    {
+        var coordinator = new ThumbnailJobCoordinator();
+        int jobId = coordinator.BeginJob(ListLayout.Key);
+        var item = new QueueObj { MovieId = 1, ThumbnailLayout = ListLayout };
+        coordinator.RegisterWork(jobId, [item]);
+        coordinator.MarkInFlight(item);
+        coordinator.TryComplete(item);
+
+        Assert.False(coordinator.IsAcceptingWork(jobId));
+    }
+
+    [Fact]
+    public void EnqueueWork_after_completed_job_starts_fresh_job()
+    {
+        var scheduler = new ThumbnailQueueScheduler();
+        var first = new QueueObj
+        {
+            MovieId = 1,
+            ThumbnailLayout = ListLayout,
+            DbFullPath = @"C:\a\db.sqlite",
+        };
+        var second = new QueueObj
+        {
+            MovieId = 2,
+            ThumbnailLayout = ListLayout,
+            DbFullPath = @"C:\a\db.sqlite",
+        };
+
+        scheduler.EnqueueWork(first, ListLayout.Key, beginNewJob: true);
+        int firstJobId = scheduler.JobCoordinator.CurrentJobId;
+        scheduler.JobCoordinator.MarkInFlight(first);
+        scheduler.JobCoordinator.TryComplete(first);
+
+        scheduler.EnqueueWork(second, ListLayout.Key, beginNewJob: false);
+
+        int secondJobId = scheduler.JobCoordinator.CurrentJobId;
+        Assert.NotEqual(firstJobId, secondJobId);
+        Assert.True(scheduler.JobCoordinator.ShouldProcess(second));
+        ThumbnailJobCoordinator.Snapshot snapshot = scheduler.JobCoordinator.GetSnapshot(secondJobId);
+        Assert.Equal(1, snapshot.Total);
+    }
+
+    [Fact]
+    public async Task StartTabSwitchJobAsync_skips_when_composite_thumbnail_exists()
+    {
+        var scheduler = new ThumbnailQueueScheduler();
+        string thumbRoot = Path.Combine(Path.GetTempPath(), $"imm-tab-skip-{Guid.NewGuid():N}");
+        string moviePath = Path.Combine(Path.GetTempPath(), $"imm-movie-skip-{Guid.NewGuid():N}.mp4");
+        Directory.CreateDirectory(thumbRoot);
+        try
+        {
+            await File.WriteAllTextAsync(moviePath, "test");
+
+            var cache = new ThumbnailLayoutCache();
+            cache.Refresh("testdb", thumbRoot);
+
+            var records = new List<MovieRecords>
+            {
+                new()
+                {
+                    Movie_Id = 1,
+                    Movie_Path = moviePath,
+                    Movie_Name = $"{Path.GetFileName(moviePath)}.mp4",
+                    Hash = "abc123",
+                },
+            };
+
+            string body = ThumbnailMovieNaming.GetMovieBody(records[0]);
+            string thumbPath = cache.GetExpectedThumbPath(ListLayout, body, records[0].Hash);
+            WriteCompositeThumb(thumbPath, ListLayout.Width, ListLayout.Height);
+
+            int buildEpoch = scheduler.TabSwitchBuildGeneration;
+            await scheduler.StartTabSwitchJobAsync(
+                ListLayout,
+                records,
+                cache,
+                @"C:\fake\db.wb",
+                workGeneration: 1,
+                buildEpoch).ConfigureAwait(true);
+
+            Assert.Empty(scheduler.Queue);
+            Assert.Equal(0, scheduler.JobCoordinator.GetSnapshot().Total);
+        }
+        finally
+        {
+            if (File.Exists(moviePath))
+            {
+                File.Delete(moviePath);
+            }
+
+            if (Directory.Exists(thumbRoot))
+            {
+                Directory.Delete(thumbRoot, true);
+            }
+        }
+    }
+
+    private static void WriteCompositeThumb(string path, int width, int height)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        using var bitmap = new System.Drawing.Bitmap(width, height);
+        bitmap.Save(path, System.Drawing.Imaging.ImageFormat.Jpeg);
+
+        var thumbInfo = new Tools.ThumbInfo
+        {
+            ThumbWidth = width,
+            ThumbHeight = height,
+            ThumbRows = 1,
+            ThumbColumns = 1,
+            ThumbCounts = 1,
+        };
+        thumbInfo.Add(0);
+        thumbInfo.NewThumbInfo();
+        ThumbnailMetadataWriter.AppendMetadata(path, thumbInfo);
     }
 
     [Fact]

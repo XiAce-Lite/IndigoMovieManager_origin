@@ -87,11 +87,8 @@ namespace IndigoMovieManager.Thumbnail
             return !ThumbnailValidityHelper.LooksLikeCompositeThumbnail(expectedThumb);
         }
 
-        private static string GetMovieBody(MovieRecords item)
-        {
-            string moviePath = item.Movie_Path ?? "";
-            return Path.GetFileNameWithoutExtension(item.Movie_Name ?? moviePath).ToLowerInvariant();
-        }
+        private static string GetMovieBody(MovieRecords item) =>
+            ThumbnailMovieNaming.GetMovieBody(item);
 
         private static bool PlaceholderFilesMatch(string filePath, string templatePath)
         {

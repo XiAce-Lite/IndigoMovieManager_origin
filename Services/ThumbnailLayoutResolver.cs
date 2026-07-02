@@ -29,9 +29,7 @@ namespace IndigoMovieManager.Services
             ThumbnailLayoutSpec spec = GetActiveListLayout(engine);
             foreach (MovieRecords item in records)
             {
-                string thumbFile = ThumbnailLayoutCache.GetThumbFileName(
-                    Path.GetFileNameWithoutExtension(item.Movie_Name ?? item.Movie_Path ?? string.Empty),
-                    item.Hash);
+                string thumbFile = ThumbnailMovieNaming.GetThumbFileName(item);
                 string path = cache.BuildThumbPath(spec, thumbFile, checkExists: true);
                 if (engine == SkinEngine.Wb)
                 {

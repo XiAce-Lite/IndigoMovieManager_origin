@@ -115,7 +115,7 @@ namespace IndigoMovieManager.Services
                     ? _jobCoordinator.BeginJob(primaryLayoutKey ?? "", displayTitle)
                     : _jobCoordinator.CurrentJobId;
 
-                if (!beginNewJob && jobId == 0)
+                if (!beginNewJob && (jobId == 0 || !_jobCoordinator.IsAcceptingWork(jobId)))
                 {
                     jobId = _jobCoordinator.BeginJob(primaryLayoutKey ?? "", displayTitle);
                 }
@@ -275,8 +275,7 @@ namespace IndigoMovieManager.Services
                 return false;
             }
 
-            string fileBody = Path.GetFileNameWithoutExtension(item.Movie_Name ?? item.Movie_Path ?? string.Empty)
-                .ToLowerInvariant();
+            string fileBody = ThumbnailMovieNaming.GetMovieBody(item);
             string expectedPath = cache.GetExpectedThumbPath(layout, fileBody, item.Hash);
             return NeedsThumbnailGeneration(expectedPath);
         }
@@ -432,7 +431,7 @@ namespace IndigoMovieManager.Services
                                 WorkGeneration = workGeneration,
                             });
 
-                            int threshold = jobStarted ? 64 : 1;
+                            const int threshold = 64;
                             if (batch.Count >= threshold)
                             {
                                 toFlush = batch;

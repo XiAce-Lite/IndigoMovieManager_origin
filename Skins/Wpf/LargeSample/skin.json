@@ -1,0 +1,36 @@
+{
+  "$schema": "../skin.schema.json",
+  "name": "LargeSample",
+  "type": "card",
+
+  "surface": {
+    "background": "#FFFFFF"
+  },
+
+  "styles": {
+    "title": { "fontFamily": "Yu Gothic UI", "fontSize": 13, "foreground": "#000000", "bold": true }
+  },
+
+  "thumbnail": {
+    "width": 320,
+    "height": 180,
+    "columns": 2,
+    "rows": 2
+  },
+
+  "card": {
+    "width": 680,
+    "padding": 8,
+    "margin": 0,
+    "stretch": true,
+    "background": "",
+
+    "layout": {
+      "stack": "vertical",
+      "children": [
+        { "type": "thumbnail", "width": 640, "height": 360 },
+        { "type": "text", "field": "title", "style": "title" }
+      ]
+    }
+  }
+}
