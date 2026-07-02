@@ -23,4 +23,15 @@
     <ProjectReference Include="..\IndigoMovieManager.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="..\Skins\Wpf\TinySample\skin.json">
+      <Link>Skins\Wpf\TinySample\skin.json</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\Skins\Wpf\LargeSample\skin.json">
+      <Link>Skins\Wpf\LargeSample\skin.json</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>

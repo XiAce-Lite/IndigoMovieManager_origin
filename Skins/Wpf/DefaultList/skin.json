@@ -21,14 +21,14 @@
   },
 
   "card": {
-    "width": 2058,
+    "width": 1922,
     "padding": 0,
     "margin": 0,
     "background": "",
 
     "layout": {
       "panel": "grid",
-      "columns": ["314", "640", "90", "96", "70", "96", "200", "184", "184", "184"],
+      "columns": ["300", "580", "88", "92", "72", "92", "188", "170", "170", "170"],
       "rows": ["auto"],
       "children": [
         { "type": "thumbnail", "col": 0, "header": "サムネイル", "width": 280, "height": 42, "valign": "center" },
@@ -39,13 +39,13 @@
           "valign": "center",
           "children": [
             { "type": "text", "field": "title", "style": "title" },
-            { "type": "tags", "width": 620, "minHeight": 28, "maxHeight": 56 }
+            { "type": "tags", "width": 560, "minHeight": 28, "maxHeight": 56 }
           ]
         },
         { "type": "text", "col": 2, "header": "サイズ", "field": "size", "format": "filesize", "style": "cell", "valign": "center" },
         { "type": "text", "col": 3, "header": "長さ", "field": "length", "style": "cell", "valign": "center" },
-        { "type": "text", "col": 4, "header": "スコア", "field": "score", "style": "cellRight", "valign": "center" },
-        { "type": "text", "col": 5, "header": "再生回数", "field": "viewcount", "style": "cellRight", "valign": "center" },
+        { "type": "text", "col": 4, "header": "スコア", "field": "score", "style": "cellRight", "valign": "center", "padding": "4,0,12,0" },
+        { "type": "text", "col": 5, "header": "再生回数", "field": "viewcount", "style": "cellRight", "valign": "center", "padding": "4,0,12,0" },
         { "type": "text", "col": 6, "header": "フォルダ", "field": "dir", "style": "cell", "valign": "center" },
         { "type": "text", "col": 7, "header": "ファイル日付", "field": "filedate", "style": "cell", "valign": "center" },
         { "type": "text", "col": 8, "header": "登録日", "field": "registdate", "style": "cell", "valign": "center" },

@@ -19,7 +19,8 @@ namespace IndigoMovieManager
         {
             string hash = row["hash"].ToString();
             string movieFullPath = row["movie_path"].ToString();
-            string thumbFile = ThumbnailLayoutCache.GetThumbFileName(row["movie_name"].ToString(), hash);
+            string movieBody = Path.GetFileNameWithoutExtension(movieFullPath).ToLowerInvariant();
+            string thumbFile = ThumbnailLayoutCache.GetThumbFileName(movieBody, hash);
 
             bool resolveAll = resolveEngineOnly == null;
             string thumbPathWpf = null;
@@ -56,7 +57,6 @@ namespace IndigoMovieManager
 
             string tag = TagLeadingNewlinesRegex().Replace(tags, "");
             string ext = Path.GetExtension(movieFullPath);
-            string movieBody = Path.GetFileNameWithoutExtension(movieFullPath);
             string containerValue = row["container"].ToString();
             long movieLengthRaw = (long)row["movie_length"];
             string movieLength = string.Equals(containerValue, "zip", StringComparison.OrdinalIgnoreCase)
