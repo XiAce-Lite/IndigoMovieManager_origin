@@ -41,6 +41,11 @@ namespace IndigoMovieManager
         private readonly ThumbnailQueueScheduler _thumbnailScheduler = new();
         private readonly FileWatcherManager _fileWatcherManager = new();
         private readonly DiscoveredFileRegistrationGate _discoveredFileRegistrationGate = new();
+        private readonly List<QueueObj> _pendingDiscoveredThumbnailWork = [];
+        private readonly object _pendingDiscoveredThumbnailLock = new();
+        private CancellationTokenSource _discoveredThumbnailFlushCts;
+        private int _discoveredRegistrationInFlight;
+        private const int DiscoveredThumbnailFlushDelayMs = 1500;
         private readonly SemaphoreSlim _folderCheckGate = new(1, 1);
         private bool _openingDatabase;
         private bool _suppressSkinComboChange;
@@ -119,8 +124,10 @@ namespace IndigoMovieManager
         private int _fileInfoRefreshRunning = 0;
 
         private const int SearchOverlayDelayMs = 400;
+        private const int SearchIncrementalDebounceMs = 400;
         private int _loadingOverlayDepth;
         private CancellationTokenSource _searchOverlayDelayCts;
+        private CancellationTokenSource _searchIncrementalDebounceCts;
         private bool _searchOverlayPushed;
 
         public MainWindow()
@@ -1043,8 +1050,112 @@ namespace IndigoMovieManager
                 MovieFullPath = mvi.MoviePath,
                 DbFullPath = dbFullPath,
             };
-            PopulateActiveListQueueLayout(queueItem);
-            EnqueueThumbnailWork(queueItem, beginNewJob: true);
+
+            lock (_pendingDiscoveredThumbnailLock)
+            {
+                _pendingDiscoveredThumbnailWork.Add(queueItem);
+            }
+        }
+
+        private void TryScheduleDiscoveredThumbnailFlush()
+        {
+            lock (_pendingDiscoveredThumbnailLock)
+            {
+                if (_pendingDiscoveredThumbnailWork.Count == 0)
+                {
+                    return;
+                }
+
+                ScheduleDiscoveredThumbnailFlushLocked();
+            }
+        }
+
+        private void ScheduleDiscoveredThumbnailFlushLocked()
+        {
+            _discoveredThumbnailFlushCts?.Cancel();
+            _discoveredThumbnailFlushCts?.Dispose();
+            _discoveredThumbnailFlushCts = new CancellationTokenSource();
+            CancellationTokenSource flushCts = _discoveredThumbnailFlushCts;
+            _ = FlushDiscoveredThumbnailBatchAsync(flushCts);
+        }
+
+        private void ClearPendingDiscoveredThumbnailWork()
+        {
+            lock (_pendingDiscoveredThumbnailLock)
+            {
+                _pendingDiscoveredThumbnailWork.Clear();
+                _discoveredThumbnailFlushCts?.Cancel();
+                _discoveredThumbnailFlushCts?.Dispose();
+                _discoveredThumbnailFlushCts = null;
+            }
+
+            Interlocked.Exchange(ref _discoveredRegistrationInFlight, 0);
+        }
+
+        private async Task FlushDiscoveredThumbnailBatchAsync(CancellationTokenSource flushCts)
+        {
+            try
+            {
+                await Task.Delay(DiscoveredThumbnailFlushDelayMs, flushCts.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+
+            if (Volatile.Read(ref _discoveredRegistrationInFlight) > 0)
+            {
+                TryScheduleDiscoveredThumbnailFlush();
+                return;
+            }
+
+            List<QueueObj> batch;
+            lock (_pendingDiscoveredThumbnailLock)
+            {
+                if (flushCts.IsCancellationRequested || _pendingDiscoveredThumbnailWork.Count == 0)
+                {
+                    return;
+                }
+
+                batch = [.. _pendingDiscoveredThumbnailWork];
+                _pendingDiscoveredThumbnailWork.Clear();
+            }
+
+            await Dispatcher.InvokeAsync(async () =>
+            {
+                if (batch.Count == 0)
+                {
+                    return;
+                }
+
+                foreach (QueueObj item in batch)
+                {
+                    PopulateActiveListQueueLayout(item);
+                }
+
+                string sortId = MainVM.DbInfo.Sort ?? "1";
+                await FilterAndSortAsync(sortId, true).ConfigureAwait(true);
+                EnqueueThumbnailWork(batch, beginNewJob: ShouldBeginNewDiscoveredThumbnailJob());
+            }).Task.Unwrap().ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// 監視で連続検知された複数ファイルを同一ジョブにまとめる。
+        /// 毎回 beginNewJob すると先行分が破棄され 0/1 表示のまま1件しか処理されない。
+        /// </summary>
+        private bool ShouldBeginNewDiscoveredThumbnailJob()
+        {
+            ThumbnailJobCoordinator.Snapshot snapshot = _thumbnailScheduler.JobCoordinator.GetSnapshot();
+            string activeLayoutKey = GetActiveListLayoutKey();
+            if (!string.IsNullOrEmpty(activeLayoutKey)
+                && !string.Equals(snapshot.PrimaryLayoutKey, activeLayoutKey, StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            return snapshot.Total <= 0
+                || snapshot.IsComplete
+                || snapshot.Abandoned;
         }
 
         private void EnsureDetailThumbnail(MovieRecords mv, bool forceRecreate = false)
@@ -1291,6 +1402,7 @@ namespace IndigoMovieManager
                     return;
                 }
 
+                Interlocked.Increment(ref _discoveredRegistrationInFlight);
                 try
                 {
                     bool alreadyRegistered = await Dispatcher.InvokeAsync(() =>
@@ -1316,27 +1428,23 @@ namespace IndigoMovieManager
                         return;
                     }
 
-                    await Dispatcher.InvokeAsync(async () =>
+                    await Dispatcher.InvokeAsync(() =>
                     {
                         if (!_fileWatcherManager.IsSessionActive(watcherSession))
                         {
                             return;
                         }
 
-                        string sortId = MainVM.DbInfo.Sort ?? "1";
-                        await FilterAndSortAsync(sortId, true).ConfigureAwait(true);
-
-                        if (!_fileWatcherManager.IsSessionActive(watcherSession))
-                        {
-                            return;
-                        }
-
                         EnqueueDiscoveredFileThumbnails(mvi, dbPath);
-                    }).Task.Unwrap().ConfigureAwait(false);
+                    }).Task.ConfigureAwait(false);
                 }
                 finally
                 {
                     _discoveredFileRegistrationGate.Exit(normalizedPath);
+                    if (Interlocked.Decrement(ref _discoveredRegistrationInFlight) == 0)
+                    {
+                        TryScheduleDiscoveredThumbnailFlush();
+                    }
                 }
             }
             catch (Exception ex)
@@ -1407,7 +1515,17 @@ namespace IndigoMovieManager
         }
         private void OnPreviewTextInputUpdate(object sender, TextCompositionEventArgs e)
         {
-            if (e.TextComposition.CompositionText.Length == 0) { _imeFlag = false; }
+            if (e.TextComposition.CompositionText.Length == 0)
+            {
+                _imeFlag = false;
+                if (!_isApplyingSearchKeyword
+                    && !_isDeletingSearchHistory
+                    && !string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath)
+                    && SearchInputClassifier.IsIncrementalSearchEligible(SearchBox.Text))
+                {
+                    ScheduleIncrementalSearch(SearchBox.Text);
+                }
+            }
         }
 
         //todo : And以外の検索の実装。せめてNOT検索ぐらいまでは…
@@ -1433,6 +1551,7 @@ namespace IndigoMovieManager
                 CancelActiveThumbnailWork();
                 _fileWatcherManager.Clear();
                 _discoveredFileRegistrationGate.Clear();
+                ClearPendingDiscoveredThumbnailWork();
                 watchData?.Clear();
                 MainVM.DbInfo.SearchKeyword = "";
                 _lastThumbnailScopeSearchKeyword = "";
@@ -1591,7 +1710,7 @@ namespace IndigoMovieManager
 
                 MovieListCoordinator.ReplaceCollection(MainVM.MovieRecs, loaded.Records);
                 _movieRecordsLoaded = true;
-                StoreAllItemsFilterCache(sortId, loaded.Records);
+                InvalidateAllItemsFilterCache();
             }
             finally
             {
@@ -1857,17 +1976,21 @@ namespace IndigoMovieManager
             string id,
             bool isGetNew = false,
             SkinEngine? resolveEngineOnly = null,
-            bool forceThumbnailRestart = false)
+            bool forceThumbnailRestart = false,
+            bool updateThumbnailScope = true)
         {
             if (!_movieRecordsLoaded || isGetNew)
             {
                 await ReloadMovieRecordsAsync(id, resolveEngineOnly).ConfigureAwait(true);
             }
 
-            await ApplyFilterAndSortAsync(id, forceThumbnailRestart).ConfigureAwait(true);
+            await ApplyFilterAndSortAsync(id, forceThumbnailRestart, updateThumbnailScope).ConfigureAwait(true);
         }
 
-        private async Task ApplyFilterAndSortAsync(string id, bool forceThumbnailRestart = false)
+        private async Task ApplyFilterAndSortAsync(
+            string id,
+            bool forceThumbnailRestart = false,
+            bool updateThumbnailScope = true)
         {
 #if DEBUG
             var sw = Stopwatch.StartNew();
@@ -1951,7 +2074,7 @@ namespace IndigoMovieManager
                     RestartThumbnailsForActiveFilter(
                         useFullLibrary: ShouldUseFullLibraryForThumbnailRestart());
                 }
-                else if (keywordChanged)
+                else if (updateThumbnailScope && keywordChanged)
                 {
                     _lastThumbnailScopeSearchKeyword = currentKeyword;
                     RestartThumbnailsForActiveFilter(useFullLibrary: showAll);
@@ -1961,6 +2084,65 @@ namespace IndigoMovieManager
             sw.Stop();
             Debug.WriteLine($"絞り込み経過時間 FilterAndSort：{sw.ElapsedMilliseconds} ミリ秒 (showAll={showAll}, cacheHit={cacheHit})");
 #endif
+        }
+
+        private void CancelIncrementalSearchDebounce()
+        {
+            if (_searchIncrementalDebounceCts == null)
+            {
+                return;
+            }
+
+            _searchIncrementalDebounceCts.Cancel();
+            _searchIncrementalDebounceCts.Dispose();
+            _searchIncrementalDebounceCts = null;
+        }
+
+        private void ScheduleIncrementalSearch(string text)
+        {
+            CancelIncrementalSearchDebounce();
+            var cts = new CancellationTokenSource();
+            _searchIncrementalDebounceCts = cts;
+            _ = RunIncrementalSearchDebouncedAsync(text, cts);
+        }
+
+        private async Task RunIncrementalSearchDebouncedAsync(string text, CancellationTokenSource cts)
+        {
+            try
+            {
+                await Task.Delay(SearchIncrementalDebounceMs, cts.Token).ConfigureAwait(true);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+
+            if (cts != _searchIncrementalDebounceCts)
+            {
+                return;
+            }
+
+            _searchIncrementalDebounceCts = null;
+            cts.Dispose();
+
+            if (_isApplyingSearchKeyword || _imeFlag)
+            {
+                return;
+            }
+
+            if (!string.Equals(SearchBox.Text, text, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            if (!SearchInputClassifier.IsIncrementalSearchEligible(text))
+            {
+                return;
+            }
+
+            _sessionState.BumpFilterGeneration();
+            await FilterAndSortAsync(MainVM.DbInfo.Sort, updateThumbnailScope: false).ConfigureAwait(true);
+            SelectFirstItem();
         }
 
         private void DataRowToViewData(DataRow row, SkinEngine? resolveEngineOnly = null)
@@ -3067,14 +3249,24 @@ namespace IndigoMovieManager
             // 手動でテキスト編集したらキーボードカーソルはリセットする。
             _historyCursor = -1;
 
-            string text = SearchBox.Text;
+            string text = SearchBox.Text ?? "";
             if (string.IsNullOrEmpty(text))
             {
+                CancelIncrementalSearchDebounce();
                 MainVM.DbInfo.SearchKeyword = "";
                 _sessionState.BumpFilterGeneration();
-                await FilterAndSortAsync(MainVM.DbInfo.Sort, false).ConfigureAwait(true);
+                await FilterAndSortAsync(MainVM.DbInfo.Sort, updateThumbnailScope: true).ConfigureAwait(true);
                 SelectFirstItem();
+                return;
             }
+
+            if (!SearchInputClassifier.IsIncrementalSearchEligible(text))
+            {
+                CancelIncrementalSearchDebounce();
+                return;
+            }
+
+            ScheduleIncrementalSearch(text);
         }
 
         private void SearchBox_DropDownClosed(object sender, EventArgs e)
@@ -3441,6 +3633,7 @@ namespace IndigoMovieManager
                 return;
             }
 
+            CancelIncrementalSearchDebounce();
             string text = keyword ?? "";
             _historyCursor = -1;
             _isApplyingSearchKeyword = true;
@@ -4634,7 +4827,7 @@ namespace IndigoMovieManager
 
         private void ApplyThumbPaths(QueueObj queueObj, string saveThumbFileName)
         {
-            ThumbPathHelper.ApplyThumbPaths(MainVM.MovieRecs, queueObj, saveThumbFileName);
+            ThumbPathHelper.ApplyThumbPaths(MainVM.MovieRecs, queueObj, saveThumbFileName, _currentSkinEngine);
 
             if (queueObj.ThumbnailLayout != null
                 && !queueObj.ThumbnailLayout.Equals(ThumbnailLayoutSpec.DetailPaneLayout))
