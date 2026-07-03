@@ -280,19 +280,29 @@ namespace IndigoMovieManager.Services
             return NeedsThumbnailGeneration(expectedPath);
         }
 
-        private static bool NeedsThumbnailGeneration(string expectedPath)
+        /// <summary>
+        /// 一括スキャンでは存在確認のみ行う（全件フッター検証は I/O が重い）。
+        /// error プレースホルダーの再生成は手動再作成や個別経路に任せる。
+        /// </summary>
+        private static bool NeedsThumbnailGeneration(string expectedPath) =>
+            string.IsNullOrWhiteSpace(expectedPath) || !File.Exists(expectedPath);
+
+        /// <summary>
+        /// 監視で投入済みのジョブをタブ切替スキャンが beginNewJob で捨てないための判定。
+        /// </summary>
+        public bool ShouldBeginNewVisibleJob(string layoutKey)
         {
-            if (string.IsNullOrWhiteSpace(expectedPath))
+            ThumbnailJobCoordinator.Snapshot snapshot = _jobCoordinator.GetSnapshot();
+            if (!string.IsNullOrEmpty(layoutKey)
+                && !string.IsNullOrEmpty(snapshot.PrimaryLayoutKey)
+                && !string.Equals(snapshot.PrimaryLayoutKey, layoutKey, StringComparison.Ordinal))
             {
                 return true;
             }
 
-            if (!File.Exists(expectedPath))
-            {
-                return true;
-            }
-
-            return !ThumbnailValidityHelper.LooksLikeCompositeThumbnail(expectedPath);
+            return snapshot.Total <= 0
+                || snapshot.IsComplete
+                || snapshot.Abandoned;
         }
 
         public void StartTabSwitchJob(
@@ -500,8 +510,17 @@ namespace IndigoMovieManager.Services
 
                 if (!jobStarted)
                 {
-                    ClearTrackingForLayoutKey(layoutKey);
-                    EnqueueWork(batch, layoutKey, beginNewJob: true, displayTitle);
+                    // 監視フォルダの新規投入が先に走っている場合は追記し、ジョブを破棄しない。
+                    if (ShouldBeginNewVisibleJob(layoutKey))
+                    {
+                        ClearTrackingForLayoutKey(layoutKey);
+                        EnqueueWork(batch, layoutKey, beginNewJob: true, displayTitle);
+                    }
+                    else
+                    {
+                        EnqueueWork(batch, layoutKey, beginNewJob: false, displayTitle);
+                    }
+
                     jobStarted = true;
                 }
                 else

@@ -1142,21 +1142,10 @@ namespace IndigoMovieManager
         /// <summary>
         /// 監視で連続検知された複数ファイルを同一ジョブにまとめる。
         /// 毎回 beginNewJob すると先行分が破棄され 0/1 表示のまま1件しか処理されない。
+        /// タブ切替の全件スキャンと競合しても、進行中ジョブは捨てない。
         /// </summary>
-        private bool ShouldBeginNewDiscoveredThumbnailJob()
-        {
-            ThumbnailJobCoordinator.Snapshot snapshot = _thumbnailScheduler.JobCoordinator.GetSnapshot();
-            string activeLayoutKey = GetActiveListLayoutKey();
-            if (!string.IsNullOrEmpty(activeLayoutKey)
-                && !string.Equals(snapshot.PrimaryLayoutKey, activeLayoutKey, StringComparison.Ordinal))
-            {
-                return true;
-            }
-
-            return snapshot.Total <= 0
-                || snapshot.IsComplete
-                || snapshot.Abandoned;
-        }
+        private bool ShouldBeginNewDiscoveredThumbnailJob() =>
+            _thumbnailScheduler.ShouldBeginNewVisibleJob(GetActiveListLayoutKey());
 
         private void EnsureDetailThumbnail(MovieRecords mv, bool forceRecreate = false)
         {
@@ -4678,7 +4667,9 @@ namespace IndigoMovieManager
                         PopulateActiveListQueueLayout(item);
                     }
 
-                    EnqueueThumbnailWork(addFiles, beginNewJob: true);
+                    EnqueueThumbnailWork(
+                        addFiles,
+                        beginNewJob: ShouldBeginNewDiscoveredThumbnailJob());
                 }
             }).Task.Unwrap().ConfigureAwait(false);
         }

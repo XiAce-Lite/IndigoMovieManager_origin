@@ -318,6 +318,156 @@ public class ThumbnailJobCoordinatorTests
         }
     }
 
+    [Fact]
+    public async Task StartTabSwitchJobAsync_appends_without_abandoning_discovered_job()
+    {
+        var scheduler = new ThumbnailQueueScheduler();
+        string thumbRoot = Path.Combine(Path.GetTempPath(), $"imm-tab-append-{Guid.NewGuid():N}");
+        string movieDir = Path.Combine(Path.GetTempPath(), $"imm-movies-append-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(thumbRoot);
+        Directory.CreateDirectory(movieDir);
+        try
+        {
+            var cache = new ThumbnailLayoutCache();
+            cache.Refresh("testdb", thumbRoot);
+
+            string discoveredPath = Path.Combine(movieDir, "discovered.mp4");
+            await File.WriteAllTextAsync(discoveredPath, "new");
+            var discovered = new QueueObj
+            {
+                MovieId = 99,
+                MovieFullPath = discoveredPath,
+                ThumbnailLayout = ListLayout,
+                DbFullPath = @"C:\fake\db.wb",
+            };
+            scheduler.EnqueueWork(discovered, ListLayout.Key, beginNewJob: true);
+            int discoveredJobId = scheduler.JobCoordinator.CurrentJobId;
+
+            string missingPath = Path.Combine(movieDir, "missing.mp4");
+            await File.WriteAllTextAsync(missingPath, "old");
+            var records = new List<MovieRecords>
+            {
+                new()
+                {
+                    Movie_Id = 1,
+                    Movie_Path = missingPath,
+                    Movie_Name = "missing",
+                    Hash = "hash1",
+                },
+            };
+
+            int buildEpoch = scheduler.TabSwitchBuildGeneration;
+            await scheduler.StartTabSwitchJobAsync(
+                ListLayout,
+                records,
+                cache,
+                @"C:\fake\db.wb",
+                workGeneration: 1,
+                buildEpoch).ConfigureAwait(true);
+
+            Assert.Equal(discoveredJobId, scheduler.JobCoordinator.CurrentJobId);
+            Assert.False(scheduler.ShouldBeginNewVisibleJob(ListLayout.Key));
+
+            var processableIds = new HashSet<long>();
+            while (scheduler.Queue.TryDequeue(out QueueObj item))
+            {
+                if (scheduler.JobCoordinator.ShouldProcess(item))
+                {
+                    processableIds.Add(item.MovieId);
+                }
+            }
+
+            Assert.Contains(99L, processableIds);
+            Assert.Contains(1L, processableIds);
+            Assert.Equal(2, scheduler.JobCoordinator.GetSnapshot(discoveredJobId).Total);
+        }
+        finally
+        {
+            if (Directory.Exists(movieDir))
+            {
+                Directory.Delete(movieDir, true);
+            }
+
+            if (Directory.Exists(thumbRoot))
+            {
+                Directory.Delete(thumbRoot, true);
+            }
+        }
+    }
+
+    [Fact]
+    public void ShouldBeginNewVisibleJob_is_false_while_job_has_pending_work()
+    {
+        var scheduler = new ThumbnailQueueScheduler();
+        scheduler.EnqueueWork(
+            new QueueObj
+            {
+                MovieId = 1,
+                ThumbnailLayout = ListLayout,
+                DbFullPath = @"C:\fake\db.wb",
+            },
+            ListLayout.Key,
+            beginNewJob: true);
+
+        Assert.False(scheduler.ShouldBeginNewVisibleJob(ListLayout.Key));
+        Assert.True(scheduler.ShouldBeginNewVisibleJob("other-layout"));
+    }
+
+    [Fact]
+    public async Task StartTabSwitchJobAsync_skips_when_thumbnail_file_exists_even_if_not_composite()
+    {
+        var scheduler = new ThumbnailQueueScheduler();
+        string thumbRoot = Path.Combine(Path.GetTempPath(), $"imm-tab-exists-{Guid.NewGuid():N}");
+        string moviePath = Path.Combine(Path.GetTempPath(), $"imm-movie-exists-{Guid.NewGuid():N}.mp4");
+        Directory.CreateDirectory(thumbRoot);
+        try
+        {
+            await File.WriteAllTextAsync(moviePath, "test");
+
+            var cache = new ThumbnailLayoutCache();
+            cache.Refresh("testdb", thumbRoot);
+
+            var records = new List<MovieRecords>
+            {
+                new()
+                {
+                    Movie_Id = 1,
+                    Movie_Path = moviePath,
+                    Movie_Name = "movie",
+                    Hash = "abc123",
+                },
+            };
+
+            string body = ThumbnailMovieNaming.GetMovieBody(records[0]);
+            string thumbPath = cache.GetExpectedThumbPath(ListLayout, body, records[0].Hash);
+            Directory.CreateDirectory(Path.GetDirectoryName(thumbPath)!);
+            await File.WriteAllTextAsync(thumbPath, "not-a-composite");
+
+            int buildEpoch = scheduler.TabSwitchBuildGeneration;
+            await scheduler.StartTabSwitchJobAsync(
+                ListLayout,
+                records,
+                cache,
+                @"C:\fake\db.wb",
+                workGeneration: 1,
+                buildEpoch).ConfigureAwait(true);
+
+            Assert.Empty(scheduler.Queue);
+        }
+        finally
+        {
+            if (File.Exists(moviePath))
+            {
+                File.Delete(moviePath);
+            }
+
+            if (Directory.Exists(thumbRoot))
+            {
+                Directory.Delete(thumbRoot, true);
+            }
+        }
+    }
+
     private static void WriteCompositeThumb(string path, int width, int height)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
