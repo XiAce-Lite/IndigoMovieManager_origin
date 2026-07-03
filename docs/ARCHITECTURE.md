@@ -162,6 +162,15 @@ dotnet publish IndigoMovieManager.csproj -c Release -p:Platform=x64 -p:StandardD
 - リリース後、main にバージョン更新コミットが `[skip ci]` 付きで push される
 - 手動: `.\tools\bump-version.ps1`（通常は不要）
 
+### リリースノート（主な変更点）
+
+- 固定文面: `docs/release-notes-template.md`（`{VERSION}` / `{CHANGES}` を差し込み）
+- 手書き下書き: `docs/release-notes-changes.md`（先頭が `- ` の行だけが本文に入る。HTML コメントは無視）
+- 生成: `.\tools\Build-ReleaseNotes.ps1 -Version <ver>`（ローカルプレビュー可）
+- 運用: main マージ前にエージェントが前回リリース以降のコミットから数行下書き → 人間が編集・承認 → 承認後に changes を含めて main へマージ
+- 箇条書きが空のときは「細かい修正・改善」をフォールバック表示
+- リリース後、CI が `Clear-ReleaseNotesChanges.ps1` で下書きをコメントのみに戻す（バージョン更新と同じ `[skip ci]` コミット）
+
 ## 既知の制限
 
 - WhiteBrowser ホスト API の大部分は未実装

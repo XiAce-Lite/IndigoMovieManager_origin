@@ -1,5 +1,9 @@
 ## Indigo Movie Manager v{VERSION}
 
+### 主な変更点
+
+{CHANGES}
+
 ### 動作要件
 
 - Windows 10 以降（x64）

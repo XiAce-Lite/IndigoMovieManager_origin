@@ -105,8 +105,8 @@ jobs:
           $version = $Matches.ver
           "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8NoBOM
 
-          $template = Get-Content docs/release-notes-template.md -Raw -Encoding UTF8
-          ($template -replace '\{VERSION\}', $version) | Set-Content release-notes.md -Encoding UTF8
+          $notesPath = Join-Path $env:GITHUB_WORKSPACE 'release-notes.md'
+          & ./tools/Build-ReleaseNotes.ps1 -Version $version -RepoRoot $env:GITHUB_WORKSPACE -OutputPath $notesPath | Out-Null
 
           $publishDir = Join-Path $env:GITHUB_WORKSPACE 'artifacts/publish'
           if (-not (Test-Path $publishDir)) {
@@ -149,15 +149,16 @@ jobs:
           body_path: release-notes.md
           files: ${{ steps.release.outputs.zip_name }}
 
-      - name: Commit bumped version to main
+      - name: Commit bumped version and clear release notes draft
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add IndigoMovieManager.csproj
+          & ./tools/Clear-ReleaseNotesChanges.ps1 -RepoRoot $env:GITHUB_WORKSPACE
+          git add IndigoMovieManager.csproj docs/release-notes-changes.md
           if (-not (git diff --cached --quiet)) {
-            git commit -m "ci: リリース用にバージョンを更新 [skip ci]"
+            git commit -m "ci: リリース用にバージョンを更新し変更点下書きをクリア [skip ci]"
             git push
           }
 
