@@ -353,7 +353,17 @@ namespace IndigoMovieManager
 
         public static void UpsertSystemTable(string dbFullPath, string attr, string value)
         {
+            if (string.IsNullOrEmpty(dbFullPath))
+            {
+                return;
+            }
+
             DataTable dt = GetData(dbFullPath, $"select * from system where attr = '{attr}'");
+            if (dt == null)
+            {
+                return;
+            }
+
             if (dt.Rows.Count > 0)
             {
                 UpdateSystemTable(dbFullPath, attr, value); 

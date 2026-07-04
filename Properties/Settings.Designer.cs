@@ -265,5 +265,17 @@ namespace IndigoMovieManager.Properties {
                 this["LastSkinEngine"] = value;
             }
         }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string DismissedUpdateVersion {
+            get {
+                return ((string)(this["DismissedUpdateVersion"]));
+            }
+            set {
+                this["DismissedUpdateVersion"] = value;
+            }
+        }
     }
 }

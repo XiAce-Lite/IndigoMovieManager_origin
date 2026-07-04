@@ -65,5 +65,8 @@
     <Setting Name="LastSkinEngine" Type="System.String" Scope="User">
       <Value Profile="(Default)">WPF</Value>
     </Setting>
+    <Setting Name="DismissedUpdateVersion" Type="System.String" Scope="User">
+      <Value Profile="(Default)" />
+    </Setting>
   </Settings>
 </SettingsFile>

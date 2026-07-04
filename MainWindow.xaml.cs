@@ -904,6 +904,50 @@ namespace IndigoMovieManager
             {
                 _processorTask = CheckThumbAsync(_processorCts.Token);
             }
+
+            _ = CheckForUpdatesAsync();
+        }
+
+        private async Task CheckForUpdatesAsync()
+        {
+            try
+            {
+                Version current = UpdateCheckService.GetCurrentVersion();
+                UpdateCheckService.ReleaseInfo newer =
+                    await UpdateCheckService.TryGetNewerReleaseAsync(current).ConfigureAwait(true);
+                if (newer == null)
+                {
+                    return;
+                }
+
+                string dismissed = Properties.Settings.Default.DismissedUpdateVersion ?? "";
+                if (string.Equals(dismissed, newer.Version.ToString(), StringComparison.Ordinal))
+                {
+                    return;
+                }
+
+                MessageBoxResult result = MessageBox.Show(
+                    this,
+                    $"新しいバージョン {newer.Version} が公開されています。\n" +
+                    $"現在のバージョン: {current}\n\n" +
+                    "リリースページを開きますか？\n" +
+                    "（「いいえ」を選ぶと、このバージョンについては再通知しません）",
+                    "アップデートのお知らせ",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Information);
+
+                if (result == MessageBoxResult.Yes)
+                {
+                    Process.Start(new ProcessStartInfo(newer.HtmlUrl) { UseShellExecute = true });
+                }
+
+                Properties.Settings.Default.DismissedUpdateVersion = newer.Version.ToString();
+                Properties.Settings.Default.Save();
+            }
+            catch
+            {
+                // オフライン等では黙ってスキップする。
+            }
         }
 
         private void MainWindow_Closing(object sender, CancelEventArgs e)
@@ -923,8 +967,6 @@ namespace IndigoMovieManager
             {
                 Properties.Settings.Default.MainLocation = new System.Drawing.Point((int)Left, (int)Top);
                 Properties.Settings.Default.MainSize = new System.Drawing.Size((int)Width, (int)Height);
-                UpdateSkin();
-                UpdateSort();
 
                 AppSettingsPersistence.SaveRecentFiles(recentFiles.Reverse());
 
@@ -932,8 +974,12 @@ namespace IndigoMovieManager
                 using var writer = new StreamWriter(ApplicationPaths.LayoutFilePath);
                 layoutSerializer.Serialize(writer);
 
+                // DB 未オープン時は system テーブルへ触れない（空 Data Source で GetData が落ちる）。
                 if (!string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
                 {
+                    UpdateSkin();
+                    UpdateSort();
+
                     var keepHistoryData = SelectSystemTable("keepHistory");
                     int keepHistoryCount = Convert.ToInt32(keepHistoryData == "" ? "30" : keepHistoryData);
                     DeleteHistoryTable(MainVM.DbInfo.DBFullPath, keepHistoryCount);
