@@ -117,6 +117,8 @@ namespace IndigoMovieManager
 
         private bool _isDeletingSearchHistory = false;
         private bool _isApplyingSearchKeyword = false;
+        // 検索ボックスへユーザーが入力した内容のみ LostFocus で履歴化する（TagBar 等は対象外）。
+        private bool _pendingTypedSearchHistory = false;
         // 検索キーワード変更時のサムネ生成スコープ判定用（ソート変更のみでは触らない）。
         private string _lastThumbnailScopeSearchKeyword = "";
         // 検索履歴ドロップダウンのキーボードカーソル位置（SelectedIndex はTextバインドで-1にリセットされ得るため独自管理）。
@@ -1507,12 +1509,24 @@ namespace IndigoMovieManager
             if (e.TextComposition.CompositionText.Length == 0)
             {
                 _imeFlag = false;
-                if (!_isApplyingSearchKeyword
-                    && !_isDeletingSearchHistory
-                    && !string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath)
-                    && SearchInputClassifier.IsIncrementalSearchEligible(SearchBox.Text))
+                if (_isApplyingSearchKeyword
+                    || _isDeletingSearchHistory
+                    || string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
                 {
-                    ScheduleIncrementalSearch(SearchBox.Text);
+                    return;
+                }
+
+                string text = SearchBox.Text ?? "";
+                if (string.IsNullOrEmpty(text))
+                {
+                    return;
+                }
+
+                // IME 確定時は TextChanged が来ないことがあるため、ここでも入力由来として印を付ける。
+                _pendingTypedSearchHistory = true;
+                if (SearchInputClassifier.IsIncrementalSearchEligible(text))
+                {
+                    ScheduleIncrementalSearch(text);
                 }
             }
         }
@@ -1543,6 +1557,7 @@ namespace IndigoMovieManager
                 ClearPendingDiscoveredThumbnailWork();
                 watchData?.Clear();
                 MainVM.DbInfo.SearchKeyword = "";
+                _pendingTypedSearchHistory = false;
                 _lastThumbnailScopeSearchKeyword = "";
                 _movieRecordsLoaded = false;
                 InvalidateAllItemsFilterCache();
@@ -3213,19 +3228,31 @@ namespace IndigoMovieManager
             MovieRecords mv = GetSelectedMovie();
             if (mv == null) { return; }
 
-            if (!string.IsNullOrEmpty(MainVM.DbInfo.SearchKeyword))
+            string keyword = MainVM.DbInfo.SearchKeyword;
+            if (string.IsNullOrEmpty(keyword))
             {
-                string dbPath = MainVM.DbInfo.DBFullPath;
-                string keyword = MainVM.DbInfo.SearchKeyword;
-
-                // LostFocus での同期DBアクセスがUI停止を起こしやすいのでバックグラウンド化。
-                await Task.Run(() =>
-                {
-                    InsertFindFactTable(dbPath, keyword);
-                    InsertHistoryTable(dbPath, keyword);
-                }).ConfigureAwait(true);
-                //GetHistoryTable(MainVM.DbInfo.DBFullPath);
+                return;
             }
+
+            string dbPath = MainVM.DbInfo.DBFullPath;
+            // インクリメンタル入力の確定は LostFocus。文字ごとの履歴化はしない。
+            // TagBar 等（入力由来でない）は _pendingTypedSearchHistory が立っていないので書かない。
+            bool recordHistory = _pendingTypedSearchHistory;
+            if (recordHistory)
+            {
+                _pendingTypedSearchHistory = false;
+                PromoteSearchHistory(keyword);
+            }
+
+            // LostFocus での同期DBアクセスがUI停止を起こしやすいのでバックグラウンド化。
+            await Task.Run(() =>
+            {
+                InsertFindFactTable(dbPath, keyword);
+                if (recordHistory)
+                {
+                    InsertHistoryTable(dbPath, keyword);
+                }
+            }).ConfigureAwait(true);
         }
 
         private async void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
@@ -3241,6 +3268,7 @@ namespace IndigoMovieManager
             string text = SearchBox.Text ?? "";
             if (string.IsNullOrEmpty(text))
             {
+                _pendingTypedSearchHistory = false;
                 CancelIncrementalSearchDebounce();
                 MainVM.DbInfo.SearchKeyword = "";
                 _sessionState.BumpFilterGeneration();
@@ -3248,6 +3276,9 @@ namespace IndigoMovieManager
                 SelectFirstItem();
                 return;
             }
+
+            // ユーザー入力由来。LostFocus で履歴化する（debounce ごとには書かない）。
+            _pendingTypedSearchHistory = true;
 
             if (!SearchInputClassifier.IsIncrementalSearchEligible(text))
             {
@@ -3625,6 +3656,9 @@ namespace IndigoMovieManager
             CancelIncrementalSearchDebounce();
             string text = keyword ?? "";
             _historyCursor = -1;
+            // Enter / タグ / 履歴選択はここで確定済み。TagBar は記録しない。
+            // いずれも LostFocus で二重記録しないよう入力待ちフラグを下ろす。
+            _pendingTypedSearchHistory = false;
             _isApplyingSearchKeyword = true;
             try
             {
