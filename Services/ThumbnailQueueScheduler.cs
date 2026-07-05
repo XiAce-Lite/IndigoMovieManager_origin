@@ -232,6 +232,8 @@ namespace IndigoMovieManager.Services
                 return work;
             }
 
+            ThumbnailHashSyncContext hashSyncContext = ThumbnailHashSync.ForDatabase(dbFullPath);
+
             foreach (MovieRecords item in filterList)
             {
                 if (!IsTabSwitchBuildCurrent(buildEpoch))
@@ -239,7 +241,7 @@ namespace IndigoMovieManager.Services
                     return work;
                 }
 
-                if (!ShouldEnqueueTabSwitchWork(item, layout, cache))
+                if (!ShouldEnqueueTabSwitchWork(item, layout, cache, hashSyncContext))
                 {
                     continue;
                 }
@@ -263,29 +265,11 @@ namespace IndigoMovieManager.Services
         private static bool ShouldEnqueueTabSwitchWork(
             MovieRecords item,
             ThumbnailLayoutSpec layout,
-            ThumbnailLayoutCache cache)
+            ThumbnailLayoutCache cache,
+            ThumbnailHashSyncContext hashSyncContext)
         {
-            if (item == null
-                || layout == null
-                || cache == null
-                || string.IsNullOrWhiteSpace(item.Movie_Path)
-                || string.IsNullOrWhiteSpace(item.Hash)
-                || !File.Exists(item.Movie_Path))
-            {
-                return false;
-            }
-
-            string fileBody = ThumbnailMovieNaming.GetMovieBody(item);
-            string expectedPath = cache.GetExpectedThumbPath(layout, fileBody, item.Hash);
-            return NeedsThumbnailGeneration(expectedPath);
+            return ThumbnailHashSync.ShouldEnqueueAfterHashSync(item, layout, cache, hashSyncContext);
         }
-
-        /// <summary>
-        /// 一括スキャンでは存在確認のみ行う（全件フッター検証は I/O が重い）。
-        /// error プレースホルダーの再生成は手動再作成や個別経路に任せる。
-        /// </summary>
-        private static bool NeedsThumbnailGeneration(string expectedPath) =>
-            string.IsNullOrWhiteSpace(expectedPath) || !File.Exists(expectedPath);
 
         /// <summary>
         /// 監視で投入済みのジョブをタブ切替スキャンが beginNewJob で捨てないための判定。
@@ -404,6 +388,8 @@ namespace IndigoMovieManager.Services
 
             IReadOnlyList<MovieRecords> snapshot = filterList as IReadOnlyList<MovieRecords> ?? [.. filterList];
 
+            ThumbnailHashSyncContext hashSyncContext = ThumbnailHashSync.ForDatabase(dbFullPath);
+
             await Task.Run(() =>
             {
                 object batchLock = new();
@@ -424,7 +410,7 @@ namespace IndigoMovieManager.Services
                             return;
                         }
 
-                        if (!ShouldEnqueueTabSwitchWork(item, layout, cache))
+                        if (!ShouldEnqueueTabSwitchWork(item, layout, cache, hashSyncContext))
                         {
                             return;
                         }

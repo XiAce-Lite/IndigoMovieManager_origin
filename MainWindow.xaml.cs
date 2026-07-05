@@ -1237,7 +1237,10 @@ namespace IndigoMovieManager
             }
 
             if (!forceRecreate
-                && !ThumbnailTabErrorDetector.IsDetailThumbnailError(mv, _thumbLayoutCache))
+                && !ThumbnailTabErrorDetector.IsDetailThumbnailError(
+                    mv,
+                    _thumbLayoutCache,
+                    CreateThumbnailHashSyncContext()))
             {
                 return;
             }
@@ -4795,6 +4798,9 @@ namespace IndigoMovieManager
             }
         }
 
+        private ThumbnailHashSyncContext CreateThumbnailHashSyncContext() =>
+            ThumbnailHashSync.ForDatabase(MainVM?.DbInfo?.DBFullPath);
+
         private ThumbnailCreationHost CreateThumbnailHost(QueueObj queueObj)
         {
             string dbFullPath = queueObj?.DbFullPath ?? "";
@@ -4831,6 +4837,7 @@ namespace IndigoMovieManager
                 ApplyFailurePlaceholder = ApplyThumbnailFailurePlaceholder,
                 UpdateMovieColumn = (dbPath, movieId, value) =>
                     UpdateMovieSingleColumn(dbPath, movieId, "movie_length", value),
+                HashSyncContext = ThumbnailHashSync.ForDatabase(capturedDbFullPath),
                 IsSessionActive = () =>
                     _sessionState.IsActiveDb(capturedDbFullPath)
                     && capturedWorkGeneration == _sessionState.ThumbnailWorkGeneration,

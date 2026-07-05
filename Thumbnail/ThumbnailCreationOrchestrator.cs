@@ -16,6 +16,7 @@ namespace IndigoMovieManager.Thumbnail
         public Action<QueueObj, string> ApplyThumbPathsOnUi { get; init; }
         public Action<QueueObj, string> ApplyFailurePlaceholder { get; init; }
         public Action<string, long, object> UpdateMovieColumn { get; init; }
+        public ThumbnailHashSyncContext HashSyncContext { get; init; }
         public Func<bool> IsSessionActive { get; init; }
         public Func<long, MovieRecords> FindMovieRecord { get; init; }
     }
@@ -42,7 +43,12 @@ namespace IndigoMovieManager.Thumbnail
             ThumbnailLayoutSpec layout = queueObj.ThumbnailLayout ?? ThumbnailLayoutSpec.DetailPaneLayout;
             TabInfo tbi = new(layout, host.DbName, host.ThumbFolder);
             string movieFullPath = MediaPathNormalizer.Normalize(queueObj.MovieFullPath);
-            string hash = GetHashCRC32(movieFullPath);
+            string hash = ResolveCreationHash(host, movieForProgress, layout);
+            if (string.IsNullOrEmpty(hash))
+            {
+                hash = GetHashCRC32(movieFullPath);
+            }
+
             string fileBody = Path.GetFileNameWithoutExtension(movieFullPath).ToLowerInvariant();
             string saveThumbFileName = host.LayoutCache != null
                 ? host.LayoutCache.GetExpectedThumbPath(layout, fileBody, hash)
@@ -291,7 +297,13 @@ namespace IndigoMovieManager.Thumbnail
                 return;
             }
 
-            string hash = GetHashCRC32(sourceObj.MovieFullPath);
+            MovieRecords movieRecord = host.FindMovieRecord?.Invoke(sourceObj.MovieId);
+            string hash = ResolveCreationHash(host, movieRecord, ThumbnailLayoutSpec.DetailPaneLayout);
+            if (string.IsNullOrEmpty(hash))
+            {
+                hash = GetHashCRC32(sourceObj.MovieFullPath);
+            }
+
             if (string.IsNullOrEmpty(hash))
             {
                 return;
@@ -344,6 +356,23 @@ namespace IndigoMovieManager.Thumbnail
 
         private static bool IsSessionActive(ThumbnailCreationHost host) =>
             host.IsSessionActive?.Invoke() != false;
+
+        private static string ResolveCreationHash(
+            ThumbnailCreationHost host,
+            MovieRecords movieRecord,
+            ThumbnailLayoutSpec layout)
+        {
+            if (movieRecord == null || host?.LayoutCache == null)
+            {
+                return "";
+            }
+
+            return ThumbnailHashSync.ResolveHashForThumbnail(
+                movieRecord,
+                layout,
+                host.LayoutCache,
+                host.HashSyncContext);
+        }
 
         private static void ApplyIfAllowed(
             ThumbnailCreationHost host,

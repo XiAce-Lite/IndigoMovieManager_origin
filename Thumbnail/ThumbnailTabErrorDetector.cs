@@ -8,7 +8,11 @@ namespace IndigoMovieManager.Thumbnail
     /// </summary>
     internal static class ThumbnailTabErrorDetector
     {
-        public static bool IsErrorForEngine(MovieRecords item, SkinEngine engine, ThumbnailLayoutCache cache)
+        public static bool IsErrorForEngine(
+            MovieRecords item,
+            SkinEngine engine,
+            ThumbnailLayoutCache cache,
+            ThumbnailHashSyncContext hashSyncContext = null)
         {
             if (item == null || cache == null)
             {
@@ -16,33 +20,54 @@ namespace IndigoMovieManager.Thumbnail
             }
 
             ThumbnailLayoutSpec spec = ThumbnailLayoutResolver.GetActiveListLayout(engine);
-            return IsErrorForLayout(item, spec, cache);
+            return IsErrorForLayout(item, spec, cache, hashSyncContext);
         }
 
-        public static bool IsErrorForLayout(MovieRecords item, ThumbnailLayoutSpec spec, ThumbnailLayoutCache cache)
+        public static bool IsErrorForLayout(
+            MovieRecords item,
+            ThumbnailLayoutSpec spec,
+            ThumbnailLayoutCache cache,
+            ThumbnailHashSyncContext hashSyncContext = null)
         {
             if (item == null || spec == null || cache == null)
             {
                 return false;
             }
 
+            string hash = ThumbnailHashSync.ResolveHashForThumbnail(
+                item,
+                spec,
+                cache,
+                hashSyncContext,
+                ThumbnailHashSync.ThumbPathSatisfactionMode.ErrorCheck);
+
             return IsErrorThumbnailState(
                 item,
-                cache.GetExpectedThumbPath(spec, GetMovieBody(item), item.Hash),
+                cache.GetExpectedThumbPath(spec, GetMovieBody(item), hash),
                 cache.GetErrorPath(2),
                 cache.GetNoFilePath(2));
         }
 
-        public static bool IsDetailThumbnailError(MovieRecords item, ThumbnailLayoutCache cache)
+        public static bool IsDetailThumbnailError(
+            MovieRecords item,
+            ThumbnailLayoutCache cache,
+            ThumbnailHashSyncContext hashSyncContext = null)
         {
             if (item == null || cache == null)
             {
                 return false;
             }
 
+            string hash = ThumbnailHashSync.ResolveHashForThumbnail(
+                item,
+                ThumbnailLayoutSpec.DetailPaneLayout,
+                cache,
+                hashSyncContext,
+                ThumbnailHashSync.ThumbPathSatisfactionMode.ErrorCheck);
+
             return IsErrorThumbnailState(
                 item,
-                cache.GetExpectedDetailThumbPath(GetMovieBody(item), item.Hash),
+                cache.GetExpectedDetailThumbPath(GetMovieBody(item), hash),
                 cache.GetErrorPath(2),
                 cache.GetNoFilePath(2));
         }

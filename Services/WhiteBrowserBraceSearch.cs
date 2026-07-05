@@ -98,8 +98,10 @@ namespace IndigoMovieManager.Services
                     else
                     {
                         SkinEngine engine = context.CurrentSkinEngine;
+                        ThumbnailHashSyncContext hashSyncContext =
+                            ThumbnailHashSync.ForDatabase(context?.DbFullPath);
                         filtered = [.. source.Where(x =>
-                            ThumbnailTabErrorDetector.IsErrorForEngine(x, engine, cache))];
+                            ThumbnailTabErrorDetector.IsErrorForEngine(x, engine, cache, hashSyncContext))];
                     }
 
                     return true;
