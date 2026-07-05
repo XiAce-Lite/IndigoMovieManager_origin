@@ -18,7 +18,7 @@
         <c:NoLockImageConverter x:Key="noLockImageConverter" />
     </UserControl.Resources>
 
-    <Grid>
+    <Grid Background="{DynamicResource MaterialDesign.Brush.Background}">
         <VirtualizingStackPanel
             Orientation="Vertical"
             ScrollViewer.IsDeferredScrollingEnabled="true"
@@ -91,7 +91,7 @@
                     Background="Transparent"
                     BorderBrush="Transparent"
                     FontSize="18"
-                    Foreground="Black">
+                    Foreground="{DynamicResource MaterialDesign.Brush.Foreground}">
 
                     <Hyperlink
                         x:Name="FileNameLink"
@@ -110,7 +110,7 @@
                     Background="Transparent"
                     BorderBrush="Transparent"
                     FontSize="18"
-                    Foreground="Black">
+                    Foreground="{DynamicResource MaterialDesign.Brush.Foreground}">
 
                     <Hyperlink
                         x:Name="Ext"
@@ -130,7 +130,7 @@
                 Background="Transparent"
                 BorderBrush="Transparent"
                 FontSize="16"
-                Foreground="Black">
+                Foreground="{DynamicResource MaterialDesign.Brush.Foreground}">
 
                 <Hyperlink
                     Background="Transparent"
@@ -181,15 +181,18 @@
                     Padding="0"
                     d:Text="99,99GB"
                     FontSize="12"
+                    Foreground="{DynamicResource MaterialDesign.Brush.Foreground}"
                     Text="{Binding Movie_Size, Converter={StaticResource FileSizeConverter}}" />
                 <TextBlock
                     Padding="0"
                     FontSize="12"
+                    Foreground="{DynamicResource MaterialDesign.Brush.Foreground}"
                     Text=" / " />
                 <TextBlock
                     Padding="0"
                     d:Text="XX:XX:XX"
                     FontSize="12"
+                    Foreground="{DynamicResource MaterialDesign.Brush.Foreground}"
                     Text="{Binding Movie_Length}" />
 
             </VirtualizingStackPanel>
@@ -199,21 +202,25 @@
                 Padding="0"
                 d:Text="MP4"
                 FontSize="12"
+                Foreground="{DynamicResource MaterialDesign.Brush.Foreground}"
                 Text="{Binding Container}" />
             <TextBlock
                 Padding="0"
                 d:Text="1980x1024 xxx xxxx"
                 FontSize="12"
+                Foreground="{DynamicResource MaterialDesign.Brush.Foreground}"
                 Text="{Binding Video}" />
             <TextBlock
                 Padding="0"
                 d:Text="aac"
                 FontSize="12"
+                Foreground="{DynamicResource MaterialDesign.Brush.Foreground}"
                 Text="{Binding Audio}" />
             <TextBlock
                 Padding="0"
                 d:Text="2023/01/01 00:00:00"
                 FontSize="12"
+                Foreground="{DynamicResource MaterialDesign.Brush.Foreground}"
                 Text="{Binding File_Date}" />
 
         </VirtualizingStackPanel>

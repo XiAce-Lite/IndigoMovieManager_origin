@@ -6,6 +6,13 @@ namespace IndigoMovieManager.Services.WpfSkin
     public sealed class WpfSkinDefinition
     {
         public string Name { get; set; } = "CardLarge";
+
+        /// <summary>
+        /// "light" / "dark" 指定時は JSON の色をそのまま使い、アプリテーマではリマップしない。
+        /// 省略時はアプリの Light/Dark/System に追従する。
+        /// </summary>
+        public string ColorProfile { get; set; } = "";
+
         public string Type { get; set; } = "card";
         public WpfSkinThumbnail Thumbnail { get; set; } = new();
         public WpfSkinCard Card { get; set; } = new();

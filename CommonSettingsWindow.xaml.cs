@@ -28,6 +28,37 @@ namespace IndigoMovieManager
                 "\"<file>\""
             };
             InitializeFfmpegHardwareDecodeCombo();
+            InitializeThemeModeRadios();
+        }
+
+        private void InitializeThemeModeRadios()
+        {
+            string current = Properties.Settings.Default.ThemeMode?.Trim() ?? "Light";
+            ThemeModeLightRadio.IsChecked = string.Equals(current, "Light", StringComparison.OrdinalIgnoreCase);
+            ThemeModeDarkRadio.IsChecked = string.Equals(current, "Dark", StringComparison.OrdinalIgnoreCase);
+            ThemeModeSystemRadio.IsChecked = string.Equals(current, "System", StringComparison.OrdinalIgnoreCase);
+
+            if (ThemeModeLightRadio.IsChecked != true
+                && ThemeModeDarkRadio.IsChecked != true
+                && ThemeModeSystemRadio.IsChecked != true)
+            {
+                ThemeModeLightRadio.IsChecked = true;
+            }
+        }
+
+        private static string GetSelectedThemeMode(RadioButton light, RadioButton dark, RadioButton system)
+        {
+            if (dark.IsChecked == true)
+            {
+                return "Dark";
+            }
+
+            if (system.IsChecked == true)
+            {
+                return "System";
+            }
+
+            return "Light";
         }
 
         private void InitializeFfmpegHardwareDecodeCombo()
@@ -83,6 +114,9 @@ namespace IndigoMovieManager
                 Properties.Settings.Default.FfmpegHardwareDecodeMode = hwMode;
                 FfmpegHardwareDecodePolicy.InvalidateCache();
             }
+
+            AppThemeService.SetMode(AppThemeService.ParseMode(
+                GetSelectedThemeMode(ThemeModeLightRadio, ThemeModeDarkRadio, ThemeModeSystemRadio)));
 
             MediaExtensionSettings.EnsureRequiredExtensions();
             Properties.Settings.Default.Save();

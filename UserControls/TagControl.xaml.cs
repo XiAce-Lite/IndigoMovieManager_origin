@@ -1,61 +1,51 @@
-﻿using IndigoMovieManager.ModelViews;
-using IndigoMovieManager.Data;
+﻿using IndigoMovieManager.Data;
+using IndigoMovieManager.ModelViews;
 using IndigoMovieManager.Services;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Documents;
-using System.Windows.Media;
+using System.Windows.Input;
 using static IndigoMovieManager.Tools;
 
 namespace IndigoMovieManager.UserControls
 {
-    /// <summary>
-    /// TagControl.xaml の相互作用ロジック
-    /// </summary>
     public partial class TagControl : UserControl
     {
-        private bool ctrlFlg = false;
+        private bool ctrlFlg;
+
         public TagControl()
         {
             InitializeComponent();
         }
 
-        private async void Hyperlink_Click(object sender, RoutedEventArgs e)
+        private async void TagText_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             IMainWindowActions actions = MainWindowActionsHelper.GetActions(this);
-            if (actions == null)
+            if (actions == null || DataContext == null)
             {
                 return;
             }
 
-            var item = (Hyperlink)sender;
-            if (item != null)
-            {
-                string keyword;
-                if (ctrlFlg)
-                {
-                    keyword = actions.SearchBox.Text + " " + item.DataContext.ToString();
-                }
-                else
-                {
-                    keyword = item.DataContext.ToString();
-                }
+            string tag = DataContext.ToString();
+            string keyword = ctrlFlg
+                ? actions.SearchBox.Text + " " + tag
+                : tag;
 
-                await actions.SearchByKeywordAsync(keyword).ConfigureAwait(true);
-            }
+            await actions.SearchByKeywordAsync(keyword).ConfigureAwait(true);
+            e.Handled = true;
         }
 
         private static T FindParent<T>(DependencyObject child) where T : DependencyObject
         {
-            DependencyObject parent = VisualTreeHelper.GetParent(child);
-            while (parent != null && !(parent is T))
+            DependencyObject parent = System.Windows.Media.VisualTreeHelper.GetParent(child);
+            while (parent != null && parent is not T)
             {
-                parent = VisualTreeHelper.GetParent(parent);
+                parent = System.Windows.Media.VisualTreeHelper.GetParent(parent);
             }
+
             return parent as T;
         }
 
-        private void RemoveTag_Click(object sender, RoutedEventArgs e)
+        private void RemoveTag_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             var container = FindParent<DataGridRow>(this)
                          ?? (DependencyObject)FindParent<ListViewItem>(this)
@@ -63,15 +53,23 @@ namespace IndigoMovieManager.UserControls
 
             ItemsControl parent = null;
             if (container is DataGridRow dgr)
+            {
                 parent = ItemsControl.ItemsControlFromItemContainer(dgr);
+            }
             else if (container is ListViewItem lvi)
+            {
                 parent = ItemsControl.ItemsControlFromItemContainer(lvi);
+            }
             else if (container is ListBoxItem lbi)
+            {
                 parent = ItemsControl.ItemsControlFromItemContainer(lbi);
+            }
 
             object itemData = null;
             if (container is FrameworkElement fe && fe.DataContext is MovieRecords rec)
+            {
                 itemData = rec;
+            }
 
             if (parent != null && itemData != null)
             {
@@ -96,42 +94,52 @@ namespace IndigoMovieManager.UserControls
             }
 
             IMainWindowActions actions = MainWindowActionsHelper.GetActions(this);
-            var item = (Hyperlink)sender;
-            if (actions != null && item != null)
+            if (actions == null || DataContext == null)
             {
-                if (!actions.IsMovieListActive) return;
-                if (itemData is not MovieRecords mv) return;
+                return;
+            }
 
-                if (mv.Tag.Contains(item.DataContext))
+            if (!actions.IsMovieListActive)
+            {
+                return;
+            }
+
+            if (itemData is not MovieRecords mv)
+            {
+                return;
+            }
+
+            string tag = DataContext.ToString();
+            if (mv.Tag.Contains(tag))
+            {
+                mv.Tag.Remove(tag);
+                mv.Tags = ConvertTagsWithNewLine(mv.Tag);
+                actions.UpdateMovieColumn(mv.Movie_Id, MovieColumn.Tag, mv.Tags);
+
+                try
                 {
-                    mv.Tag.Remove(item.DataContext.ToString());
-                    mv.Tags = ConvertTagsWithNewLine(mv.Tag);
-
-                    actions.UpdateMovieColumn(mv.Movie_Id, MovieColumn.Tag, mv.Tags);
-
-                    try
-                    {
-                        actions.RefreshActiveList(actions.CurrentSkinEngine);
-                        actions.RefreshExtDetail();
-                    }
-                    catch (Exception)
-                    {
-                    }
+                    actions.RefreshActiveList(actions.CurrentSkinEngine);
+                    actions.RefreshExtDetail();
+                }
+                catch (Exception)
+                {
                 }
             }
+
+            e.Handled = true;
         }
 
-        private void TagGrid_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        private void TagGrid_PreviewKeyDown(object sender, KeyEventArgs e)
         {
-            if (e.Key is System.Windows.Input.Key.LeftCtrl or System.Windows.Input.Key.RightCtrl)
+            if (e.Key is Key.LeftCtrl or Key.RightCtrl)
             {
                 ctrlFlg = true;
             }
         }
 
-        private void TagGrid_PreviewKeyUp(object sender, System.Windows.Input.KeyEventArgs e)
+        private void TagGrid_PreviewKeyUp(object sender, KeyEventArgs e)
         {
-            if (e.Key is System.Windows.Input.Key.LeftCtrl or System.Windows.Input.Key.RightCtrl)
+            if (e.Key is Key.LeftCtrl or Key.RightCtrl)
             {
                 ctrlFlg = false;
             }

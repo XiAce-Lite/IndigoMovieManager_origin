@@ -15,8 +15,8 @@
         <Border
             Height="Auto"
             Margin="4,4,0,0"
-            Background="LightGreen"
-            BorderBrush="LightGreen"
+            Background="{DynamicResource ImmTagChipBackground}"
+            BorderBrush="{DynamicResource ImmTagChipBackground}"
             BorderThickness="0"
             CornerRadius="4">
             <VirtualizingStackPanel
@@ -28,44 +28,28 @@
                 VirtualizingPanel.IsVirtualizing="True"
                 VirtualizingPanel.VirtualizationMode="Recycling">
 
-                <Label
-                    x:Name="TagButton"
-                    Width="Auto"
+                <TextBlock
+                    x:Name="TagText"
                     Padding="4,1,4,1"
                     VerticalAlignment="Center"
-                    Background="Transparent"
-                    BorderBrush="Transparent"
+                    Cursor="Hand"
                     FontSize="11"
                     FontStretch="UltraCondensed"
-                    Foreground="Black">
+                    Foreground="{DynamicResource ImmTagChipForeground}"
+                    MouseLeftButtonDown="TagText_MouseLeftButtonDown"
+                    Text="{Binding}"
+                    TextDecorations="Underline" />
 
-                    <Hyperlink
-                        Background="Transparent"
-                        Hyperlink.Click="Hyperlink_Click"
-                        NavigateUri="{Binding FallbackValue='aaa'}">
-                        <TextBlock d:Text="sampleTag" Text="{Binding}" />
-                    </Hyperlink>
-                </Label>
-
-                <Label
-                    x:Name="removeTag"
-                    Width="Auto"
-                    Height="Auto"
+                <TextBlock
+                    x:Name="RemoveTagText"
                     Padding="4,1,4,1"
                     VerticalAlignment="Center"
-                    Background="Transparent"
-                    BorderBrush="Transparent"
+                    Cursor="Hand"
                     FontSize="11"
                     FontStretch="UltraCondensed"
-                    Foreground="Black">
-
-                    <Hyperlink
-                        Background="Transparent"
-                        Hyperlink.Click="RemoveTag_Click"
-                        NavigateUri="{Binding}">
-                        [X]
-                    </Hyperlink>
-                </Label>
+                    Foreground="{DynamicResource ImmTagChipForeground}"
+                    MouseLeftButtonDown="RemoveTag_MouseLeftButtonDown"
+                    Text="[X]" />
             </VirtualizingStackPanel>
         </Border>
     </Grid>

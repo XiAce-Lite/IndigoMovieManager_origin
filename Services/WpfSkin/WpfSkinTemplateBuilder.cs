@@ -84,22 +84,13 @@ namespace IndigoMovieManager.Services.WpfSkin
 
         public static Brush ParseSurfaceBackground(WpfSkinDefinition def)
         {
-            string value = def?.Surface?.Background;
+            string value = WpfSkinColorResolver.ResolveColor(def?.Surface?.Background, def);
             if (string.IsNullOrWhiteSpace(value))
             {
                 return null;
             }
 
-            try
-            {
-                var brush = (Brush)new BrushConverter().ConvertFromString(value);
-                brush?.Freeze();
-                return brush;
-            }
-            catch
-            {
-                return null;
-            }
+            return WpfSkinColorResolver.ResolveBrush(value, null, def);
         }
     }
 }

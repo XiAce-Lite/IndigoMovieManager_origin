@@ -277,5 +277,17 @@ namespace IndigoMovieManager.Properties {
                 this["DismissedUpdateVersion"] = value;
             }
         }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("Light")]
+        public string ThemeMode {
+            get {
+                return ((string)(this["ThemeMode"]));
+            }
+            set {
+                this["ThemeMode"] = value;
+            }
+        }
     }
 }

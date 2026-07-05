@@ -9,6 +9,16 @@ WPF版スキンは `Skins/Wpf/<スキン名>/skin.json` に置きます。
 
 **色の編集:** 各 `skin.json` は JSON Schema（`../skin.schema.json`）を参照しています。Cursor / VS Code では `#FFFFFF` などの色値の左に色見本が表示され、クリックでカラーピッカーが開きます。`surface.background` / `card.background` / `styles.*.foreground` などが対象です。
 
+### colorProfile（アプリのテーマとの関係）
+
+| `colorProfile` | 挙動 |
+| --- | --- |
+| **省略** | JSON の色はライト基準。共通設定の **ライト / ダーク / システム** に追従（ダーク時はアプリが色をリマップ） |
+| **`"light"`** | JSON の色をそのまま使う。アプリのテーマ切替では変更しない |
+| **`"dark"`** | JSON の色をそのまま使う。アプリのテーマ切替では変更しない |
+
+固定したい配色があるスキンだけ `"light"` / `"dark"` を指定してください。WB スキンには影響しません。
+
 レイアウトは **ペイン（パネル）の入れ子ツリー** で表現します。
 
 - **コンテナ**: `children` を持つ。`panel: "stack"` または `panel: "grid"`
@@ -188,6 +198,7 @@ WQHD で 3 列になっても、カード幅を大きくすれば 2 列運用に
 | `BigInfo` | Big風。左サムネ全高 + 右に詳細情報 |
 | `CenterThumb` | 中央サムネ、左右に尺/サイズ、上下にタイトル/タグ |
 | `WideGridInfo` | 大サムネ + 右に詳細情報（WideGrid 風レイアウト） |
+| `DarkModeSample` | DefaultSmall と同一レイアウト。色のみダーク版（`colorProfile: "dark"` のサンプル） |
 
 ※ `Default*` 系は旧ネイティブタブ再現用。上記サンプルはユーザー改変のベース用。
 

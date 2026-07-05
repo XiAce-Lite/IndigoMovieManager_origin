@@ -28,7 +28,7 @@ namespace IndigoMovieManager.Services.WpfSkin
                 ? BuildContainer(node, def)
                 : BuildLeaf(node, def);
 
-            return WrapWithChrome(element, node);
+            return WrapWithChrome(element, node, def);
         }
 
         /// <summary>
@@ -50,7 +50,8 @@ namespace IndigoMovieManager.Services.WpfSkin
 
             var grid = new Grid
             {
-                Background = new SolidColorBrush(Color.FromRgb(0xF0, 0xF0, 0xF0)),
+                Background = WpfSkinColorResolver.ResolveBrush("#F0F0F0", null, def)
+                    ?? System.Windows.Application.Current?.TryFindResource("ImmListHeaderBackground") as Brush,
             };
 
             if (def.Card.Width > 0)
@@ -79,6 +80,7 @@ namespace IndigoMovieManager.Services.WpfSkin
                     Text = child.Header,
                     FontWeight = FontWeights.Bold,
                     FontFamily = new FontFamily("Yu Gothic UI"),
+                    Foreground = WpfSkinColorResolver.ResolveBrush("#000000", Brushes.Black, def),
                     Padding = child.Padding != null && !child.Padding.IsEmpty
                         ? child.Padding.ToThickness()
                         : new Thickness(4, 3, 4, 3),
@@ -111,7 +113,7 @@ namespace IndigoMovieManager.Services.WpfSkin
                     : Orientation.Vertical,
             };
 
-            ApplyBox(panel, node, skipSize: false);
+            ApplyBox(panel, node, skipSize: false, def);
 
             foreach (WpfSkinNode child in node.Children)
             {
@@ -128,7 +130,7 @@ namespace IndigoMovieManager.Services.WpfSkin
         private static Grid BuildGrid(WpfSkinNode node, WpfSkinDefinition def)
         {
             var grid = new Grid();
-            ApplyBox(grid, node, skipSize: false);
+            ApplyBox(grid, node, skipSize: false, def);
 
             if (node.Rows != null)
             {
@@ -207,7 +209,7 @@ namespace IndigoMovieManager.Services.WpfSkin
                 FontSize = style.FontSize,
                 FontWeight = style.Bold ? FontWeights.Bold : FontWeights.Normal,
                 FontStyle = style.Italic ? FontStyles.Italic : FontStyles.Normal,
-                Foreground = ParseBrush(style.Foreground, Brushes.Black),
+                Foreground = ParseBrush(style.Foreground, Brushes.Black, def),
             };
 
             if (!string.IsNullOrEmpty(style.FontFamily))
@@ -262,7 +264,7 @@ namespace IndigoMovieManager.Services.WpfSkin
                 text.HorizontalAlignment = horizontal;
             }
 
-            ApplyBox(text, node, skipSize: false);
+            ApplyBox(text, node, skipSize: false, def);
             return text;
         }
 
@@ -331,7 +333,7 @@ namespace IndigoMovieManager.Services.WpfSkin
             }
 
             label.Content = image;
-            ApplyBox(label, node, skipSize: true);
+            ApplyBox(label, node, skipSize: true, def);
 
             if (stretchInCell)
             {
@@ -379,11 +381,11 @@ namespace IndigoMovieManager.Services.WpfSkin
             panelTemplate.VisualTree = wrap;
             items.ItemsPanel = panelTemplate;
 
-            ApplyBox(items, node, skipSize: true);
+            ApplyBox(items, node, skipSize: true, def);
             return items;
         }
 
-        private static UIElement WrapWithChrome(UIElement element, WpfSkinNode node)
+        private static UIElement WrapWithChrome(UIElement element, WpfSkinNode node, WpfSkinDefinition def)
         {
             if (element == null)
             {
@@ -409,13 +411,13 @@ namespace IndigoMovieManager.Services.WpfSkin
 
             if (hasBackground)
             {
-                border.Background = ParseBrush(node.Background, null);
+                border.Background = ParseBrush(node.Background, null, def);
             }
 
             return border;
         }
 
-        private static void ApplyBox(FrameworkElement element, WpfSkinNode node, bool skipSize)
+        private static void ApplyBox(FrameworkElement element, WpfSkinNode node, bool skipSize, WpfSkinDefinition def)
         {
             if (!skipSize)
             {
@@ -467,7 +469,7 @@ namespace IndigoMovieManager.Services.WpfSkin
 
             if (element is Panel panel && !string.IsNullOrEmpty(node.Background))
             {
-                panel.Background = ParseBrush(node.Background, null);
+                panel.Background = ParseBrush(node.Background, null, def);
             }
         }
 
@@ -540,24 +542,8 @@ namespace IndigoMovieManager.Services.WpfSkin
             };
         }
 
-        private static Brush ParseBrush(string value, Brush fallback)
-        {
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                return fallback;
-            }
-
-            try
-            {
-                var brush = (Brush)new BrushConverter().ConvertFromString(value);
-                brush?.Freeze();
-                return brush ?? fallback;
-            }
-            catch
-            {
-                return fallback;
-            }
-        }
+        private static Brush ParseBrush(string value, Brush fallback, WpfSkinDefinition def) =>
+            WpfSkinColorResolver.ResolveBrush(value, fallback, def);
 
         private sealed class ThumbSourceAdapter : IMultiValueConverter
         {

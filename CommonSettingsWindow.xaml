@@ -6,6 +6,7 @@
     xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:prop="clr-namespace:IndigoMovieManager.Properties"
+    xmlns:controls="clr-namespace:IndigoMovieManager.Controls"
     Title="共通設定"
     Width="800"
     SizeToContent="Height"
@@ -34,6 +35,47 @@
                     Click="BtnReturn_Click"
                     Content="戻る(_R)"
                     FontWeight="Normal" />
+
+                <StackPanel Orientation="Horizontal">
+                    <Label
+                        Width="300"
+                        Margin="5"
+                        Content="外観（ライト / ダーク / システム）"
+                        FontSize="14"
+                        ToolTip="WB スキンには影響しません。Indigo スキンで colorProfile 未指定のものは追従します。" />
+                    <Border
+                        Margin="5"
+                        Padding="1"
+                        VerticalAlignment="Center"
+                        Background="{DynamicResource ImmSettingsSegmentGroupBackground}"
+                        BorderBrush="{DynamicResource ImmSettingsSegmentGroupBorder}"
+                        BorderThickness="1"
+                        CornerRadius="5"
+                        SnapsToDevicePixels="True">
+                        <StackPanel Orientation="Horizontal">
+                            <RadioButton
+                                x:Name="ThemeModeLightRadio"
+                                Content="ライト"
+                                GroupName="ThemeMode"
+                                Style="{StaticResource SettingsSegmentRadio}"
+                                controls:SegmentRadioAssist.CornerRadius="4,4,0,0" />
+                            <RadioButton
+                                x:Name="ThemeModeDarkRadio"
+                                Margin="-1,0,0,0"
+                                Content="ダーク"
+                                GroupName="ThemeMode"
+                                Style="{StaticResource SettingsSegmentRadio}" />
+                            <RadioButton
+                                x:Name="ThemeModeSystemRadio"
+                                Margin="-1,0,0,0"
+                                Content="システム"
+                                GroupName="ThemeMode"
+                                Style="{StaticResource SettingsSegmentRadio}"
+                                ToolTip="Windows の外観設定（ライト / ダーク）に従います。"
+                                controls:SegmentRadioAssist.CornerRadius="0,0,4,4" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
 
                 <StackPanel Orientation="Horizontal">
                     <Label

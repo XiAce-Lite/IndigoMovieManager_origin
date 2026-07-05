@@ -5,6 +5,7 @@
     xmlns:ModelView="clr-namespace:IndigoMovieManager.ModelViews"
     xmlns:avalonDock="https://github.com/Dirkster99/AvalonDock"
     xmlns:c="clr-namespace:IndigoMovieManager.Converter"
+    xmlns:controls="clr-namespace:IndigoMovieManager.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:local="clr-namespace:IndigoMovieManager"
     xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
@@ -86,8 +87,8 @@
                         <Border
                             x:Name="Border"
                             Padding="10,5"
-                            Background="#E3F2FD"
-                            BorderBrush="#90CAF9"
+                            Background="{DynamicResource ImmTagBarChipBackground}"
+                            BorderBrush="{DynamicResource ImmTagBarChipBorder}"
                             BorderThickness="1"
                             CornerRadius="12"
                             SnapsToDevicePixels="True"
@@ -96,11 +97,11 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="Border" Property="Background" Value="#BBDEFB" />
-                                <Setter TargetName="Border" Property="BorderBrush" Value="#42A5F5" />
+                                <Setter TargetName="Border" Property="Background" Value="{DynamicResource ImmTagBarChipSelectedBackground}" />
+                                <Setter TargetName="Border" Property="BorderBrush" Value="{DynamicResource ImmTagBarChipSelectedBorder}" />
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Border" Property="Background" Value="#BBDEFB" />
+                                <Setter TargetName="Border" Property="Background" Value="{DynamicResource ImmTagBarChipSelectedBackground}" />
                                 <Setter TargetName="Border" Property="Cursor" Value="Hand" />
                             </Trigger>
                         </ControlTemplate.Triggers>
@@ -536,36 +537,21 @@
             -->
         </ContextMenu>
 
-        <Style x:Key="HeaderSegmentRadio" TargetType="RadioButton">
-            <Setter Property="Foreground" Value="#E0E0E0" />
-            <Setter Property="Padding" Value="12,3" />
-            <Setter Property="VerticalAlignment" Value="Center" />
-            <Setter Property="SnapsToDevicePixels" Value="True" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="RadioButton">
-                        <Border
-                            x:Name="Bd"
-                            Background="#455A64"
-                            BorderBrush="#37474F"
-                            BorderThickness="1"
-                            CornerRadius="3"
-                            Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#546E7A" />
-                            </Trigger>
-                            <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#263238" />
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="#1C262B" />
-                                <Setter Property="Foreground" Value="#FFFFFF" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
+        <Style x:Key="HeaderComboBoxItemStyle" TargetType="ComboBoxItem">
+            <Setter Property="Background" Value="{DynamicResource ImmHeaderDropdownItemBackground}" />
+            <Setter Property="Foreground" Value="{DynamicResource ImmHeaderDropdownItemForeground}" />
+            <Style.Triggers>
+                <Trigger Property="IsHighlighted" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource ImmHeaderDropdownHighlightBackground}" />
+                </Trigger>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource ImmHeaderDropdownHighlightBackground}" />
+                    <Setter Property="Cursor" Value="Hand" />
+                </Trigger>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource ImmHeaderDropdownHighlightBackground}" />
+                </Trigger>
+            </Style.Triggers>
         </Style>
 
     </Window.Resources>
@@ -612,7 +598,6 @@
                                         </ScrollViewer>
                                         <ListView
                                             x:Name="WpfSkinList"
-                                            Background="White"
                                             BorderThickness="0"
                                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                             ScrollViewer.IsDeferredScrollingEnabled="True"
@@ -757,6 +742,7 @@
                                             <DataTemplate>
                                                 <TextBlock
                                                     FontSize="13"
+                                                    Foreground="{DynamicResource ImmTagBarChipForeground}"
                                                     Text="{Binding Title}"
                                                     TextTrimming="CharacterEllipsis" />
                                             </DataTemplate>
@@ -912,13 +898,12 @@
                                 materialDesign:TextFieldAssist.HasClearButton="True"
                                 materialDesign:TextFieldAssist.HasOutlinedTextField="True"
                                 materialDesign:TextFieldAssist.TextFieldCornerRadius="3"
-                                materialDesign:TextFieldAssist.UnderlineBrush="Black"
-                                Background="White"
+                                Background="{DynamicResource ImmHeaderInputBackground}"
                                 DropDownClosed="SearchBox_DropDownClosed"
                                 DropDownOpened="SearchBox_DropDownOpened"
                                 Loaded="ComboBoxArrow_Loaded"
                                 FontSize="14"
-                                Foreground="Black"
+                                Foreground="{DynamicResource ImmHeaderInputForeground}"
                                 IsEditable="True"
                                 ItemTemplate="{StaticResource SearchHistoryItemTemplate}"
                                 ItemsSource="{Binding HistoryRecs}"
@@ -933,25 +918,13 @@
                                 Text="{Binding DbInfo.SearchKeyword, UpdateSourceTrigger=PropertyChanged}"
                                 TextBoxBase.TextChanged="SearchBox_TextChanged">
                                 <ComboBox.ItemContainerStyle>
-                                    <Style TargetType="ComboBoxItem">
+                                    <Style BasedOn="{StaticResource HeaderComboBoxItemStyle}" TargetType="ComboBoxItem">
                                         <Setter Property="HorizontalAlignment" Value="Stretch" />
                                         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                                         <Setter Property="VerticalContentAlignment" Value="Stretch" />
                                         <Setter Property="ContextMenu" Value="{StaticResource SearchHistoryItemContextMenu}" />
                                         <EventSetter Event="PreviewMouseLeftButtonDown" Handler="SearchBoxItem_PreviewMouseLeftButtonDown" />
                                         <EventSetter Event="PreviewKeyDown" Handler="SearchBoxItem_PreviewKeyDown" />
-                                        <Style.Triggers>
-                                            <Trigger Property="IsHighlighted" Value="True">
-                                                <Setter Property="Background" Value="#FFBBDEFB" />
-                                            </Trigger>
-                                            <Trigger Property="IsMouseOver" Value="True">
-                                                <Setter Property="Background" Value="#FFBBDEFB" />
-                                                <Setter Property="Cursor" Value="Hand" />
-                                            </Trigger>
-                                            <Trigger Property="IsSelected" Value="True">
-                                                <Setter Property="Background" Value="#FFBBDEFB" />
-                                            </Trigger>
-                                        </Style.Triggers>
                                     </Style>
                                 </ComboBox.ItemContainerStyle>
                             </ComboBox>
@@ -988,27 +961,41 @@
                                 <TextBlock
                                     Margin="0,0,6,0"
                                     VerticalAlignment="Center"
-                                    Foreground="#E8E8E8"
+                                    Foreground="{DynamicResource ImmHeaderLabelForeground}"
                                     Text="方式:" />
-                                <RadioButton
-                                    x:Name="ModeWpfRadio"
-                                    Checked="SkinModeRadio_Checked"
-                                    Content="Indigo"
-                                    GroupName="SkinMode"
-                                    Style="{StaticResource HeaderSegmentRadio}"
-                                    ToolTip="Indigo ネイティブスキン" />
-                                <RadioButton
-                                    x:Name="ModeWbRadio"
-                                    Margin="-1,0,0,0"
-                                    Checked="SkinModeRadio_Checked"
-                                    Content="WB"
-                                    GroupName="SkinMode"
-                                    Style="{StaticResource HeaderSegmentRadio}"
-                                    ToolTip="WhiteBrowser 互換スキン" />
+                                <Border
+                                    Margin="0,0,0,0"
+                                    Padding="1"
+                                    VerticalAlignment="Center"
+                                    Background="{DynamicResource ImmHeaderSegmentGroupBackground}"
+                                    BorderBrush="{DynamicResource ImmHeaderSegmentGroupBorder}"
+                                    BorderThickness="1"
+                                    CornerRadius="5"
+                                    SnapsToDevicePixels="True">
+                                    <StackPanel Orientation="Horizontal">
+                                        <RadioButton
+                                            x:Name="ModeWpfRadio"
+                                            Checked="SkinModeRadio_Checked"
+                                            Content="Indigo"
+                                            GroupName="SkinMode"
+                                            Style="{StaticResource HeaderSegmentRadio}"
+                                            ToolTip="Indigo ネイティブスキン"
+                                            controls:SegmentRadioAssist.CornerRadius="4,4,0,0" />
+                                        <RadioButton
+                                            x:Name="ModeWbRadio"
+                                            Margin="-1,0,0,0"
+                                            Checked="SkinModeRadio_Checked"
+                                            Content="WB"
+                                            GroupName="SkinMode"
+                                            Style="{StaticResource HeaderSegmentRadio}"
+                                            ToolTip="WhiteBrowser 互換スキン"
+                                            controls:SegmentRadioAssist.CornerRadius="0,0,4,4" />
+                                    </StackPanel>
+                                </Border>
                                 <TextBlock
                                     Margin="12,0,6,0"
                                     VerticalAlignment="Center"
-                                    Foreground="#E8E8E8"
+                                    Foreground="{DynamicResource ImmHeaderLabelForeground}"
                                     Text="スキン:" />
                                 <ComboBox
                                     x:Name="ComboSkin"
@@ -1019,8 +1006,9 @@
                                     FontSize="14"
                                     materialDesign:TextFieldAssist.HasOutlinedTextField="True"
                                     materialDesign:TextFieldAssist.TextFieldCornerRadius="3"
-                                    Background="White"
-                                    Foreground="Black"
+                                    Background="{DynamicResource ImmHeaderInputBackground}"
+                                    Foreground="{DynamicResource ImmHeaderInputForeground}"
+                                    ItemContainerStyle="{StaticResource HeaderComboBoxItemStyle}"
                                     Loaded="ComboBoxArrow_Loaded"
                                     SelectionChanged="ComboSkin_SelectionChanged" />
                                 <Grid
@@ -1048,18 +1036,19 @@
                                     x:Name="HeaderSortLabel"
                                     Margin="8,0,4,0"
                                     VerticalAlignment="Center"
-                                    Foreground="White"
+                                    Foreground="{DynamicResource ImmHeaderLabelForeground}"
                                     Text="ソート:" />
                                 <ComboBox
                                     x:Name="ComboSort"
-                                    Width="170"
+                                    Width="195"
                                     Margin="0,0,8,0"
                                     VerticalAlignment="Center"
                                     materialDesign:TextFieldAssist.HasOutlinedTextField="True"
                                     materialDesign:TextFieldAssist.TextFieldCornerRadius="3"
-                                    Background="White"
+                                    Background="{DynamicResource ImmHeaderInputBackground}"
                                     DisplayMemberPath="Name"
-                                    Foreground="Black"
+                                    Foreground="{DynamicResource ImmHeaderInputForeground}"
+                                    ItemContainerStyle="{StaticResource HeaderComboBoxItemStyle}"
                                     ItemsSource="{Binding SortLists}"
                                     Loaded="ComboBoxArrow_Loaded"
                                     SelectedValue="{Binding DbInfo.Sort}"
@@ -1067,16 +1056,16 @@
                                     SelectionChanged="ComboSort_SelectionChanged" />
                                 <TextBlock
                                     VerticalAlignment="Center"
-                                    Foreground="White"
+                                    Foreground="{DynamicResource ImmHeaderLabelForeground}"
                                     Text="{Binding DbInfo.SearchCount, UpdateSourceTrigger=PropertyChanged}" />
                                 <TextBlock
                                     Margin="4,0"
                                     VerticalAlignment="Center"
-                                    Foreground="White"
+                                    Foreground="{DynamicResource ImmHeaderLabelForeground}"
                                     Text="/" />
                                 <TextBlock
                                     VerticalAlignment="Center"
-                                    Foreground="White"
+                                    Foreground="{DynamicResource ImmHeaderLabelForeground}"
                                     Text="{Binding MovieRecs.Count, UpdateSourceTrigger=PropertyChanged}" />
                             </StackPanel>
                         </StackPanel>
@@ -1089,7 +1078,7 @@
                             Margin="8,-6,0,0"
                             VerticalAlignment="Center"
                             FontSize="12"
-                            Foreground="#CFD8DC"
+                            Foreground="{DynamicResource ImmHeaderSecondaryForeground}"
                             Text="{Binding DbInfo.DBFullPath, UpdateSourceTrigger=PropertyChanged}"
                             TextTrimming="CharacterEllipsis"
                             ToolTip="{Binding DbInfo.DBFullPath, UpdateSourceTrigger=PropertyChanged}" />

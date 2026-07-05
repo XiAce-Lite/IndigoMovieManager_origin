@@ -72,7 +72,7 @@ namespace IndigoMovieManager.UserControls
             CardBorder.Margin = card.Margin != null
                 ? card.Margin.ToThickness()
                 : new Thickness(2);
-            CardBorder.Background = ParseBrush(card.Background);
+            CardBorder.Background = WpfSkinColorResolver.ResolveBrush(card.Background, null, SkinDefinition);
 
             if (card.Height > 0)
             {
@@ -84,25 +84,6 @@ namespace IndigoMovieManager.UserControls
             }
 
             LayoutHost.Content = WpfSkinLayoutBuilder.Build(card.Layout ?? new WpfSkinNode(), SkinDefinition);
-        }
-
-        private static Brush ParseBrush(string value)
-        {
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                return null;
-            }
-
-            try
-            {
-                var brush = (Brush)new BrushConverter().ConvertFromString(value);
-                brush?.Freeze();
-                return brush;
-            }
-            catch
-            {
-                return null;
-            }
         }
     }
 }

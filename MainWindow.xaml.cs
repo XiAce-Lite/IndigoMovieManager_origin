@@ -142,6 +142,10 @@ namespace IndigoMovieManager
 
             InitializeComponent();
 
+            AppThemeService.ApplyDockTheme(uxDockingManager);
+            AppThemeService.ApplyHeaderZone(HeaderZone);
+            AppThemeService.ThemeChanged += OnAppThemeChanged;
+
             _statusBarProgress = new StatusBarProgressCoordinator(Dispatcher);
             StatusBarProgressHost.Attach(_statusBarProgress);
             OperationStatusBar.DataContext = _statusBarProgress.ViewModel;
@@ -217,6 +221,25 @@ namespace IndigoMovieManager
             // ドロワー（ハンバーガーメニュー）表示中は SkinView を隠して被りを防ぐ。
             MenuToggleButton.Checked += MenuToggleButton_DrawerStateChanged;
             MenuToggleButton.Unchecked += MenuToggleButton_DrawerStateChanged;
+        }
+
+        private void OnAppThemeChanged(object sender, EventArgs e)
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.Invoke(() => OnAppThemeChanged(sender, e));
+                return;
+            }
+
+            AppThemeService.ApplyDockTheme(uxDockingManager);
+            AppThemeService.ApplyHeaderZone(HeaderZone);
+            if (_wpfSkin != null)
+            {
+                ApplyWpfSkin(_wpfSkin.Name);
+                WpfSkinList.Items.Refresh();
+                Dispatcher.BeginInvoke(ReapplyWpfSkinListSurface, System.Windows.Threading.DispatcherPriority.Loaded);
+                Dispatcher.BeginInvoke(ReapplyWpfSkinListSurface, System.Windows.Threading.DispatcherPriority.Render);
+            }
         }
 
         private void UpdateWbSkinTabTag() =>
@@ -593,10 +616,18 @@ namespace IndigoMovieManager
             WpfSkinHeaderScroll.Visibility = header != null ? Visibility.Visible : Visibility.Collapsed;
 
             System.Windows.Media.Brush surfaceBg = Services.WpfSkin.WpfSkinTemplateBuilder.ParseSurfaceBackground(_wpfSkin);
-            if (surfaceBg != null)
+            Services.WpfSkin.WpfSkinListChrome.ApplySurface(WpfSkinList, surfaceBg, WpfSkinHost, MovieListHost);
+        }
+
+        private void ReapplyWpfSkinListSurface()
+        {
+            if (_wpfSkin == null)
             {
-                WpfSkinList.Background = surfaceBg;
+                return;
             }
+
+            System.Windows.Media.Brush surfaceBg = Services.WpfSkin.WpfSkinTemplateBuilder.ParseSurfaceBackground(_wpfSkin);
+            Services.WpfSkin.WpfSkinListChrome.ApplySurface(WpfSkinList, surfaceBg, WpfSkinHost, MovieListHost);
         }
 
         // ListViewItem スタイルをスキンに合わせて生成する。
@@ -608,13 +639,39 @@ namespace IndigoMovieManager
             HorizontalAlignment hAlign = stretch ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
 
             var style = new Style(typeof(ListViewItem));
+            style.Setters.Add(new Setter(Control.BackgroundProperty, System.Windows.Media.Brushes.Transparent));
+            style.Setters.Add(new Setter(Control.BorderBrushProperty, System.Windows.Media.Brushes.Transparent));
             style.Setters.Add(new Setter(FrameworkElement.HorizontalAlignmentProperty, hAlign));
             style.Setters.Add(new Setter(Control.HorizontalContentAlignmentProperty, hAlign));
             style.Setters.Add(new Setter(Control.VerticalContentAlignmentProperty, VerticalAlignment.Top));
             style.Setters.Add(new EventSetter(
                 UIElement.PreviewMouseLeftButtonDownEvent,
                 new MouseButtonEventHandler(WpfSkinItem_PreviewMouseLeftButtonDown)));
+
+            var selectedTrigger = new Trigger
+            {
+                Property = ListViewItem.IsSelectedProperty,
+                Value = true,
+            };
+            selectedTrigger.Setters.Add(new Setter(
+                Control.BackgroundProperty,
+                ResolveListItemSelectedBackground(def)));
+            style.Triggers.Add(selectedTrigger);
+
             return style;
+        }
+
+        private static System.Windows.Media.Brush ResolveListItemSelectedBackground(Services.WpfSkin.WpfSkinDefinition def)
+        {
+            if (Services.WpfSkin.WpfSkinColorResolver.IsJsonAuthoritative(def)
+                && string.Equals(def.ColorProfile, "dark", StringComparison.OrdinalIgnoreCase))
+            {
+                return Application.Current.TryFindResource("ImmListItemSelectedBackgroundDarkSkin") as System.Windows.Media.Brush
+                    ?? new SolidColorBrush(System.Windows.Media.Color.FromRgb(0x37, 0x47, 0x4F));
+            }
+
+            return Application.Current.TryFindResource("ImmListItemSelectedBackground") as System.Windows.Media.Brush
+                ?? System.Windows.Media.Brushes.LightSteelBlue;
         }
 
         // リスト型スキンのヘッダー行を本体の横スクロールに追従させる。

@@ -4,6 +4,11 @@
   "type": "object",
   "properties": {
     "name": { "type": "string" },
+    "colorProfile": {
+      "type": "string",
+      "enum": ["light", "dark"],
+      "description": "指定時は JSON の色をそのまま使い、アプリのテーマ切替ではリマップしない。省略時はアプリの Light/Dark/System に追従する。"
+    },
     "type": { "type": "string" },
     "surface": {
       "type": "object",

@@ -2,6 +2,7 @@
 using System.Globalization;
 using System.Threading;
 using System.Windows;
+using Microsoft.Win32;
 
 namespace IndigoMovieManager
 {
@@ -19,7 +20,17 @@ namespace IndigoMovieManager
             Thread.CurrentThread.CurrentUICulture = japanese;
 
             MediaExtensionSettings.EnsureRequiredExtensions();
+            AppThemeService.InitializeFromSettings();
+            SystemEvents.UserPreferenceChanged += App_SystemPreferenceChanged;
             base.OnStartup(e);
+        }
+
+        private static void App_SystemPreferenceChanged(object sender, UserPreferenceChangedEventArgs e)
+        {
+            if (e.Category == UserPreferenceCategory.General)
+            {
+                AppThemeService.HandleSystemThemeChanged();
+            }
         }
     }
 }

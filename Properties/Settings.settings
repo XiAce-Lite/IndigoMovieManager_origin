@@ -68,5 +68,8 @@
     <Setting Name="DismissedUpdateVersion" Type="System.String" Scope="User">
       <Value Profile="(Default)" />
     </Setting>
+    <Setting Name="ThemeMode" Type="System.String" Scope="User">
+      <Value Profile="(Default)">Light</Value>
+    </Setting>
   </Settings>
 </SettingsFile>
