@@ -5,16 +5,15 @@
     xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
     Title="保存済み検索条件"
     Width="420"
-    Height="260"
+    SizeToContent="Height"
+    MinHeight="180"
     ResizeMode="NoResize"
     WindowStartupLocation="CenterOwner">
-    <Grid>
-        <materialDesign:ColorZone>
-            <Grid Margin="12">
+    <materialDesign:ColorZone>
+        <Grid Margin="12">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
@@ -30,7 +29,6 @@
                 <TextBox
                     x:Name="ContentsBox"
                     Grid.Row="1"
-                    Grid.RowSpan="2"
                     Margin="0,0,0,12"
                     materialDesign:HintAssist.Hint="検索条件"
                     materialDesign:HintAssist.IsFloating="True"
@@ -40,7 +38,7 @@
                     TextWrapping="Wrap" />
 
                 <StackPanel
-                    Grid.Row="3"
+                    Grid.Row="2"
                     HorizontalAlignment="Right"
                     Orientation="Horizontal">
                     <Button
@@ -57,7 +55,6 @@
                         Content="キャンセル"
                         IsCancel="True" />
                 </StackPanel>
-            </Grid>
-        </materialDesign:ColorZone>
-    </Grid>
+        </Grid>
+    </materialDesign:ColorZone>
 </Window>
