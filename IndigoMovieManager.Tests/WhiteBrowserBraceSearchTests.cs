@@ -86,6 +86,112 @@ public class WhiteBrowserBraceSearchTests
     }
 
     [Fact]
+    public void TryApply_special_namedup_matches_normalized_file_bodies()
+    {
+        var source = new[]
+        {
+            CreateRecord(1, "abc-123.mp4", @"C:\abc-123.mp4", hash: "h1"),
+            CreateRecord(2, "abc-0123.mp4", @"C:\abc-0123.mp4", hash: "h2"),
+            CreateRecord(3, "abc-123x.mp4", @"C:\abc-123x.mp4", hash: "h3"),
+            CreateRecord(4, "xyz-999.mp4", @"C:\xyz-999.mp4", hash: "h4"),
+        };
+
+        bool applied = WhiteBrowserBraceSearch.TryApply(
+            source,
+            "::namedup",
+            new MovieListFilterContext(),
+            out IReadOnlyList<MovieRecords> filtered,
+            out string overrideSortId);
+
+        Assert.True(applied);
+        Assert.Equal(3, filtered.Count);
+        Assert.Equal("12", overrideSortId);
+    }
+
+    [Fact]
+    public void TryApply_special_namedup_excludes_hash_duplicate_group()
+    {
+        var source = new[]
+        {
+            CreateRecord(1, "abc-123.mp4", @"C:\abc-123.mp4", hash: "samehash"),
+            CreateRecord(2, "abc-0123.mp4", @"C:\abc-0123.mp4", hash: "samehash"),
+            CreateRecord(3, "xyz-777.mp4", @"C:\xyz-777.mp4", hash: "u1"),
+            CreateRecord(4, "xyz-0777.mp4", @"C:\xyz-0777.mp4", hash: "u2"),
+        };
+
+        bool applied = WhiteBrowserBraceSearch.TryApply(
+            source,
+            "::namedup",
+            new MovieListFilterContext(),
+            out IReadOnlyList<MovieRecords> filtered,
+            out _);
+
+        Assert.True(applied);
+        Assert.Equal(2, filtered.Count);
+        Assert.DoesNotContain(filtered, x => x.Hash == "samehash");
+    }
+
+    [Theory]
+    [InlineData("abc-123", "abc-123")]
+    [InlineData("abc-0123", "abc-123")]
+    [InlineData("abc_123", "abc-123")]
+    [InlineData("abc-123x", "abc-123")]
+    [InlineData("zz-ppv-001234", "zz-ppv-1234")]
+    [InlineData("efgh-003a", "efgh-3")]
+    [InlineData("title-cd1", "title")]
+    public void NormalizeDuplicateNameKey_fuzzy_absorbs_common_variations(string body, string expected)
+    {
+        Assert.Equal(expected, WhiteBrowserBraceSearch.NormalizeDuplicateNameKey(body, exact: false));
+    }
+
+    [Theory]
+    [InlineData("abc-123", "abc-123")]
+    [InlineData("abc-0123", "abc-123")]
+    [InlineData("abc_123", "abc-123")]
+    [InlineData("abc-123x", "abc-123x")]
+    [InlineData("efgh-003a", "efgh-3a")]
+    [InlineData("efgh-003b", "efgh-3b")]
+    [InlineData("title-cd1", "title-cd1")]
+    [InlineData("title-part2", "title-part2")]
+    public void NormalizeDuplicateNameKey_exact_keeps_series_suffixes(string body, string expected)
+    {
+        Assert.Equal(expected, WhiteBrowserBraceSearch.NormalizeDuplicateNameKey(body, exact: true));
+    }
+
+    [Fact]
+    public void TryApply_special_namedupexact_keeps_series_letters_separate()
+    {
+        var source = new[]
+        {
+            CreateRecord(1, "EFGH-003A.wmv", @"C:\EFGH-003A.wmv", hash: "h1"),
+            CreateRecord(2, "EFGH-003B.wmv", @"C:\EFGH-003B.wmv", hash: "h2"),
+            CreateRecord(3, "abc-123.mp4", @"C:\abc-123.mp4", hash: "h3"),
+            CreateRecord(4, "abc-0123.mp4", @"C:\abc-0123.mp4", hash: "h4"),
+        };
+
+        bool appliedExact = WhiteBrowserBraceSearch.TryApply(
+            source,
+            "::namedupexact",
+            new MovieListFilterContext(),
+            out IReadOnlyList<MovieRecords> exactFiltered,
+            out string exactSortId);
+
+        bool appliedFuzzy = WhiteBrowserBraceSearch.TryApply(
+            source,
+            "::namedup",
+            new MovieListFilterContext(),
+            out IReadOnlyList<MovieRecords> fuzzyFiltered,
+            out _);
+
+        Assert.True(appliedExact);
+        Assert.True(appliedFuzzy);
+        Assert.Equal(2, exactFiltered.Count);
+        Assert.DoesNotContain(exactFiltered, x => x.Movie_Name.StartsWith("EFGH", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(4, fuzzyFiltered.Count);
+        Assert.Equal("12", exactSortId);
+    }
+
+    [Fact]
     public void Build_sql_where_tag_empty_filters_untagged_records()
     {
         var source = new[]

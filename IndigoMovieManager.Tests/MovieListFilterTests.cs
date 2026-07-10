@@ -167,6 +167,58 @@ public class MovieListFilterTests
   }
 
   [Fact]
+  public void Build_NameDup_FiltersNormalizedDuplicateBodies()
+  {
+    var source = new[]
+    {
+      CreateRecord("abc-123.mp4", @"C:\abc-123.mp4", hash: "h1"),
+      CreateRecord("abc-0123.mp4", @"C:\abc-0123.mp4", hash: "h2"),
+      CreateRecord("abc-123x.mp4", @"C:\abc-123x.mp4", hash: "h3"),
+      CreateRecord("unique-777.mp4", @"C:\unique-777.mp4", hash: "h4"),
+    };
+
+    var result = MovieListFilter.Build(source, "{::namedup}", "1");
+
+    Assert.Equal(3, result.Items.Count);
+    Assert.Equal(3, result.SearchCount);
+    Assert.Equal("12", result.OverrideSortId);
+  }
+
+  [Fact]
+  public void Build_NameDup_ExcludesHashDuplicates()
+  {
+    var source = new[]
+    {
+      CreateRecord("abc-123.mp4", @"C:\abc-123.mp4", hash: "samehash"),
+      CreateRecord("abc-0123.mp4", @"C:\abc-0123.mp4", hash: "samehash"),
+      CreateRecord("xyz-777.mp4", @"C:\xyz-777.mp4", hash: "u1"),
+      CreateRecord("xyz-0777.mp4", @"C:\xyz-0777.mp4", hash: "u2"),
+    };
+
+    var result = MovieListFilter.Build(source, "{::namedup}", "1");
+
+    Assert.Equal(2, result.Items.Count);
+    Assert.All(result.Items, x => Assert.NotEqual("samehash", x.Hash));
+  }
+
+  [Fact]
+  public void Build_NameDupExact_KeepsSeriesLettersSeparate()
+  {
+    var source = new[]
+    {
+      CreateRecord("EFGH-003A.wmv", @"C:\EFGH-003A.wmv", hash: "h1"),
+      CreateRecord("EFGH-003B.wmv", @"C:\EFGH-003B.wmv", hash: "h2"),
+      CreateRecord("abc-123.mp4", @"C:\abc-123.mp4", hash: "h3"),
+      CreateRecord("abc-0123.mp4", @"C:\abc-0123.mp4", hash: "h4"),
+    };
+
+    var result = MovieListFilter.Build(source, "{::namedupexact}", "1");
+
+    Assert.Equal(2, result.Items.Count);
+    Assert.All(result.Items, x => Assert.Contains("abc-", x.Movie_Name, StringComparison.OrdinalIgnoreCase));
+  }
+
+  [Fact]
   public void Build_AndSearch_RequiresAllTerms()
   {
     var source = new[]

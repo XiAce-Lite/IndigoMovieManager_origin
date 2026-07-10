@@ -85,6 +85,20 @@ namespace IndigoMovieManager.Services
                     overrideSortId = "16";
                     return true;
 
+                case "namedup":
+                case "namedups":
+                case "nameduplication":
+                case "nameduplications":
+                    filtered = FilterNameDuplicates(source, exact: false);
+                    overrideSortId = "12";
+                    return true;
+
+                case "namedupexact":
+                case "namedupexacts":
+                    filtered = FilterNameDuplicates(source, exact: true);
+                    overrideSortId = "12";
+                    return true;
+
                 case "nofile":
                     filtered = [.. source.Where(x => !File.Exists(x.Movie_Path ?? ""))];
                     return true;
@@ -136,6 +150,76 @@ namespace IndigoMovieManager.Services
             }
 
             return true;
+        }
+
+        private static IReadOnlyList<MovieRecords> FilterNameDuplicates(
+            IReadOnlyList<MovieRecords> source,
+            bool exact)
+        {
+            HashSet<string> duplicatedHashes = [.. source
+                .GroupBy(x => x.Hash)
+                .Where(g => !string.IsNullOrEmpty(g.Key) && g.Count() > 1)
+                .Select(g => g.Key)];
+
+            HashSet<string> dupBodies = [.. source
+                .Select(x => NormalizeDuplicateNameKey(ThumbnailMovieNaming.GetMovieBody(x), exact))
+                .Where(key => !string.IsNullOrEmpty(key))
+                .GroupBy(key => key)
+                .Where(g => g.Count() > 1)
+                .Select(g => g.Key)];
+
+            return [.. source.Where(x =>
+                dupBodies.Contains(NormalizeDuplicateNameKey(ThumbnailMovieNaming.GetMovieBody(x), exact))
+                && !duplicatedHashes.Contains(x.Hash ?? ""))];
+        }
+
+        /// <summary>
+        /// ファイル名ボディの重複判定キー。
+        /// exact=false: 末尾1文字・cd/part 等を吸収する緩いモード。
+        /// exact=true: ゼロ埋めと区切りのみ統一し、シリーズ文字（A/B）や cd1/part1 は残す。
+        /// </summary>
+        internal static string NormalizeDuplicateNameKey(string body, bool exact = false)
+        {
+            if (string.IsNullOrWhiteSpace(body))
+            {
+                return "";
+            }
+
+            string normalized = body.Trim().ToLowerInvariant();
+            normalized = Regex.Replace(normalized, @"[\s._]+", "-");
+            normalized = Regex.Replace(normalized, @"-+", "-").Trim('-');
+
+            if (!exact)
+            {
+                normalized = Regex.Replace(normalized, @"(?:-|_)?(?:cd|dvd|disc|part|pt)\d+$", "");
+                normalized = Regex.Replace(normalized, @"(?:-|_)?(?:uncensored|4k|sample)$", "");
+            }
+
+            Match m = Regex.Match(
+                normalized,
+                exact
+                    ? @"^(?<prefix>[a-z0-9]+(?:-[a-z0-9]+)*?)-?(?<digits>0*\d{2,7})(?<suffix>[a-z0-9-]*)$"
+                    : @"^(?<prefix>[a-z0-9]+(?:-[a-z0-9]+)*?)-?(?<digits>0*\d{2,7})(?<suffix>[a-z]?)$",
+                RegexOptions.IgnoreCase);
+            if (!m.Success)
+            {
+                return normalized;
+            }
+
+            string prefix = m.Groups["prefix"].Value.Trim('-');
+            string digits = m.Groups["digits"].Value.TrimStart('0');
+            if (string.IsNullOrEmpty(prefix) || string.IsNullOrEmpty(digits))
+            {
+                return normalized;
+            }
+
+            string suffix = m.Groups["suffix"].Value;
+            if (exact && !string.IsNullOrEmpty(suffix))
+            {
+                return $"{prefix}-{digits}{suffix}";
+            }
+
+            return $"{prefix}-{digits}";
         }
 
         private static HashSet<long> QueryMovieIds(string dbFullPath, string whereClause)
