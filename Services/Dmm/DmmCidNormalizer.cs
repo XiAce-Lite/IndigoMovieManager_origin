@@ -82,7 +82,7 @@ namespace IndigoMovieManager.Services.Dmm
                 }
             }
 
-            // 実測ベースの優先順
+            // 実測ベースの優先順（例: maker=abcd / num=123）
             Add("1" + maker + padded5);          // 1abcd00123
             Add(maker + padded5);                // abcd00123
             Add(maker + num);                    // abcd123 / efgh456

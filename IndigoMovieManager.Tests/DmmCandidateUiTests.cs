@@ -20,7 +20,7 @@ public class DmmInitialKeywordTests
     }
 
     [Fact]
-    public void SuggestSearchVariants_includes_hyphen_and_compact_forms_for_xxxx024()
+    public void SuggestSearchVariants_includes_hyphen_and_compact_forms()
     {
         IReadOnlyList<string> variants = DmmInitialKeyword.SuggestSearchVariants("xxxx-024.mp4");
 
@@ -30,7 +30,7 @@ public class DmmInitialKeywordTests
     }
 
     [Fact]
-    public void FromMovieName_returns_hyphen_form_for_xxxx024()
+    public void FromMovieName_returns_hyphen_form_for_compact_style_code()
     {
         Assert.Equal("xxxx-024", DmmInitialKeyword.FromMovieName("xxxx-024.mp4"));
     }
@@ -164,7 +164,7 @@ public class DmmCandidateDisplayTests
 public class DmmCidNormalizerCompactFormTests
 {
     [Fact]
-    public void ExtractFromFileName_xxxx024_includes_compact_cid()
+    public void ExtractFromFileName_includes_compact_cid()
     {
         DmmCidNormalizer.ExtractResult result = DmmCidNormalizer.ExtractFromFileName("xxxx-024.mp4");
 
