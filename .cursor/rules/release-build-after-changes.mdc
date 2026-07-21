@@ -1,0 +1,20 @@
+---
+description: コード修正後は Release x64 ビルドを毎回実行する
+alwaysApply: true
+---
+
+# Release ビルド（修正後は毎回）
+
+このリポジトリでコードを変更したら、作業完了前に必ず Release ビルドを実行する。
+
+ビルド前に、起動中の `IndigoMovieManager.exe` を確認許可なしで強制終了してよい（exe がロックされていると上書きに失敗するため）。終了とビルドは一連で実行する。
+
+```powershell
+taskkill /IM IndigoMovieManager.exe /F 2>$null; dotnet build IndigoMovieManager.csproj -p:Platform=x64 -c Release
+```
+
+出力先: `D:\Documents\GitHub\IndigoMovieManager_origin\bin\x64\Release\net8.0-windows`
+
+- Debug ビルドだけでは不十分。ユーザーは上記 Release 出力を直接起動して確認する。
+- テスト実行と併用してよいが、ビルド自体は省略しない。
+- 起動中でビルドが失敗した場合も、自動で終了させてから再ビルドする（毎回確認しない）。
