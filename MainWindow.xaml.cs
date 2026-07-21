@@ -2,6 +2,7 @@
 using AvalonDock.Layout.Serialization;
 using IndigoMovieManager.ModelViews;
 using IndigoMovieManager.Services;
+using IndigoMovieManager.Services.Dmm;
 using IndigoMovieManager.Data;
 using Microsoft.VisualBasic.FileIO;
 using Microsoft.Win32;
@@ -124,6 +125,7 @@ namespace IndigoMovieManager
         // 検索履歴ドロップダウンのキーボードカーソル位置（SelectedIndex はTextバインドで-1にリセットされ得るため独自管理）。
         private int _historyCursor = -1;
         private int _fileInfoRefreshRunning = 0;
+        private int _dmmFetchRunning = 0;
 
         private const int SearchOverlayDelayMs = 400;
         private const int SearchIncrementalDebounceMs = 400;
@@ -2894,6 +2896,131 @@ namespace IndigoMovieManager
 
         private void RefreshFileInfoCore(string dbPath, MovieRecords rec) =>
             FileInfoRefreshService.RefreshCore(dbPath, rec, action => RunOnUi(action));
+
+        private async void FetchDmmInfo_Click(object sender, RoutedEventArgs e)
+        {
+            if (Interlocked.CompareExchange(ref _dmmFetchRunning, 1, 0) != 0)
+            {
+                return;
+            }
+
+            try
+            {
+                DmmApiOptions options = DmmApiOptions.FromSettings();
+                if (!options.IsConfigured)
+                {
+                    var dialog = new MessageBoxEx(this)
+                    {
+                        DlogTitle = "DMM情報取得",
+                        DlogMessage =
+                            "DMM API ID / アフィリエイトID（API用）が未設定です。\n共通設定で入力してください。\n\nPowered by FANZA Webサービス",
+                        PackIconKind = MaterialDesignThemes.Wpf.PackIconKind.CogOutline,
+                    };
+                    dialog.ShowDialog();
+                    return;
+                }
+
+                if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
+                {
+                    return;
+                }
+
+                List<MovieRecords> targets = GetSelectedMovies();
+                if (targets == null || targets.Count == 0)
+                {
+                    return;
+                }
+
+                string dbPath = MainVM.DbInfo.DBFullPath;
+                var client = new DmmItemListClient(options);
+                var resolver = new DmmMetadataResolveService(client);
+                var applier = new DmmMetadataApplyService();
+
+                DmmFetchProgressSession session = null;
+                int applied = 0;
+                int noCode = 0;
+                int notFound = 0;
+                int ambiguous = 0;
+                int httpErrors = 0;
+
+                try
+                {
+                    session = new DmmFetchProgressSession(targets.Count);
+                    CancellationToken cancelToken = session.Cancel;
+                    int done = 0;
+
+                    foreach (MovieRecords rec in targets)
+                    {
+                        cancelToken.ThrowIfCancellationRequested();
+                        string reportPath = rec.Movie_Path ?? rec.Movie_Name ?? "";
+                        session.Report(done, reportPath);
+
+                        DmmResolveResult resolved = await resolver
+                            .ResolveAsync(rec.Movie_Name, cancelToken)
+                            .ConfigureAwait(true);
+
+                        switch (resolved.Outcome)
+                        {
+                            case DmmResolveOutcome.Applied:
+                                applier.Apply(dbPath, rec, resolved.Item, action => RunOnUi(action));
+                                applied++;
+                                break;
+                            case DmmResolveOutcome.NoProductCode:
+                                noCode++;
+                                break;
+                            case DmmResolveOutcome.NotFound:
+                                notFound++;
+                                break;
+                            case DmmResolveOutcome.Ambiguous:
+                                ambiguous++;
+                                break;
+                            case DmmResolveOutcome.HttpError:
+                                httpErrors++;
+                                break;
+                            case DmmResolveOutcome.NotConfigured:
+                                httpErrors++;
+                                break;
+                        }
+
+                        done++;
+                        session.Report(done, reportPath);
+                    }
+
+                    session.Report(targets.Count, "完了");
+                }
+                catch (OperationCanceledException)
+                {
+                }
+                finally
+                {
+                    session?.Dispose();
+                }
+
+                string summary =
+                    $"成功 {applied} / 品番なし {noCode} / 未ヒット {notFound} / 複数候補 {ambiguous} / エラー {httpErrors}\n\n" +
+                    "Powered by FANZA Webサービス";
+                _statusBarProgress.ShowIdleStatusMessage(
+                    $"DMM情報取得: 成功{applied} 品番なし{noCode} 未ヒット{notFound} 複数{ambiguous} エラー{httpErrors}");
+
+                var doneDialog = new MessageBoxEx(this)
+                {
+                    DlogTitle = "DMM情報取得",
+                    DlogMessage = summary,
+                    PackIconKind = MaterialDesignThemes.Wpf.PackIconKind.CloudDownloadOutline,
+                };
+                doneDialog.ShowDialog();
+
+                RunOnUi(() =>
+                {
+                    viewExtDetail.Refresh();
+                    TabListRefreshHelper.RefreshActiveList(_currentSkinEngine, this);
+                });
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _dmmFetchRunning, 0);
+            }
+        }
 
         private void RequestApplicationExit() => Close();
 

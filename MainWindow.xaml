@@ -455,6 +455,17 @@
                     </Style>
                 </MenuItem.Style>
             </MenuItem>
+            <MenuItem
+                x:Name="FetchDmmInfo"
+                Click="FetchDmmInfo_Click"
+                Header="DMM情報を取得(_N)"
+                Icon="{materialDesign:PackIcon Kind=CloudDownloadOutline}">
+                <MenuItem.Style>
+                    <Style TargetType="MenuItem">
+                        <Setter Property="Padding" Value="1" />
+                    </Style>
+                </MenuItem.Style>
+            </MenuItem>
             <Separator />
             <MenuItem
                 x:Name="DeleteMovie"

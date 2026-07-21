@@ -289,5 +289,29 @@ namespace IndigoMovieManager.Properties {
                 this["ThemeMode"] = value;
             }
         }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string DmmApiId {
+            get {
+                return ((string)(this["DmmApiId"]));
+            }
+            set {
+                this["DmmApiId"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string DmmAffiliateId {
+            get {
+                return ((string)(this["DmmAffiliateId"]));
+            }
+            set {
+                this["DmmAffiliateId"] = value;
+            }
+        }
     }
 }

@@ -34,12 +34,12 @@ namespace IndigoMovieManager.Services
             }
         }
 
-        public FileInfoSlotHandle BeginFileInfo(int total)
+        public FileInfoSlotHandle BeginFileInfo(int total, string statusLabel = null)
         {
             lock (_sync)
             {
                 _fileInfo?.Deactivate();
-                var slot = new FileInfoSlot(total);
+                var slot = new FileInfoSlot(total, statusLabel);
                 _fileInfo = slot;
                 RefreshDisplayLocked();
                 return new FileInfoSlotHandle(this, slot);
@@ -303,13 +303,17 @@ namespace IndigoMovieManager.Services
         {
             private readonly CancellationTokenSource _cts = new();
             private readonly int _total;
+            private readonly string _statusLabel;
             private int _done;
             private string _detail = "";
             private bool _ctsDisposed;
 
-            public FileInfoSlot(int total)
+            public FileInfoSlot(int total, string statusLabel = null)
             {
                 _total = Math.Max(0, total);
+                _statusLabel = string.IsNullOrWhiteSpace(statusLabel)
+                    ? "ファイル情報再取得中"
+                    : statusLabel.Trim();
             }
 
             public StatusBarProgressKind Kind => StatusBarProgressKind.FileInfoRefresh;
@@ -364,7 +368,7 @@ namespace IndigoMovieManager.Services
             {
                 string count = _total > 0 ? $" ({_done}/{_total})" : "";
                 string detail = string.IsNullOrWhiteSpace(_detail) ? "" : $"  {_detail}";
-                return $"ファイル情報再取得中{count}{detail}";
+                return $"{_statusLabel}{count}{detail}";
             }
         }
 

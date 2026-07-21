@@ -108,6 +108,8 @@ namespace IndigoMovieManager
             Properties.Settings.Default.DefaultZipViewerParam = DefaultZipViewerParam.Text;
             Properties.Settings.Default.RecentFilesCount = (int)slider.Value;
             Properties.Settings.Default.CheckExt = MediaExtensionSettings.NormalizeListForStorage(CheckExt.Text);
+            Properties.Settings.Default.DmmApiId = (DmmApiId.Text ?? "").Trim();
+            Properties.Settings.Default.DmmAffiliateId = (DmmAffiliateId.Text ?? "").Trim();
             if (FfmpegHardwareDecodeModeCombo.SelectedItem is ComboBoxItem hwItem
                 && hwItem.Tag is string hwMode)
             {
