@@ -1,0 +1,103 @@
+<Window
+    x:Class="IndigoMovieManager.DmmPendingCandidatesWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+    Title="DMM 未確定候補"
+    Width="900"
+    Height="480"
+    MinWidth="720"
+    MinHeight="360"
+    ResizeMode="CanResizeWithGrip"
+    WindowStartupLocation="CenterOwner">
+    <materialDesign:ColorZone Padding="12">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <TextBlock
+                Grid.Row="0"
+                Margin="0,0,0,8"
+                Text="複数候補のため保留されたレコードです。選択して候補を確定してください。"
+                TextWrapping="Wrap" />
+
+            <DataGrid
+                x:Name="PendingGrid"
+                Grid.Row="1"
+                AutoGenerateColumns="False"
+                CanUserAddRows="False"
+                CanUserDeleteRows="False"
+                HeadersVisibility="Column"
+                IsReadOnly="True"
+                SelectionMode="Single"
+                SelectionUnit="FullRow">
+                <DataGrid.Columns>
+                    <DataGridTextColumn
+                        Width="*"
+                        Binding="{Binding MovieName}"
+                        Header="ファイル名" />
+                    <DataGridTextColumn
+                        Width="160"
+                        Binding="{Binding InitialKeyword}"
+                        Header="初期検索語" />
+                    <DataGridTextColumn
+                        Width="60"
+                        Binding="{Binding CandidateCount}"
+                        Header="候補数" />
+                    <DataGridTextColumn
+                        Width="72"
+                        Binding="{Binding SourceLabel}"
+                        Header="発生元" />
+                    <DataGridTextColumn
+                        Width="140"
+                        Binding="{Binding CreatedAtLabel}"
+                        Header="保留日時" />
+                </DataGrid.Columns>
+            </DataGrid>
+
+            <TextBlock
+                Grid.Row="2"
+                Margin="0,8,0,0"
+                FontSize="11"
+                Foreground="{DynamicResource MaterialDesign.Brush.ForegroundLight}"
+                Text="Powered by FANZA Webサービス"
+                TextWrapping="Wrap" />
+
+            <StackPanel
+                Grid.Row="3"
+                Margin="0,12,0,0"
+                HorizontalAlignment="Right"
+                Orientation="Horizontal">
+                <Button
+                    x:Name="CleanupOrphansButton"
+                    MinWidth="120"
+                    Margin="0,0,8,0"
+                    Click="CleanupOrphansButton_Click"
+                    Content="孤児を削除(_O)"
+                    ToolTip="登録から削除済みのレコードに紐づく未確定候補を一括削除します" />
+                <Button
+                    x:Name="ResolveButton"
+                    MinWidth="96"
+                    Margin="0,0,8,0"
+                    Click="ResolveButton_Click"
+                    Content="候補を選ぶ(_R)" />
+                <Button
+                    x:Name="DiscardButton"
+                    MinWidth="88"
+                    Margin="0,0,8,0"
+                    Click="DiscardButton_Click"
+                    Content="破棄(_D)" />
+                <Button
+                    x:Name="CloseButton"
+                    MinWidth="88"
+                    Click="CloseButton_Click"
+                    Content="閉じる(_C)"
+                    IsCancel="True" />
+            </StackPanel>
+        </Grid>
+    </materialDesign:ColorZone>
+</Window>

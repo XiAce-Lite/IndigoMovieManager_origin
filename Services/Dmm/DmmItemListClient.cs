@@ -17,6 +17,7 @@ namespace IndigoMovieManager.Services.Dmm
     {
         public DmmSearchStatus Status { get; init; }
         public DmmItemDto Item { get; init; }
+        public IReadOnlyList<DmmItemDto> Items { get; init; } = [];
         public int HitCount { get; init; }
         public string ErrorMessage { get; init; }
         public string FloorLabel { get; init; }
@@ -29,7 +30,8 @@ namespace IndigoMovieManager.Services.Dmm
 
         public static DmmSearchResult FromItems(IReadOnlyList<DmmItemDto> items, string floorLabel)
         {
-            int count = items?.Count ?? 0;
+            IReadOnlyList<DmmItemDto> normalized = items ?? [];
+            int count = normalized.Count;
             if (count == 0)
             {
                 return new DmmSearchResult
@@ -37,6 +39,7 @@ namespace IndigoMovieManager.Services.Dmm
                     Status = DmmSearchStatus.ZeroHits,
                     HitCount = 0,
                     FloorLabel = floorLabel,
+                    Items = normalized,
                 };
             }
 
@@ -46,7 +49,8 @@ namespace IndigoMovieManager.Services.Dmm
                 {
                     Status = DmmSearchStatus.OneHit,
                     HitCount = 1,
-                    Item = items[0],
+                    Item = normalized[0],
+                    Items = normalized,
                     FloorLabel = floorLabel,
                 };
             }
@@ -55,6 +59,7 @@ namespace IndigoMovieManager.Services.Dmm
             {
                 Status = DmmSearchStatus.MultipleHits,
                 HitCount = count,
+                Items = normalized,
                 FloorLabel = floorLabel,
             };
         }

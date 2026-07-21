@@ -1,4 +1,5 @@
 ﻿using IndigoMovieManager.ModelViews;
+using IndigoMovieManager.Services;
 using Microsoft.Win32;
 using System.ComponentModel;
 using System.Data;
@@ -23,6 +24,7 @@ namespace IndigoMovieManager
             InitializeComponent();
             Closing += WatchWindowClosing;
 
+            WatchFolderDmmAutoService.EnsureSchema(dbFullPath);
             GetWatchTable(dbFullPath);
             DataContext = WatchVM;
 
@@ -49,11 +51,14 @@ namespace IndigoMovieManager
                 var list = watchData.AsEnumerable().ToArray();
                 foreach (var row in list)
                 {
+                    bool dmmAuto = watchData.Columns.Contains("dmm_auto")
+                        && Convert.ToInt64(row["dmm_auto"]) == 1;
                     var item = new WatchRecords
                     {
                         Auto = (long)row["auto"] == 1,
                         Watch = (long)row["watch"] == 1,
                         Sub = (long)row["sub"] == 1,
+                        DmmAuto = dmmAuto,
                         Dir = row["dir"].ToString()
                     };
                     WatchVM.WatchRecs.Add(item);

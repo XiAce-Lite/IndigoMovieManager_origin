@@ -79,6 +79,18 @@ namespace IndigoMovieManager.ModelViews
                     IconKind = PackIconKind.FileDocumentOutline,
                     IsEnabled = SinkuMetadataFetcher.IsAvailable,
                 },
+                new NavigationDrawerItem
+                {
+                    Text = NavigationMenuIds.DmmBulkFetch,
+                    Id = NavigationMenuIds.DmmBulkFetch,
+                    IconKind = PackIconKind.CloudDownloadOutline,
+                },
+                new NavigationDrawerItem
+                {
+                    Text = NavigationMenuIds.DmmPendingCandidates,
+                    Id = NavigationMenuIds.DmmPendingCandidates,
+                    IconKind = PackIconKind.HelpCircleOutline,
+                },
             ];
             ExitNavItems =
             [

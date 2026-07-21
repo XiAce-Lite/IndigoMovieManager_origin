@@ -14,5 +14,7 @@ namespace IndigoMovieManager
         public const string WatchFolderCheck = "監視フォルダ更新チェック";
         public const string RecreateAllThumbnails = "全ファイルサムネイル再作成";
         public const string RefreshAllFileInfo = "全ファイル情報再取得";
+        public const string DmmBulkFetch = "DMM 情報を一括取得";
+        public const string DmmPendingCandidates = "DMM 未確定候補を処理";
     }
 }

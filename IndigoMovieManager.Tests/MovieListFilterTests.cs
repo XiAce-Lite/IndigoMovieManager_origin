@@ -10,7 +10,13 @@ public class MovieListFilterTests
     string name,
     string path,
     string tags = "",
-    string hash = "abc")
+    string hash = "abc",
+    string title = "",
+    string genre = "",
+    string artist = "",
+    string comment1 = "",
+    string comment2 = "",
+    string comment3 = "")
   {
     return new MovieRecords
     {
@@ -18,10 +24,95 @@ public class MovieListFilterTests
       Movie_Path = path,
       Tags = tags,
       Hash = hash,
+      Title = title,
+      Genre = genre,
+      Artist = artist,
+      Comment1 = comment1,
+      Comment2 = comment2,
+      Comment3 = comment3,
       Tag = string.IsNullOrEmpty(tags)
         ? []
         : [.. tags.Split('\n', StringSplitOptions.RemoveEmptyEntries)],
     };
+  }
+
+  [Fact]
+  public void Build_TitlePartialMatch_FiltersRecords()
+  {
+    var source = new[]
+    {
+      CreateRecord("a.mp4", @"C:\a.mp4", title: "作品タイトルA"),
+      CreateRecord("b.mp4", @"C:\b.mp4", title: "別作品"),
+    };
+
+    var result = MovieListFilter.Build(source, "タイトルA", "1");
+
+    Assert.Single(result.Items);
+    Assert.Equal("a.mp4", result.Items[0].Movie_Name);
+  }
+
+  [Fact]
+  public void Build_GenrePartialMatch_FiltersRecords()
+  {
+    var source = new[]
+    {
+      CreateRecord("a.mp4", @"C:\a.mp4", genre: "ジャンルX / ジャンルY"),
+      CreateRecord("b.mp4", @"C:\b.mp4", genre: "その他"),
+    };
+
+    var result = MovieListFilter.Build(source, "ジャンルX", "1");
+
+    Assert.Single(result.Items);
+    Assert.Equal("a.mp4", result.Items[0].Movie_Name);
+  }
+
+  [Fact]
+  public void Build_ExactQuotedMatch_IncludesTitleAndGenre()
+  {
+    var source = new[]
+    {
+      CreateRecord("a.mp4", @"C:\a.mp4", title: "完全一致タイトル"),
+      CreateRecord("b.mp4", @"C:\b.mp4", genre: "完全一致ジャンル"),
+      CreateRecord("c.mp4", @"C:\c.mp4"),
+    };
+
+    var titleResult = MovieListFilter.Build(source, "\"完全一致タイトル\"", "1");
+    Assert.Single(titleResult.Items);
+    Assert.Equal("a.mp4", titleResult.Items[0].Movie_Name);
+
+    var genreResult = MovieListFilter.Build(source, "\"完全一致ジャンル\"", "1");
+    Assert.Single(genreResult.Items);
+    Assert.Equal("b.mp4", genreResult.Items[0].Movie_Name);
+  }
+
+  [Fact]
+  public void Build_ArtistPartialMatch_FiltersRecords()
+  {
+    var source = new[]
+    {
+      CreateRecord("a.mp4", @"C:\a.mp4", artist: "メーカーA"),
+      CreateRecord("b.mp4", @"C:\b.mp4", artist: "別メーカー"),
+    };
+
+    var result = MovieListFilter.Build(source, "メーカーA", "1");
+
+    Assert.Single(result.Items);
+    Assert.Equal("a.mp4", result.Items[0].Movie_Name);
+  }
+
+  [Fact]
+  public void Build_CommentPartialMatch_StillWorks()
+  {
+    var source = new[]
+    {
+      CreateRecord("a.mp4", @"C:\a.mp4", comment1: "メーカー名"),
+      CreateRecord("b.mp4", @"C:\b.mp4"),
+    };
+
+    var result = MovieListFilter.Build(source, "メーカー", "1");
+
+    Assert.Single(result.Items);
+    Assert.Equal("a.mp4", result.Items[0].Movie_Name);
   }
 
   [Fact]

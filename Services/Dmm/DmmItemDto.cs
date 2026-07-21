@@ -40,8 +40,23 @@ namespace IndigoMovieManager.Services.Dmm
         [JsonPropertyName("affiliateURL")]
         public string AffiliateUrl { get; set; }
 
+        [JsonPropertyName("imageURL")]
+        public DmmImageUrlDto ImageUrl { get; set; }
+
         [JsonPropertyName("iteminfo")]
         public DmmItemInfo ItemInfo { get; set; }
+    }
+
+    internal sealed class DmmImageUrlDto
+    {
+        [JsonPropertyName("list")]
+        public string List { get; set; }
+
+        [JsonPropertyName("small")]
+        public string Small { get; set; }
+
+        [JsonPropertyName("large")]
+        public string Large { get; set; }
     }
 
     internal sealed class DmmItemInfo

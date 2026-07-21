@@ -11,6 +11,7 @@ namespace IndigoMovieManager.Services.Dmm
             public bool WroteComment3 { get; set; }
             public bool WroteTitle { get; set; }
             public bool WroteGenre { get; set; }
+            public bool WroteArtist { get; set; }
             public int AddedTagCount { get; set; }
         }
 
@@ -18,44 +19,47 @@ namespace IndigoMovieManager.Services.Dmm
             string dbFullPath,
             MovieRecords rec,
             DmmItemDto item,
-            Action<Action> runOnUi = null)
+            Action<Action> runOnUi = null,
+            bool manualOverwrite = false)
         {
             ArgumentNullException.ThrowIfNull(rec);
             ArgumentNullException.ThrowIfNull(item);
 
             var summary = new ApplySummary();
             string title = item.Title?.Trim() ?? "";
-            string comment2 = JoinNames(
+            string frontJacketUrl = item.ImageUrl?.Large?.Trim() ?? "";
+            string backJacketUrl = ResolveBackJacketUrl(frontJacketUrl);
+            string comment3 = JoinNames(
                 CollectNames(item.ItemInfo?.Maker),
                 CollectNames(item.ItemInfo?.Label),
                 CollectNames(item.ItemInfo?.Series));
-            string affiliateUrl = item.AffiliateUrl?.Trim() ?? "";
+            string makerJoined = JoinNames(CollectNames(item.ItemInfo?.Maker));
             List<string> actresses = CollectNames(item.ItemInfo?.Actress);
             List<string> genres = CollectNames(item.ItemInfo?.Genre);
             string genreJoined = string.Join(" / ", genres);
 
-            if (IsBlank(rec.Comment1) && !string.IsNullOrEmpty(title))
+            if ((manualOverwrite || IsBlank(rec.Comment1)) && !string.IsNullOrEmpty(frontJacketUrl))
             {
-                WriteColumn(dbFullPath, rec.Movie_Id, MovieColumn.Comment1, title);
-                RunUi(runOnUi, () => rec.Comment1 = title);
+                WriteColumn(dbFullPath, rec.Movie_Id, MovieColumn.Comment1, frontJacketUrl);
+                RunUi(runOnUi, () => rec.Comment1 = frontJacketUrl);
                 summary.WroteComment1 = true;
             }
 
-            if (IsBlank(rec.Comment2) && !string.IsNullOrEmpty(comment2))
+            if ((manualOverwrite || IsBlank(rec.Comment2)) && !string.IsNullOrEmpty(backJacketUrl))
             {
-                WriteColumn(dbFullPath, rec.Movie_Id, MovieColumn.Comment2, comment2);
-                RunUi(runOnUi, () => rec.Comment2 = comment2);
+                WriteColumn(dbFullPath, rec.Movie_Id, MovieColumn.Comment2, backJacketUrl);
+                RunUi(runOnUi, () => rec.Comment2 = backJacketUrl);
                 summary.WroteComment2 = true;
             }
 
-            if (IsBlank(rec.Comment3) && !string.IsNullOrEmpty(affiliateUrl))
+            if (IsBlank(rec.Comment3) && !string.IsNullOrEmpty(comment3))
             {
-                WriteColumn(dbFullPath, rec.Movie_Id, MovieColumn.Comment3, affiliateUrl);
-                RunUi(runOnUi, () => rec.Comment3 = affiliateUrl);
+                WriteColumn(dbFullPath, rec.Movie_Id, MovieColumn.Comment3, comment3);
+                RunUi(runOnUi, () => rec.Comment3 = comment3);
                 summary.WroteComment3 = true;
             }
 
-            if (IsBlank(rec.Title) && !string.IsNullOrEmpty(title))
+            if ((manualOverwrite || IsBlank(rec.Title)) && !string.IsNullOrEmpty(title))
             {
                 WriteColumn(dbFullPath, rec.Movie_Id, MovieColumn.Title, title);
                 RunUi(runOnUi, () => rec.Title = title);
@@ -67,6 +71,13 @@ namespace IndigoMovieManager.Services.Dmm
                 WriteColumn(dbFullPath, rec.Movie_Id, MovieColumn.Genre, genreJoined);
                 RunUi(runOnUi, () => rec.Genre = genreJoined);
                 summary.WroteGenre = true;
+            }
+
+            if (IsBlank(rec.Artist) && !string.IsNullOrEmpty(makerJoined))
+            {
+                WriteColumn(dbFullPath, rec.Movie_Id, MovieColumn.Artist, makerJoined);
+                RunUi(runOnUi, () => rec.Artist = makerJoined);
+                summary.WroteArtist = true;
             }
 
             List<string> tagsToAdd = [];
@@ -115,6 +126,12 @@ namespace IndigoMovieManager.Services.Dmm
             }
 
             return summary;
+        }
+
+        private static string ResolveBackJacketUrl(string frontJacketUrl)
+        {
+            string candidate = DmmJacketUrls.DeriveBackUrl(frontJacketUrl);
+            return candidate != null && DmmJacketUrls.UrlExists(candidate) ? candidate : null;
         }
 
         private static void WriteColumn(string dbFullPath, long movieId, MovieColumn column, object value)

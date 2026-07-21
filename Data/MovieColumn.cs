@@ -15,6 +15,7 @@ namespace IndigoMovieManager.Data
     Comment3,
     Title,
     Genre,
+    Artist,
   }
 
   internal static class MovieColumnExtensions
@@ -33,6 +34,7 @@ namespace IndigoMovieManager.Data
         MovieColumn.Comment3 => "comment3",
         MovieColumn.Title => "title",
         MovieColumn.Genre => "genre",
+        MovieColumn.Artist => "artist",
         _ => throw new ArgumentOutOfRangeException(nameof(column)),
       };
     }

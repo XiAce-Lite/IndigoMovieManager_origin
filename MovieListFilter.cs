@@ -33,6 +33,9 @@ namespace IndigoMovieManager
                         (item.Movie_Name ?? "").Contains(exact, StringComparison.CurrentCultureIgnoreCase) ||
                         (item.Movie_Path ?? "").Contains(exact, StringComparison.CurrentCultureIgnoreCase) ||
                         (item.Tags ?? "").Contains(exact, StringComparison.CurrentCultureIgnoreCase) ||
+                        (item.Title ?? "").Contains(exact, StringComparison.CurrentCultureIgnoreCase) ||
+                        (item.Genre ?? "").Contains(exact, StringComparison.CurrentCultureIgnoreCase) ||
+                        (item.Artist ?? "").Contains(exact, StringComparison.CurrentCultureIgnoreCase) ||
                         (item.Comment1 ?? "").Contains(exact, StringComparison.CurrentCultureIgnoreCase) ||
                         (item.Comment2 ?? "").Contains(exact, StringComparison.CurrentCultureIgnoreCase) ||
                         (item.Comment3 ?? "").Contains(exact, StringComparison.CurrentCultureIgnoreCase)
@@ -109,7 +112,7 @@ namespace IndigoMovieManager
             };
         }
 
-        // ファイル名・パス・コメントは部分一致、タグはタグ単位で完全一致（WhiteBrowser 準拠）。
+        // ファイル名・パス・コメント・タイトル・ジャンル・アーティストは部分一致、タグはタグ単位で完全一致（WhiteBrowser 準拠）。
         private static bool MatchesTerm(MovieRecords item, string term)
         {
             if (string.IsNullOrEmpty(term))
@@ -121,6 +124,9 @@ namespace IndigoMovieManager
             [
                 item.Movie_Name ?? "",
                 item.Movie_Path ?? "",
+                item.Title ?? "",
+                item.Genre ?? "",
+                item.Artist ?? "",
                 item.Comment1 ?? "",
                 item.Comment2 ?? "",
                 item.Comment3 ?? ""

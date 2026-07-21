@@ -19,6 +19,7 @@ namespace IndigoMovieManager.Services
         void RefreshActiveList(SkinEngine engine);
         void RefreshExtDetail();
         void RequestDetailThumbnailRecreate();
+        void OpenMetadataEdit();
         string DbFullPath { get; }
         void UpdateMovieColumn(long movieId, Data.MovieColumn column, object value);
     }

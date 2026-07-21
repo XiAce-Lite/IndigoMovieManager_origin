@@ -69,6 +69,12 @@
                             Binding="{Binding Sub, UpdateSourceTrigger=PropertyChanged}"
                             CanUserSort="False"
                             Header="サブフォルダも監視" />
+                        <DataGridCheckBoxColumn
+                            Width="Auto"
+                            Binding="{Binding DmmAuto, UpdateSourceTrigger=PropertyChanged}"
+                            CanUserSort="False"
+                            Header="DMM自動取得"
+                            ToolTipService.ToolTip="この監視フォルダから新規登録されたファイルのみ、DMM 情報を自動取得します（既定 OFF）。" />
                         <DataGridTextColumn
                             x:Name="watchFolder"
                             Width="*"

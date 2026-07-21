@@ -16,6 +16,35 @@
     <UserControl.Resources>
         <c:FileSizeConverter x:Key="FileSizeConverter" />
         <c:NoLockImageConverter x:Key="noLockImageConverter" />
+        <c:NullOrEmptyToVisibilityConverter x:Key="NullOrEmptyToVisibility" />
+        <Style x:Key="MetadataRowStyle" TargetType="Border">
+            <Setter Property="Padding" Value="0,2,0,2" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Background" Value="Transparent" />
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Opacity" Value="0.85" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="JacketNavButtonStyle" TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
+            <Setter Property="Width" Value="36" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="Foreground" Value="{DynamicResource MaterialDesign.Brush.Foreground}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{DynamicResource MaterialDesign.Brush.ForegroundLight}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Style.Triggers>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Opacity" Value="0.35" />
+                </Trigger>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource MaterialDesign.Brush.TextBox.HoverBackground}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
     </UserControl.Resources>
 
     <Grid Background="{DynamicResource MaterialDesign.Brush.Background}">
@@ -26,48 +55,45 @@
             VirtualizingPanel.VirtualizationMode="Recycling">
             <Grid>
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="13*" />
-                    <RowDefinition Height="32*" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
-                <Label x:Name="LabelExtDetail"
-                    Grid.RowSpan="2"
+                <StackPanel
                     Width="160"
-                    Height="120"
-                    HorizontalAlignment="Left"
-                    MouseDoubleClick="Label_MouseDoubleClick">
-                    <Image
-                        d:Source="../Images/errorGrid.jpg"
-                        ContextMenu="{DynamicResource menuContext}"
-                        PreviewMouseLeftButtonDown="ThumbnailImage_PreviewMouseLeftButtonDown"
-                        VirtualizingPanel.IsVirtualizing="True"
-                        VirtualizingPanel.ScrollUnit="Pixel"
-                        VirtualizingPanel.VirtualizationMode="Recycling">
-                        <Image.Source>
-                            <c:ConverterBindableParameter
-                                Binding="{Binding ThumbDetail}"
-                                Converter="{StaticResource noLockImageConverter}"
-                                ConverterParameter="{Binding IsExists}" />
-                        </Image.Source>
-                    </Image>
-                </Label>
-                <!--
-                    todo:取りあえずボタンデザインだけ。どう実装するかなぁ。プレビュー出してとなると面倒ではある。
-                    キャプチャーボタン押した後がなぁ。タブと右クリックの位置とかの絡みとか。別で作る事になりそうだし。
-                -->
-                <!--
-                <Button
-                    x:Name="DetailManualThumb"
-                    Grid.RowSpan="1"
-                    Grid.ColumnSpan="1"
-                    Width="Auto"
-                    Height="16"
-                    Margin="92,-14,0,0"
-                    HorizontalAlignment="Left"
-                    d:Width="18"
-                    Style="{StaticResource MaterialDesignFloatingActionMiniButton}">
-                    <materialDesign:PackIcon VerticalAlignment="Center" Kind="Reload" />
-                </Button>
-                -->
+                    HorizontalAlignment="Left">
+                    <Label
+                        x:Name="LabelExtDetail"
+                        Width="160"
+                        Height="120"
+                        Padding="0"
+                        MouseDoubleClick="Label_MouseDoubleClick">
+                        <Image
+                            x:Name="DetailImage"
+                            d:Source="../Images/errorGrid.jpg"
+                            ContextMenu="{DynamicResource menuContext}"
+                            PreviewMouseLeftButtonDown="ThumbnailImage_PreviewMouseLeftButtonDown"
+                            Stretch="Uniform" />
+                    </Label>
+                    <StackPanel
+                        Margin="0,4,0,0"
+                        HorizontalAlignment="Center"
+                        Orientation="Horizontal">
+                        <Button
+                            x:Name="JacketPrevButton"
+                            Margin="0,0,6,0"
+                            Click="JacketPrevButton_Click"
+                            Content="{materialDesign:PackIcon Kind=ChevronLeft}"
+                            IsEnabled="False"
+                            Style="{StaticResource JacketNavButtonStyle}"
+                            ToolTip="ジャケット表（◀）" />
+                        <Button
+                            x:Name="JacketNextButton"
+                            Click="JacketNextButton_Click"
+                            Content="{materialDesign:PackIcon Kind=ChevronRight}"
+                            IsEnabled="False"
+                            Style="{StaticResource JacketNavButtonStyle}"
+                            ToolTip="ジャケット裏（▶）" />
+                    </StackPanel>
+                </StackPanel>
             </Grid>
 
         </VirtualizingStackPanel>
@@ -171,6 +197,104 @@
                     </ItemsPanelTemplate>
                 </ItemsControl.ItemsPanel>
             </ItemsControl>
+
+            <StackPanel
+                Margin="0,0,0,4"
+                PreviewKeyDown="MetadataPanel_PreviewKeyDown"
+                PreviewKeyUp="MetadataPanel_PreviewKeyUp">
+                <Border
+                    MouseLeftButtonDown="MetadataRow_MouseLeftButtonDown"
+                    Style="{StaticResource MetadataRowStyle}"
+                    Tag="{Binding Title}"
+                    ToolTip="{Binding Title, StringFormat='{}{0}&#10;クリックで検索'}"
+                    Visibility="{Binding Title, Converter={StaticResource NullOrEmptyToVisibility}}">
+                    <DockPanel LastChildFill="True">
+                        <TextBlock
+                            Width="72"
+                            DockPanel.Dock="Left"
+                            FontSize="12"
+                            Foreground="{DynamicResource MaterialDesign.Brush.Foreground}"
+                            Opacity="0.7"
+                            Text="タイトル:" />
+                        <TextBlock
+                            FontSize="12"
+                            Foreground="{DynamicResource MaterialDesign.Brush.Foreground}"
+                            Text="{Binding Title}"
+                            TextTrimming="CharacterEllipsis" />
+                    </DockPanel>
+                </Border>
+                <Border
+                    MouseLeftButtonDown="CommentRow_MouseLeftButtonDown"
+                    Style="{StaticResource MetadataRowStyle}"
+                    Tag="{Binding Comment1}"
+                    Visibility="{Binding Comment1, Converter={StaticResource NullOrEmptyToVisibility}}">
+                    <DockPanel LastChildFill="True">
+                        <TextBlock
+                            Width="72"
+                            DockPanel.Dock="Left"
+                            FontSize="12"
+                            Foreground="{DynamicResource MaterialDesign.Brush.Foreground}"
+                            Opacity="0.7"
+                            Text="コメント1:" />
+                        <TextBlock
+                            x:Name="Comment1Value"
+                            FontSize="12"
+                            Foreground="{DynamicResource MaterialDesign.Brush.Foreground}"
+                            Text="{Binding Comment1}"
+                            TextTrimming="CharacterEllipsis" />
+                    </DockPanel>
+                </Border>
+                <Border
+                    MouseLeftButtonDown="CommentRow_MouseLeftButtonDown"
+                    Style="{StaticResource MetadataRowStyle}"
+                    Tag="{Binding Comment2}"
+                    Visibility="{Binding Comment2, Converter={StaticResource NullOrEmptyToVisibility}}">
+                    <DockPanel LastChildFill="True">
+                        <TextBlock
+                            Width="72"
+                            DockPanel.Dock="Left"
+                            FontSize="12"
+                            Foreground="{DynamicResource MaterialDesign.Brush.Foreground}"
+                            Opacity="0.7"
+                            Text="コメント2:" />
+                        <TextBlock
+                            x:Name="Comment2Value"
+                            FontSize="12"
+                            Foreground="{DynamicResource MaterialDesign.Brush.Foreground}"
+                            Text="{Binding Comment2}"
+                            TextTrimming="CharacterEllipsis" />
+                    </DockPanel>
+                </Border>
+                <view:MetadataSlashSearchRow
+                    Label="コメント3:"
+                    Value="{Binding Comment3}"
+                    Visibility="{Binding Comment3, Converter={StaticResource NullOrEmptyToVisibility}}" />
+                <Border
+                    MouseLeftButtonDown="MetadataRow_MouseLeftButtonDown"
+                    Style="{StaticResource MetadataRowStyle}"
+                    Tag="{Binding Artist}"
+                    ToolTip="{Binding Artist, StringFormat='{}{0}&#10;クリックで検索'}"
+                    Visibility="{Binding Artist, Converter={StaticResource NullOrEmptyToVisibility}}">
+                    <DockPanel LastChildFill="True">
+                        <TextBlock
+                            Width="72"
+                            DockPanel.Dock="Left"
+                            FontSize="12"
+                            Foreground="{DynamicResource MaterialDesign.Brush.Foreground}"
+                            Opacity="0.7"
+                            Text="アーティスト:" />
+                        <TextBlock
+                            FontSize="12"
+                            Foreground="{DynamicResource MaterialDesign.Brush.Foreground}"
+                            Text="{Binding Artist}"
+                            TextTrimming="CharacterEllipsis" />
+                    </DockPanel>
+                </Border>
+                <view:MetadataSlashSearchRow
+                    Label="ジャンル:"
+                    Value="{Binding Genre}"
+                    Visibility="{Binding Genre, Converter={StaticResource NullOrEmptyToVisibility}}" />
+            </StackPanel>
 
             <VirtualizingStackPanel
                 Margin="0,4,0,0"

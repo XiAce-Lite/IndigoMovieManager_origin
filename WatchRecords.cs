@@ -11,6 +11,7 @@ namespace IndigoMovieManager
         private bool auto = true;
         private bool watch = true;
         private bool sub = true;
+        private bool dmmAuto;
 
         public WatchRecords() { }
 
@@ -32,6 +33,11 @@ namespace IndigoMovieManager
         public bool Sub
         {
             get => sub; set { sub = value; OnPropertyChanged(nameof(Sub)); }
+        }
+
+        public bool DmmAuto
+        {
+            get => dmmAuto; set { dmmAuto = value; OnPropertyChanged(nameof(DmmAuto)); }
         }
 
         public ObservableCollection<WatchRecords> Children

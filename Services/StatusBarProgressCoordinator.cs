@@ -346,6 +346,17 @@ namespace IndigoMovieManager.Services
                     return;
                 }
 
+                try
+                {
+                    if (!_cts.IsCancellationRequested)
+                    {
+                        _cts.Cancel();
+                    }
+                }
+                catch
+                {
+                }
+
                 _ctsDisposed = true;
                 _cts.Dispose();
             }

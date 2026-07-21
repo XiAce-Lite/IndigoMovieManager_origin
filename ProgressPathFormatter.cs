@@ -110,9 +110,16 @@ namespace IndigoMovieManager
             }
 
             double pixelsPerDip = 1.0;
-            if (Application.Current?.MainWindow != null)
+            try
             {
-                pixelsPerDip = VisualTreeHelper.GetDpi(Application.Current.MainWindow).PixelsPerDip;
+                if (Application.Current?.MainWindow != null)
+                {
+                    pixelsPerDip = VisualTreeHelper.GetDpi(Application.Current.MainWindow).PixelsPerDip;
+                }
+            }
+            catch
+            {
+                // 非 UI スレッドなどでは DPI 取得を諦め、既定値で測る。
             }
 
             var formattedText = new FormattedText(

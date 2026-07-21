@@ -143,7 +143,8 @@ namespace IndigoMovieManager
                         CREATE TABLE watch(dir text primary key not null, 
                         auto integer not null default 0, 
                         watch integer not null default 0, 
-                        sub integer not null default 1 )";
+                        sub integer not null default 1,
+                        dmm_auto integer not null default 0 )";
                     cmd.ExecuteNonQuery();
                 }
                 transaction.Commit();
@@ -192,11 +193,12 @@ namespace IndigoMovieManager
                 using var transaction = connection.BeginTransaction();
                 using (SQLiteCommand cmd = connection.CreateCommand())
                 {
-                    cmd.CommandText = "insert into watch (dir,auto,watch,sub) values (@dir,@auto,@watch,@sub)";
+                    cmd.CommandText = "insert into watch (dir,auto,watch,sub,dmm_auto) values (@dir,@auto,@watch,@sub,@dmm_auto)";
                     cmd.Parameters.Add(new SQLiteParameter("@dir", watchRec.Dir));
                     cmd.Parameters.Add(new SQLiteParameter("@auto", watchRec.Auto == true ? 1 : 0));
                     cmd.Parameters.Add(new SQLiteParameter("@watch", watchRec.Watch == true ? 1 : 0));
                     cmd.Parameters.Add(new SQLiteParameter("@sub", watchRec.Sub == true ? 1 : 0));
+                    cmd.Parameters.Add(new SQLiteParameter("@dmm_auto", watchRec.DmmAuto ? 1 : 0));
                     cmd.ExecuteNonQuery();
                 }
                 transaction.Commit();

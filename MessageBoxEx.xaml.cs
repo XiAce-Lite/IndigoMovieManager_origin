@@ -22,6 +22,7 @@ namespace IndigoMovieManager
         public bool UseRadioButton = false;
         public bool Radio1IsChecked = true;
         public bool Radio2IsChecked = false;
+        public bool OkOnly = false;
 
         public MessageBoxEx(Window owner)
         {
@@ -50,6 +51,14 @@ namespace IndigoMovieManager
             if (!UseRadioButton)
             {
                 radioArea.Visibility = Visibility.Collapsed;
+            }
+
+            if (OkOnly)
+            {
+                Cancel.Visibility = Visibility.Collapsed;
+                OK.Content = "閉じる(_C)";
+                OK.IsCancel = true;
+                Cancel.IsCancel = false;
             }
         }
 

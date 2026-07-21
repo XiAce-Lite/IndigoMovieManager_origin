@@ -126,6 +126,7 @@ namespace IndigoMovieManager
         private int _historyCursor = -1;
         private int _fileInfoRefreshRunning = 0;
         private int _dmmFetchRunning = 0;
+        private DmmAutoFetchQueue _dmmAutoFetchQueue;
 
         private const int SearchOverlayDelayMs = 400;
         private const int SearchIncrementalDebounceMs = 400;
@@ -151,6 +152,7 @@ namespace IndigoMovieManager
             _statusBarProgress = new StatusBarProgressCoordinator(Dispatcher);
             StatusBarProgressHost.Attach(_statusBarProgress);
             OperationStatusBar.DataContext = _statusBarProgress.ViewModel;
+            _dmmAutoFetchQueue = new DmmAutoFetchQueue(new MainWindowDmmAutoFetchHost(this));
 
             // アセンブリのファイルバージョンを取得
             var version = Assembly.GetExecutingAssembly()
@@ -1024,6 +1026,7 @@ namespace IndigoMovieManager
 
             try
             {
+                _dmmAutoFetchQueue?.Dispose();
                 Properties.Settings.Default.MainLocation = new System.Drawing.Point((int)Left, (int)Top);
                 Properties.Settings.Default.MainSize = new System.Drawing.Size((int)Width, (int)Height);
 
@@ -1243,6 +1246,7 @@ namespace IndigoMovieManager
                 string sortId = MainVM.DbInfo.Sort ?? "1";
                 await FilterAndSortAsync(sortId, true).ConfigureAwait(true);
                 EnqueueThumbnailWork(batch, beginNewJob: ShouldBeginNewDiscoveredThumbnailJob());
+                EnqueueAutoDmmFetchForDiscovered(batch);
             }).Task.Unwrap().ConfigureAwait(false);
         }
 
@@ -1704,6 +1708,7 @@ namespace IndigoMovieManager
 
                 CreateWatcher();
                 ScheduleStartupFolderCheck();
+                RefreshDmmPendingMenuBadge();
             }
             finally
             {
@@ -1965,6 +1970,7 @@ namespace IndigoMovieManager
         {
             if (!string.IsNullOrEmpty(dbPath))
             {
+                WatchFolderDmmAutoService.EnsureSchema(dbPath);
                 watchData = QueryDb(dbPath, sql, session);
             }
         }
@@ -2430,6 +2436,43 @@ namespace IndigoMovieManager
             Refresh();
         }
 
+        private void MetadataEdit_Click(object sender, RoutedEventArgs e) => OpenMetadataEdit();
+
+        private void OpenMetadataEdit()
+        {
+            if (!IsMovieListActive) { return; }
+
+            MovieRecords mv = GetSelectedMovie();
+            if (mv == null) { return; }
+
+            var editModel = MetadataEditModel.FromMovie(mv);
+            var window = new MetadataEditWindow
+            {
+                Owner = this,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                DataContext = editModel,
+            };
+            window.ShowDialog();
+
+            if (window.CloseStatus() != MessageBoxResult.OK)
+            {
+                return;
+            }
+
+            editModel.ApplyTo(mv);
+
+            string dbPath = MainVM.DbInfo.DBFullPath;
+            UpdateMovieSingleColumn(dbPath, mv.Movie_Id, MovieColumn.Title, mv.Title);
+            UpdateMovieSingleColumn(dbPath, mv.Movie_Id, MovieColumn.Comment1, mv.Comment1);
+            UpdateMovieSingleColumn(dbPath, mv.Movie_Id, MovieColumn.Comment2, mv.Comment2);
+            UpdateMovieSingleColumn(dbPath, mv.Movie_Id, MovieColumn.Comment3, mv.Comment3);
+            UpdateMovieSingleColumn(dbPath, mv.Movie_Id, MovieColumn.Artist, mv.Artist);
+            UpdateMovieSingleColumn(dbPath, mv.Movie_Id, MovieColumn.Genre, mv.Genre);
+
+            Refresh();
+            viewExtDetail.Refresh();
+        }
+
         private void MenuCopyAndMove_Click(object sender, RoutedEventArgs e)
         {
             MenuItem item = sender as MenuItem;
@@ -2719,6 +2762,7 @@ namespace IndigoMovieManager
                         rec.Hash);
                 }
                 DeleteMovieTable(MainVM.DbInfo.DBFullPath, rec.Movie_Id);
+                DmmPendingCandidateStore.DeleteByMovieId(MainVM.DbInfo.DBFullPath, rec.Movie_Id);
 
                 MovieRecords stale = MainVM.MovieRecs.FirstOrDefault(x => x.Movie_Id == rec.Movie_Id);
                 if (stale != null)
@@ -2744,6 +2788,28 @@ namespace IndigoMovieManager
             }
 
             await FilterAndSortAsync(MainVM.DbInfo.Sort, true).ConfigureAwait(true);
+            RefreshDmmPendingMenuBadge();
+        }
+
+        private void RefreshDmmPendingMenuBadge()
+        {
+            if (MainVM?.ToolNavItems == null)
+            {
+                return;
+            }
+
+            NavigationDrawerItem item = MainVM.ToolNavItems
+                .FirstOrDefault(nav => nav.Id == NavigationMenuIds.DmmPendingCandidates);
+            if (item == null)
+            {
+                return;
+            }
+
+            string dbPath = MainVM.DbInfo?.DBFullPath;
+            int count = string.IsNullOrEmpty(dbPath) ? 0 : DmmPendingCandidateStore.Count(dbPath);
+            item.Text = count > 0
+                ? $"{NavigationMenuIds.DmmPendingCandidates} ({count})"
+                : NavigationMenuIds.DmmPendingCandidates;
         }
 
         private void BtnReCreateThumbnail_Click(object sender, RoutedEventArgs e)
@@ -2901,6 +2967,12 @@ namespace IndigoMovieManager
         {
             if (Interlocked.CompareExchange(ref _dmmFetchRunning, 1, 0) != 0)
             {
+                MessageBox.Show(
+                    this,
+                    "手動の DMM 情報取得が実行中です。完了後に再度お試しください。",
+                    "DMM情報取得",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
                 return;
             }
 
@@ -2915,6 +2987,7 @@ namespace IndigoMovieManager
                         DlogMessage =
                             "DMM API ID / アフィリエイトID（API用）が未設定です。\n共通設定で入力してください。\n\nPowered by FANZA Webサービス",
                         PackIconKind = MaterialDesignThemes.Wpf.PackIconKind.CogOutline,
+                        OkOnly = true,
                     };
                     dialog.ShowDialog();
                     return;
@@ -2966,16 +3039,48 @@ namespace IndigoMovieManager
                                 applied++;
                                 break;
                             case DmmResolveOutcome.NoProductCode:
-                                noCode++;
+                                if (TryOpenDmmSearchDialog(rec, dbPath, resolved, out bool appliedFromNoCode) && appliedFromNoCode)
+                                {
+                                    applied++;
+                                }
+                                else
+                                {
+                                    noCode++;
+                                }
+
                                 break;
                             case DmmResolveOutcome.NotFound:
-                                notFound++;
+                                if (TryOpenDmmSearchDialog(rec, dbPath, resolved, out bool appliedFromNotFound) && appliedFromNotFound)
+                                {
+                                    applied++;
+                                }
+                                else
+                                {
+                                    notFound++;
+                                }
+
                                 break;
                             case DmmResolveOutcome.Ambiguous:
-                                ambiguous++;
+                                if (TryOpenDmmSearchDialog(rec, dbPath, resolved, out bool appliedFromAmbiguous) && appliedFromAmbiguous)
+                                {
+                                    applied++;
+                                }
+                                else
+                                {
+                                    ambiguous++;
+                                }
+
                                 break;
                             case DmmResolveOutcome.HttpError:
-                                httpErrors++;
+                                if (TryOpenDmmSearchDialog(rec, dbPath, resolved, out bool appliedFromHttpError) && appliedFromHttpError)
+                                {
+                                    applied++;
+                                }
+                                else
+                                {
+                                    httpErrors++;
+                                }
+
                                 break;
                             case DmmResolveOutcome.NotConfigured:
                                 httpErrors++;
@@ -3007,6 +3112,7 @@ namespace IndigoMovieManager
                     DlogTitle = "DMM情報取得",
                     DlogMessage = summary,
                     PackIconKind = MaterialDesignThemes.Wpf.PackIconKind.CloudDownloadOutline,
+                    OkOnly = true,
                 };
                 doneDialog.ShowDialog();
 
@@ -3014,15 +3120,289 @@ namespace IndigoMovieManager
                 {
                     viewExtDetail.Refresh();
                     TabListRefreshHelper.RefreshActiveList(_currentSkinEngine, this);
+                    RefreshDmmPendingMenuBadge();
                 });
             }
             finally
             {
                 Interlocked.Exchange(ref _dmmFetchRunning, 0);
+                RunOnUi(RefreshDmmPendingMenuBadge);
             }
         }
 
         private void RequestApplicationExit() => Close();
+
+        private void EnqueueAutoDmmFetchForDiscovered(IEnumerable<QueueObj> items)
+        {
+            if (!DmmApiOptions.FromSettings().IsConfigured || items == null)
+            {
+                return;
+            }
+
+            string dbPath = MainVM.DbInfo.DBFullPath;
+            if (string.IsNullOrEmpty(dbPath))
+            {
+                return;
+            }
+
+            foreach (QueueObj item in items)
+            {
+                if (item == null || item.MovieId <= 0)
+                {
+                    continue;
+                }
+
+                string mediaPath = item.MovieFullPath;
+                if (string.IsNullOrWhiteSpace(mediaPath))
+                {
+                    continue;
+                }
+
+                if (!WatchFolderDmmAutoService.IsEnabledForMediaPath(item.DbFullPath ?? dbPath, mediaPath))
+                {
+                    continue;
+                }
+
+                string movieName = Path.GetFileName(mediaPath);
+                _dmmAutoFetchQueue.Enqueue(item.MovieId, movieName, item.DbFullPath ?? dbPath);
+            }
+        }
+
+        private void BeginDmmBulkFetchFromMenu()
+        {
+            if (Volatile.Read(ref _dmmFetchRunning) == 1)
+            {
+                MessageBox.Show(
+                    this,
+                    "手動の DMM 情報取得が実行中です。完了後に再度お試しください。",
+                    "DMM 情報を一括取得",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            DmmApiOptions options = DmmApiOptions.FromSettings();
+            if (!options.IsConfigured)
+            {
+                var dialog = new MessageBoxEx(this)
+                {
+                    DlogTitle = "DMM 情報を一括取得",
+                    DlogMessage =
+                        "DMM API ID / アフィリエイトID（API用）が未設定です。\n共通設定で入力してください。\n\nPowered by FANZA Webサービス",
+                    PackIconKind = MaterialDesignThemes.Wpf.PackIconKind.CogOutline,
+                    OkOnly = true,
+                };
+                dialog.ShowDialog();
+                return;
+            }
+
+            if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
+            {
+                return;
+            }
+
+            // 検索で絞り込んだ一覧を母数にする（未絞り込み時は全件表示と同じ）。
+            IReadOnlyList<MovieRecords> scope = GetActiveFilterRecords();
+            int scopeCount = scope.Count;
+            List<DmmAutoFetchJob> targets = [.. scope
+                .Where(record => DmmMetadataEligibility.NeedsFetch(record.Title, record.Comment1))
+                .Select(record => new DmmAutoFetchJob
+                {
+                    MovieId = record.Movie_Id,
+                    MovieName = string.IsNullOrWhiteSpace(record.Movie_Path)
+                        ? (record.Movie_Name ?? string.Empty)
+                        : Path.GetFileName(record.Movie_Path),
+                    DbPath = MainVM.DbInfo.DBFullPath,
+                    Source = "bulk",
+                })];
+
+            if (targets.Count == 0)
+            {
+                var emptyDialog = new MessageBoxEx(this)
+                {
+                    DlogTitle = "DMM 情報を一括取得",
+                    DlogMessage =
+                        scopeCount == 0
+                            ? "現在の一覧が空です。検索条件を確認してください。"
+                            : $"現在の一覧は {scopeCount} 件ですが、タイトルとコメント1が両方空のレコードはありません。\n（既に取得済み、または片方でも入力がある行は対象外です）",
+                    PackIconKind = MaterialDesignThemes.Wpf.PackIconKind.InformationOutline,
+                    OkOnly = true,
+                };
+                emptyDialog.ShowDialog();
+                return;
+            }
+
+            var confirmDialog = new MessageBoxEx(this)
+            {
+                DlogTitle = "DMM 情報を一括取得",
+                DlogMessage =
+                    $"現在の一覧 {scopeCount} 件のうち、メタデータ未設定の {targets.Count} 件に DMM 情報を取得します。\n件数によっては長時間かかります。よろしいですか？\n\nPowered by FANZA Webサービス",
+                PackIconKind = MaterialDesignThemes.Wpf.PackIconKind.CloudDownloadOutline,
+            };
+            confirmDialog.ShowDialog();
+            if (confirmDialog.CloseStatus() != MessageBoxResult.OK)
+            {
+                return;
+            }
+
+            int added = _dmmAutoFetchQueue.EnqueueMany(targets);
+            if (added == 0)
+            {
+                var busyDialog = new MessageBoxEx(this)
+                {
+                    DlogTitle = "DMM 情報を一括取得",
+                    DlogMessage =
+                        "対象はすでに取得キューに入っているか、投入できませんでした。\nステータスバーの進捗を確認するか、完了・キャンセル後に再度お試しください。",
+                    PackIconKind = MaterialDesignThemes.Wpf.PackIconKind.InformationOutline,
+                    OkOnly = true,
+                };
+                busyDialog.ShowDialog();
+            }
+        }
+
+        private void FetchDmmManualSearch_Click(object sender, RoutedEventArgs e)
+        {
+            if (Volatile.Read(ref _dmmFetchRunning) == 1)
+            {
+                MessageBox.Show(
+                    this,
+                    "手動の DMM 情報取得が実行中です。完了後に再度お試しください。",
+                    "DMM手動検索",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            DmmApiOptions options = DmmApiOptions.FromSettings();
+            if (!options.IsConfigured)
+            {
+                var dialog = new MessageBoxEx(this)
+                {
+                    DlogTitle = "DMM手動検索",
+                    DlogMessage =
+                        "DMM API ID / アフィリエイトID（API用）が未設定です。\n共通設定で入力してください。\n\nPowered by FANZA Webサービス",
+                    PackIconKind = MaterialDesignThemes.Wpf.PackIconKind.CogOutline,
+                    OkOnly = true,
+                };
+                dialog.ShowDialog();
+                return;
+            }
+
+            if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
+            {
+                return;
+            }
+
+            List<MovieRecords> targets = GetSelectedMovies();
+            if (targets == null || targets.Count == 0)
+            {
+                return;
+            }
+
+            if (targets.Count != 1)
+            {
+                MessageBox.Show(
+                    this,
+                    "DMM手動検索は1件選択時のみ利用できます。",
+                    "DMM手動検索",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            MovieRecords rec = targets[0];
+            string dbPath = MainVM.DbInfo.DBFullPath;
+            string initialKeyword = DmmInitialKeyword.FromMovieName(rec.Movie_Name);
+            if (TryOpenDmmSearchDialog(rec, dbPath, initialKeyword, null, out bool applied) && applied)
+            {
+                RunOnUi(() =>
+                {
+                    viewExtDetail.Refresh();
+                    TabListRefreshHelper.RefreshActiveList(_currentSkinEngine, this);
+                });
+            }
+        }
+
+        private bool TryOpenDmmSearchDialog(
+            MovieRecords rec,
+            string dbPath,
+            DmmResolveResult resolved,
+            out bool applied)
+        {
+            string initialKeyword = resolved?.InitialKeyword;
+            if (string.IsNullOrWhiteSpace(initialKeyword))
+            {
+                initialKeyword = DmmInitialKeyword.FromMovieName(rec.Movie_Name);
+            }
+
+            IReadOnlyList<DmmCandidateEntry> initialCandidates = resolved?.Candidates;
+            return TryOpenDmmSearchDialog(rec, dbPath, initialKeyword, initialCandidates, out applied);
+        }
+
+        private bool TryOpenDmmSearchDialog(
+            MovieRecords rec,
+            string dbPath,
+            string initialKeyword,
+            IReadOnlyList<DmmCandidateEntry> initialCandidates,
+            out bool applied)
+        {
+            applied = false;
+            var searchWindow = new DmmSearchWindow(rec, dbPath, initialKeyword, initialCandidates)
+            {
+                Owner = this,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            };
+            searchWindow.ShowDialog();
+            applied = searchWindow.AppliedSuccessfully;
+            return true;
+        }
+
+        private bool TryApplyDmmViaSearchDialog(
+            MovieRecords rec,
+            string dbPath,
+            DmmResolveResult resolved,
+            out bool applied) =>
+            TryOpenDmmSearchDialog(rec, dbPath, resolved, out applied);
+
+        private void BeginDmmPendingCandidatesFromMenu()
+        {
+            DmmApiOptions options = DmmApiOptions.FromSettings();
+            if (!options.IsConfigured)
+            {
+                var dialog = new MessageBoxEx(this)
+                {
+                    DlogTitle = NavigationMenuIds.DmmPendingCandidates,
+                    DlogMessage =
+                        "DMM API ID / アフィリエイトID（API用）が未設定です。\n共通設定で入力してください。\n\nPowered by FANZA Webサービス",
+                    PackIconKind = MaterialDesignThemes.Wpf.PackIconKind.CogOutline,
+                    OkOnly = true,
+                };
+                dialog.ShowDialog();
+                return;
+            }
+
+            string dbPath = MainVM.DbInfo.DBFullPath;
+            DmmPendingCandidateStore.EnsureTable(dbPath);
+
+            var pendingWindow = new DmmPendingCandidatesWindow(
+                dbPath,
+                movieId => MainVM.MovieRecs?.FirstOrDefault(record => record.Movie_Id == movieId),
+                () =>
+                {
+                    RunOnUi(() =>
+                    {
+                        viewExtDetail.Refresh();
+                        TabListRefreshHelper.RefreshActiveList(_currentSkinEngine, this);
+                        RefreshDmmPendingMenuBadge();
+                    });
+                })
+            {
+                Owner = this,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            };
+            pendingWindow.ShowDialog();
+            RefreshDmmPendingMenuBadge();
+        }
 
         private void OperationStatusCancel_Click(object sender, RoutedEventArgs e)
         {
@@ -3159,6 +3539,8 @@ namespace IndigoMovieManager
                 case NavigationMenuIds.WatchFolderCheck:
                 case NavigationMenuIds.RecreateAllThumbnails:
                 case NavigationMenuIds.RefreshAllFileInfo:
+                case NavigationMenuIds.DmmBulkFetch:
+                case NavigationMenuIds.DmmPendingCandidates:
                     ExecuteToolNavigation(id);
                     break;
                 default:
@@ -3288,6 +3670,14 @@ namespace IndigoMovieManager
 
                 case NavigationMenuIds.RefreshAllFileInfo:
                     BeginRefreshAllFileInfoFromMenu();
+                    break;
+
+                case NavigationMenuIds.DmmBulkFetch:
+                    BeginDmmBulkFetchFromMenu();
+                    break;
+
+                case NavigationMenuIds.DmmPendingCandidates:
+                    BeginDmmPendingCandidatesFromMenu();
                     break;
             }
         }
@@ -4937,6 +5327,7 @@ namespace IndigoMovieManager
                     EnqueueThumbnailWork(
                         addFiles,
                         beginNewJob: ShouldBeginNewDiscoveredThumbnailJob());
+                    EnqueueAutoDmmFetchForDiscovered(addFiles);
                 }
             }).Task.Unwrap().ConfigureAwait(false);
         }
@@ -5645,6 +6036,8 @@ namespace IndigoMovieManager
 
         void IMainWindowActions.RequestDetailThumbnailRecreate() => RequestDetailThumbnailRecreate();
 
+        void IMainWindowActions.OpenMetadataEdit() => OpenMetadataEdit();
+
         void IMainWindowActions.RefreshActiveList(SkinEngine engine) =>
             TabListRefreshHelper.RefreshActiveList(engine, this);
 
@@ -5652,5 +6045,64 @@ namespace IndigoMovieManager
             UpdateMovieSingleColumn(MainVM.DbInfo.DBFullPath, movieId, column, value);
 
         UserControls.ExtDetail IMainWindowListHost.ViewExtDetail => viewExtDetail;
+
+        private sealed class MainWindowDmmAutoFetchHost : IDmmAutoFetchHost
+        {
+            private readonly MainWindow _owner;
+
+            public MainWindowDmmAutoFetchHost(MainWindow owner)
+            {
+                _owner = owner ?? throw new ArgumentNullException(nameof(owner));
+            }
+
+            public bool IsManualFetchRunning => Volatile.Read(ref _owner._dmmFetchRunning) == 1;
+
+            public void RunOnUi(Action action) =>
+                UiDispatcherHelper.RunOnUi(_owner.Dispatcher, action);
+
+            public Task RunOnUiAsync(Action action) =>
+                UiDispatcherHelper.RunOnUiAsync(_owner.Dispatcher, action);
+
+            public MovieRecords FindMovieRecord(long movieId) =>
+                _owner.MainVM?.MovieRecs?.FirstOrDefault(record => record.Movie_Id == movieId);
+
+            public void NotifyRecordUpdated(long movieId)
+            {
+                _ = UiDispatcherHelper.RunOnUiAsync(_owner.Dispatcher, () =>
+                {
+                    if (_owner.viewExtDetail.DataContext is MovieRecords detail && detail.Movie_Id == movieId)
+                    {
+                        _owner.viewExtDetail.Refresh();
+                    }
+
+                    TabListRefreshHelper.RefreshActiveList(_owner._currentSkinEngine, _owner);
+                });
+            }
+
+            public void NotifyPendingCandidatesChanged() =>
+                _ = UiDispatcherHelper.RunOnUiAsync(_owner.Dispatcher, _owner.RefreshDmmPendingMenuBadge);
+
+            public void ShowCompletionMessage(string message)
+            {
+                _owner._statusBarProgress.ShowIdleStatusMessage(message);
+                _ = UiDispatcherHelper.RunOnUiAsync(_owner.Dispatcher, _owner.RefreshDmmPendingMenuBadge);
+            }
+
+            public void ShowCompletionDialog(string title, string message)
+            {
+                _ = UiDispatcherHelper.RunOnUiAsync(_owner.Dispatcher, () =>
+                {
+                    var dialog = new MessageBoxEx(_owner)
+                    {
+                        DlogTitle = title,
+                        DlogMessage = message,
+                        PackIconKind = MaterialDesignThemes.Wpf.PackIconKind.CloudDownloadOutline,
+                        OkOnly = true,
+                    };
+                    dialog.ShowDialog();
+                    _owner.RefreshDmmPendingMenuBadge();
+                });
+            }
+        }
     }
 }

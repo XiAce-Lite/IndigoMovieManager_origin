@@ -351,6 +351,17 @@
                 </MenuItem.Style>
             </MenuItem>
             <MenuItem
+                x:Name="MetadataEdit"
+                Click="MetadataEdit_Click"
+                Header="メタデータ編集(_E)"
+                Icon="{materialDesign:PackIcon Kind=FormTextbox}">
+                <MenuItem.Style>
+                    <Style TargetType="MenuItem">
+                        <Setter Property="Padding" Value="1" />
+                    </Style>
+                </MenuItem.Style>
+            </MenuItem>
+            <MenuItem
                 x:Name="TagAdd"
                 Click="TagAdd_Click"
                 Header="タグ追加(_A)"
@@ -460,6 +471,17 @@
                 Click="FetchDmmInfo_Click"
                 Header="DMM情報を取得(_N)"
                 Icon="{materialDesign:PackIcon Kind=CloudDownloadOutline}">
+                <MenuItem.Style>
+                    <Style TargetType="MenuItem">
+                        <Setter Property="Padding" Value="1" />
+                    </Style>
+                </MenuItem.Style>
+            </MenuItem>
+            <MenuItem
+                x:Name="FetchDmmManualSearch"
+                Click="FetchDmmManualSearch_Click"
+                Header="DMM手動検索(_M)"
+                Icon="{materialDesign:PackIcon Kind=Magnify}">
                 <MenuItem.Style>
                     <Style TargetType="MenuItem">
                         <Setter Property="Padding" Value="1" />
