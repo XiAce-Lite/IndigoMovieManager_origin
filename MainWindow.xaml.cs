@@ -170,7 +170,11 @@ namespace IndigoMovieManager
             if (Properties.Settings.Default.RecentFiles != null)
             {
                 recentFiles = RecentFilesService.LoadFromSettings(Properties.Settings.Default.RecentFiles);
-                RecentFilesService.RebuildRecentItems(MainVM.RecentFileItems, recentFiles);
+                SyncRecentFilesUi();
+            }
+            else
+            {
+                JumpListService.SyncRecentFiles(recentFiles);
             }
 
             DataContext = MainVM;
@@ -934,18 +938,14 @@ namespace IndigoMovieManager
                 Width = Properties.Settings.Default.MainSize.Width;
                 Height = Properties.Settings.Default.MainSize.Height;
 
-                //前回起動時のファイルを開く処理
-                if (Properties.Settings.Default.AutoOpen)
+                // 起動引数の .wb を優先。無ければ AutoOpen + LastDoc。
+                if (!TryOpenStartupDocument())
                 {
-                    if (Properties.Settings.Default.LastDoc != null)
+                    if (Properties.Settings.Default.AutoOpen
+                        && !string.IsNullOrEmpty(Properties.Settings.Default.LastDoc)
+                        && Path.Exists(Properties.Settings.Default.LastDoc))
                     {
-                        if (Path.Exists(Properties.Settings.Default.LastDoc))
-                        {
-                            if (Properties.Settings.Default.AutoOpen)
-                            {
-                                _ = OpenDatafileAsync(Properties.Settings.Default.LastDoc);
-                            }
-                        }
+                        _ = OpenDatafileAsync(Properties.Settings.Default.LastDoc);
                     }
                 }
 
@@ -3443,11 +3443,35 @@ namespace IndigoMovieManager
                 recentFiles,
                 newItem,
                 Properties.Settings.Default.RecentFilesCount);
+            SyncRecentFilesUi();
+        }
+
+        private void SyncRecentFilesUi()
+        {
             RecentFilesService.RebuildRecentItems(MainVM.RecentFileItems, recentFiles);
+            JumpListService.SyncRecentFiles(recentFiles);
         }
 
         private void PersistRecentFilesToSettings() =>
             AppSettingsPersistence.SaveRecentFiles(recentFiles.Reverse());
+
+        /// <summary>
+        /// 起動引数の .wb を開く。成功したら true（LastDoc 自動オープンより優先）。
+        /// </summary>
+        private bool TryOpenStartupDocument()
+        {
+            string path = App.StartupDocumentPath;
+            if (string.IsNullOrWhiteSpace(path) || !Path.Exists(path))
+            {
+                return false;
+            }
+
+            ReStackRecentTree(path);
+            PersistRecentFilesToSettings();
+            AppSettingsPersistence.SaveLastDoc(path);
+            _ = OpenDatafileAsync(path);
+            return true;
+        }
 
         private NavigationDrawerItem _recentFileRemoveTarget;
 
@@ -3473,7 +3497,7 @@ namespace IndigoMovieManager
             }
 
             recentFiles = RecentFilesService.Remove(recentFiles, path);
-            RecentFilesService.RebuildRecentItems(MainVM.RecentFileItems, recentFiles);
+            SyncRecentFilesUi();
             PersistRecentFilesToSettings();
             RecentFileRemovePopup.IsOpen = false;
             _recentFileRemoveTarget = null;

@@ -11,6 +11,11 @@ namespace IndigoMovieManager
     /// </summary>
     public partial class App : Application
     {
+        /// <summary>
+        /// 起動引数で指定された .wb（無ければ null）。LastDoc より優先して開く。
+        /// </summary>
+        public static string StartupDocumentPath { get; private set; }
+
         protected override void OnStartup(StartupEventArgs e)
         {
             var japanese = CultureInfo.GetCultureInfo("ja");
@@ -18,6 +23,8 @@ namespace IndigoMovieManager
             CultureInfo.DefaultThreadCurrentUICulture = japanese;
             Thread.CurrentThread.CurrentCulture = japanese;
             Thread.CurrentThread.CurrentUICulture = japanese;
+
+            StartupDocumentPath = StartupDocumentResolver.Resolve(e.Args);
 
             MediaExtensionSettings.EnsureRequiredExtensions();
             AppThemeService.InitializeFromSettings();
