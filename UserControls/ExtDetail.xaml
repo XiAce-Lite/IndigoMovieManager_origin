@@ -57,14 +57,17 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
+                <!-- 表示枠: 旧160幅×2=320、高さはジャケ比 800×538（320×538/800≈215） -->
                 <StackPanel
-                    Width="160"
+                    Width="320"
                     HorizontalAlignment="Left">
                     <Label
                         x:Name="LabelExtDetail"
-                        Width="160"
-                        Height="120"
+                        Width="320"
+                        Height="215"
                         Padding="0"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
                         MouseDoubleClick="Label_MouseDoubleClick">
                         <Image
                             x:Name="DetailImage"
@@ -91,7 +94,7 @@
                             Content="{materialDesign:PackIcon Kind=ChevronRight}"
                             IsEnabled="False"
                             Style="{StaticResource JacketNavButtonStyle}"
-                            ToolTip="ジャケット裏（▶）" />
+                            ToolTip="詳細サムネイル（▶）" />
                     </StackPanel>
                 </StackPanel>
             </Grid>
@@ -100,7 +103,7 @@
 
         <VirtualizingStackPanel
             Width="Auto"
-            Margin="170,3,3,3"
+            Margin="330,3,3,3"
             Orientation="Vertical"
             VirtualizingPanel.IsVirtualizing="true"
             VirtualizingPanel.VirtualizationMode="Recycling">
@@ -203,92 +206,96 @@
                 PreviewKeyDown="MetadataPanel_PreviewKeyDown"
                 PreviewKeyUp="MetadataPanel_PreviewKeyUp">
                 <Border
+                    HorizontalAlignment="Left"
                     MouseLeftButtonDown="MetadataRow_MouseLeftButtonDown"
                     Style="{StaticResource MetadataRowStyle}"
                     Tag="{Binding Title}"
                     ToolTip="{Binding Title, StringFormat='{}{0}&#10;クリックで検索'}"
                     Visibility="{Binding Title, Converter={StaticResource NullOrEmptyToVisibility}}">
-                    <DockPanel LastChildFill="True">
+                    <StackPanel Orientation="Horizontal">
                         <TextBlock
                             Width="72"
-                            DockPanel.Dock="Left"
                             FontSize="12"
                             Foreground="{DynamicResource MaterialDesign.Brush.Foreground}"
                             Opacity="0.7"
                             Text="タイトル:" />
                         <TextBlock
+                            MaxWidth="560"
                             FontSize="12"
                             Foreground="{DynamicResource MaterialDesign.Brush.Foreground}"
                             Text="{Binding Title}"
                             TextTrimming="CharacterEllipsis" />
-                    </DockPanel>
+                    </StackPanel>
                 </Border>
                 <Border
+                    HorizontalAlignment="Left"
                     MouseLeftButtonDown="CommentRow_MouseLeftButtonDown"
                     Style="{StaticResource MetadataRowStyle}"
                     Tag="{Binding Comment1}"
                     Visibility="{Binding Comment1, Converter={StaticResource NullOrEmptyToVisibility}}">
-                    <DockPanel LastChildFill="True">
+                    <StackPanel Orientation="Horizontal">
                         <TextBlock
                             Width="72"
-                            DockPanel.Dock="Left"
                             FontSize="12"
                             Foreground="{DynamicResource MaterialDesign.Brush.Foreground}"
                             Opacity="0.7"
                             Text="コメント1:" />
                         <TextBlock
                             x:Name="Comment1Value"
+                            MaxWidth="560"
                             FontSize="12"
                             Foreground="{DynamicResource MaterialDesign.Brush.Foreground}"
                             Text="{Binding Comment1}"
                             TextTrimming="CharacterEllipsis" />
-                    </DockPanel>
+                    </StackPanel>
                 </Border>
                 <Border
+                    HorizontalAlignment="Left"
                     MouseLeftButtonDown="CommentRow_MouseLeftButtonDown"
                     Style="{StaticResource MetadataRowStyle}"
                     Tag="{Binding Comment2}"
                     Visibility="{Binding Comment2, Converter={StaticResource NullOrEmptyToVisibility}}">
-                    <DockPanel LastChildFill="True">
+                    <StackPanel Orientation="Horizontal">
                         <TextBlock
                             Width="72"
-                            DockPanel.Dock="Left"
                             FontSize="12"
                             Foreground="{DynamicResource MaterialDesign.Brush.Foreground}"
                             Opacity="0.7"
                             Text="コメント2:" />
                         <TextBlock
                             x:Name="Comment2Value"
+                            MaxWidth="560"
                             FontSize="12"
                             Foreground="{DynamicResource MaterialDesign.Brush.Foreground}"
                             Text="{Binding Comment2}"
                             TextTrimming="CharacterEllipsis" />
-                    </DockPanel>
+                    </StackPanel>
                 </Border>
                 <view:MetadataSlashSearchRow
                     Label="コメント3:"
                     Value="{Binding Comment3}"
                     Visibility="{Binding Comment3, Converter={StaticResource NullOrEmptyToVisibility}}" />
                 <Border
+                    HorizontalAlignment="Left"
                     MouseLeftButtonDown="MetadataRow_MouseLeftButtonDown"
                     Style="{StaticResource MetadataRowStyle}"
                     Tag="{Binding Artist}"
                     ToolTip="{Binding Artist, StringFormat='{}{0}&#10;クリックで検索'}"
                     Visibility="{Binding Artist, Converter={StaticResource NullOrEmptyToVisibility}}">
-                    <DockPanel LastChildFill="True">
+                    <StackPanel Orientation="Horizontal">
                         <TextBlock
                             Width="72"
-                            DockPanel.Dock="Left"
                             FontSize="12"
                             Foreground="{DynamicResource MaterialDesign.Brush.Foreground}"
                             Opacity="0.7"
                             Text="アーティスト:" />
                         <TextBlock
+                            MaxWidth="560"
                             FontSize="12"
                             Foreground="{DynamicResource MaterialDesign.Brush.Foreground}"
                             Text="{Binding Artist}"
                             TextTrimming="CharacterEllipsis" />
-                    </DockPanel>
+                    </StackPanel>
                 </Border>
                 <view:MetadataSlashSearchRow
                     Label="ジャンル:"

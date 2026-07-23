@@ -12,7 +12,7 @@ public class DmmMetadataApplyServiceTests
         {
             Movie_Id = 1,
             Comment1 = "",
-            Comment2 = "既存裏ジャケ",
+            Comment2 = "既存コメント2",
             Comment3 = "",
             Title = "",
             Genre = "",
@@ -42,7 +42,6 @@ public class DmmMetadataApplyServiceTests
         DmmMetadataApplyService.ApplySummary summary = service.Apply(dbFullPath: null, rec, item);
 
         Assert.True(summary.WroteComment1);
-        Assert.False(summary.WroteComment2);
         Assert.True(summary.WroteComment3);
         Assert.True(summary.WroteTitle);
         Assert.True(summary.WroteGenre);
@@ -50,7 +49,7 @@ public class DmmMetadataApplyServiceTests
         Assert.Equal(2, summary.AddedTagCount);
 
         Assert.Equal("https://pics.dmm.co.jp/digital/video/abc123/abc123pl.jpg", rec.Comment1);
-        Assert.Equal("既存裏ジャケ", rec.Comment2);
+        Assert.Equal("既存コメント2", rec.Comment2);
         Assert.Equal("メーカーA / レーベルB / シリーズC", rec.Comment3);
         Assert.Equal("作品タイトル", rec.Title);
         Assert.Equal("ジャンルY / 既存タグ", rec.Genre);
@@ -102,14 +101,6 @@ public class DmmMetadataApplyServiceTests
 
 public class DmmJacketUrlsTests
 {
-    [Theory]
-    [InlineData("https://pics.dmm.co.jp/digital/video/abc/abcpl.jpg", "https://pics.dmm.co.jp/digital/video/abc/abcpb.jpg")]
-    [InlineData("https://example.test/abcPL.JPG", "https://example.test/abcpb.jpg")]
-    public void DeriveBackUrl_replaces_pl_suffix(string front, string expected)
-    {
-        Assert.Equal(expected, DmmJacketUrls.DeriveBackUrl(front));
-    }
-
     [Theory]
     [InlineData("https://pics.dmm.co.jp/test.jpg", true)]
     [InlineData("https://pics.dmm.co.jp/testpl.jpg", true)]

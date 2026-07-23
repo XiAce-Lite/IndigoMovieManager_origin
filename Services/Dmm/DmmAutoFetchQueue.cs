@@ -273,7 +273,7 @@ namespace IndigoMovieManager.Services.Dmm
                             break;
                         }
 
-                        // HTTP（裏面ジャケット）と DB 書き込みはワーカー。UI へはプロパティ代入だけ。
+                        // DB 書き込みはワーカー。UI へはプロパティ代入だけ。
                         applier.Apply(
                             job.DbPath,
                             target,

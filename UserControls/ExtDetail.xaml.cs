@@ -20,9 +20,15 @@ namespace IndigoMovieManager.UserControls
     /// </summary>
     public partial class ExtDetail : UserControl
     {
+        /// <summary>ジャケ無し時に枠中央へ置く従来詳細サムネの表示幅（旧枠の横幅）。</summary>
+        private const double LocalDetailThumbDisplayWidth = 160;
+
+        /// <summary>旧枠 160×120 と同じ縦横比。</summary>
+        private const double LocalDetailThumbDisplayHeight = 120;
+
         private readonly NoLockImageConverter _thumbConverter = new();
         private bool _ctrlFlg;
-        private bool _showingBackJacket;
+        private bool _showingLocalThumb;
         private bool _displayingRemoteJacket;
         private bool _frontJacketAvailable;
         private int _imageLoadGeneration;
@@ -44,7 +50,7 @@ namespace IndigoMovieManager.UserControls
                 _subscribedRecord.PropertyChanged += Record_PropertyChanged;
             }
 
-            _showingBackJacket = false;
+            _showingLocalThumb = false;
             UpdateCommentRowStyles();
             UpdateDetailImage();
         }
@@ -57,7 +63,6 @@ namespace IndigoMovieManager.UserControls
             }
 
             if (e.PropertyName is nameof(MovieRecords.Comment1)
-                or nameof(MovieRecords.Comment2)
                 or nameof(MovieRecords.ThumbDetail)
                 or nameof(MovieRecords.IsExists))
             {
@@ -101,17 +106,21 @@ namespace IndigoMovieManager.UserControls
 
         private void JacketPrevButton_Click(object sender, RoutedEventArgs e)
         {
-            _showingBackJacket = false;
+            _showingLocalThumb = false;
             UpdateDetailImage();
         }
 
         private void JacketNextButton_Click(object sender, RoutedEventArgs e)
         {
-            if (DataContext is MovieRecords record && !string.IsNullOrEmpty(DmmJacketUrls.GetBackUrl(record)))
+            // ジャケ表が取れているときだけ ▶ で詳細サムネへ切り替え
+            if (!_frontJacketAvailable || DataContext is not MovieRecords record)
             {
-                _showingBackJacket = true;
-                UpdateDetailImage();
+                return;
             }
+
+            _showingLocalThumb = true;
+            ApplyThumbnailDisplay(record);
+            UpdateJacketButtons();
         }
 
         private void UpdateCommentRowStyles()
@@ -162,19 +171,30 @@ namespace IndigoMovieManager.UserControls
 
             if (DataContext is not MovieRecords record)
             {
+                ApplyLocalThumbnailLayout();
                 DetailImage.Source = null;
                 _displayingRemoteJacket = false;
                 _frontJacketAvailable = false;
-                UpdateJacketButtons(null);
+                _showingLocalThumb = false;
+                UpdateJacketButtons();
                 return;
             }
 
             string frontUrl = DmmJacketUrls.GetFrontUrl(record);
             if (string.IsNullOrEmpty(frontUrl))
             {
-                _showingBackJacket = false;
+                _showingLocalThumb = false;
+                _frontJacketAvailable = false;
                 ApplyThumbnailDisplay(record);
-                UpdateJacketButtons(record);
+                UpdateJacketButtons();
+                return;
+            }
+
+            // ▶ で詳細サムネ表示中なら、ジャケ再読込せずサムネを維持
+            if (_showingLocalThumb)
+            {
+                ApplyThumbnailDisplay(record);
+                UpdateJacketButtons();
                 return;
             }
 
@@ -193,88 +213,65 @@ namespace IndigoMovieManager.UserControls
 
                 if (frontImage == null)
                 {
-                    _showingBackJacket = false;
+                    _showingLocalThumb = false;
                     _frontJacketAvailable = false;
                     ApplyThumbnailDisplay(current);
-                    UpdateJacketButtons(current);
+                    UpdateJacketButtons();
                     return;
                 }
 
                 _frontJacketAvailable = true;
-
-                if (!_showingBackJacket)
-                {
-                    DetailImage.Source = frontImage;
-                    _displayingRemoteJacket = true;
-                    UpdateJacketButtons(current);
-                    return;
-                }
-
-                _ = ShowBackOrThumbnailAsync(current, frontImage, generation);
+                ApplyJacketImage(frontImage);
+                UpdateJacketButtons();
             });
         }
 
-        private async Task ShowBackOrThumbnailAsync(MovieRecords record, BitmapSource frontImage, int generation)
+        private void ApplyJacketImage(BitmapSource image)
         {
-            string backUrl = DmmJacketUrls.GetBackUrl(record);
-            BitmapSource backImage = !string.IsNullOrEmpty(backUrl)
-                ? await LoadRemoteImageAsync(backUrl).ConfigureAwait(true)
-                : null;
-
-            if (generation != _imageLoadGeneration)
-            {
-                return;
-            }
-
-            await Dispatcher.InvokeAsync(() =>
-            {
-                if (generation != _imageLoadGeneration || DataContext is not MovieRecords current)
-                {
-                    return;
-                }
-
-                if (!_showingBackJacket)
-                {
-                    DetailImage.Source = frontImage;
-                    _displayingRemoteJacket = true;
-                    UpdateJacketButtons(current);
-                    return;
-                }
-
-                if (backImage != null)
-                {
-                    DetailImage.Source = backImage;
-                    _displayingRemoteJacket = true;
-                }
-                else
-                {
-                    ApplyThumbnailDisplay(current);
-                }
-
-                UpdateJacketButtons(current);
-            });
+            ApplyJacketImageLayout();
+            DetailImage.Source = image;
+            _displayingRemoteJacket = true;
         }
 
         private void ApplyThumbnailDisplay(MovieRecords record)
         {
+            ApplyLocalThumbnailLayout();
             DetailImage.Source = LoadLocalThumbnail(record);
             _displayingRemoteJacket = false;
         }
 
-        private void UpdateJacketButtons(MovieRecords record)
+        /// <summary>ジャケは枠いっぱいに Uniform。</summary>
+        private void ApplyJacketImageLayout()
         {
-            bool hasFrontUrl = !string.IsNullOrEmpty(DmmJacketUrls.GetFrontUrl(record));
-            bool hasBackUrl = !string.IsNullOrEmpty(DmmJacketUrls.GetBackUrl(record));
-            bool canSwitch = _frontJacketAvailable && hasFrontUrl && hasBackUrl;
+            DetailImage.ClearValue(FrameworkElement.WidthProperty);
+            DetailImage.ClearValue(FrameworkElement.HeightProperty);
+            DetailImage.Stretch = Stretch.Uniform;
+            LabelExtDetail.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+            LabelExtDetail.VerticalContentAlignment = VerticalAlignment.Stretch;
+        }
+
+        /// <summary>従来詳細サムネは横160のまま枠中央に配置（枠いっぱいに拡大しない）。</summary>
+        private void ApplyLocalThumbnailLayout()
+        {
+            DetailImage.Width = LocalDetailThumbDisplayWidth;
+            DetailImage.Height = LocalDetailThumbDisplayHeight;
+            DetailImage.Stretch = Stretch.Uniform;
+            LabelExtDetail.HorizontalContentAlignment = HorizontalAlignment.Center;
+            LabelExtDetail.VerticalContentAlignment = VerticalAlignment.Center;
+        }
+
+        private void UpdateJacketButtons()
+        {
+            bool canFlip = _frontJacketAvailable;
 
             if (JacketPrevButton != null)
             {
-                JacketPrevButton.IsEnabled = canSwitch && _showingBackJacket;
+                JacketPrevButton.IsEnabled = canFlip && _showingLocalThumb;
             }
 
             if (JacketNextButton != null)
             {
-                JacketNextButton.IsEnabled = canSwitch && !_showingBackJacket;
+                JacketNextButton.IsEnabled = canFlip && !_showingLocalThumb;
             }
         }
 

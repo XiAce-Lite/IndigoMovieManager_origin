@@ -7,7 +7,6 @@ namespace IndigoMovieManager.Services.Dmm
         public sealed class ApplySummary
         {
             public bool WroteComment1 { get; set; }
-            public bool WroteComment2 { get; set; }
             public bool WroteComment3 { get; set; }
             public bool WroteTitle { get; set; }
             public bool WroteGenre { get; set; }
@@ -28,7 +27,6 @@ namespace IndigoMovieManager.Services.Dmm
             var summary = new ApplySummary();
             string title = item.Title?.Trim() ?? "";
             string frontJacketUrl = item.ImageUrl?.Large?.Trim() ?? "";
-            string backJacketUrl = ResolveBackJacketUrl(frontJacketUrl);
             string comment3 = JoinNames(
                 CollectNames(item.ItemInfo?.Maker),
                 CollectNames(item.ItemInfo?.Label),
@@ -43,13 +41,6 @@ namespace IndigoMovieManager.Services.Dmm
                 WriteColumn(dbFullPath, rec.Movie_Id, MovieColumn.Comment1, frontJacketUrl);
                 RunUi(runOnUi, () => rec.Comment1 = frontJacketUrl);
                 summary.WroteComment1 = true;
-            }
-
-            if ((manualOverwrite || IsBlank(rec.Comment2)) && !string.IsNullOrEmpty(backJacketUrl))
-            {
-                WriteColumn(dbFullPath, rec.Movie_Id, MovieColumn.Comment2, backJacketUrl);
-                RunUi(runOnUi, () => rec.Comment2 = backJacketUrl);
-                summary.WroteComment2 = true;
             }
 
             if (IsBlank(rec.Comment3) && !string.IsNullOrEmpty(comment3))
@@ -126,12 +117,6 @@ namespace IndigoMovieManager.Services.Dmm
             }
 
             return summary;
-        }
-
-        private static string ResolveBackJacketUrl(string frontJacketUrl)
-        {
-            string candidate = DmmJacketUrls.DeriveBackUrl(frontJacketUrl);
-            return candidate != null && DmmJacketUrls.UrlExists(candidate) ? candidate : null;
         }
 
         private static void WriteColumn(string dbFullPath, long movieId, MovieColumn column, object value)

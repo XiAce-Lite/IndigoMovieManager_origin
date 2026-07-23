@@ -30,35 +30,6 @@ namespace IndigoMovieManager.Services.Dmm
         public static string GetFrontUrl(MovieRecords record) =>
             record != null && IsHttpUrl(record.Comment1) ? record.Comment1.Trim() : null;
 
-        public static string GetBackUrl(MovieRecords record) =>
-            record != null && IsHttpUrl(record.Comment2) ? record.Comment2.Trim() : null;
-
-        public static string DeriveBackUrl(string frontUrl)
-        {
-            if (string.IsNullOrWhiteSpace(frontUrl))
-            {
-                return null;
-            }
-
-            string trimmed = frontUrl.Trim();
-            if (trimmed.EndsWith("pl.jpg", StringComparison.OrdinalIgnoreCase))
-            {
-                return trimmed[..^6] + "pb.jpg";
-            }
-
-            if (trimmed.EndsWith("pl.jpeg", StringComparison.OrdinalIgnoreCase))
-            {
-                return trimmed[..^7] + "pb.jpeg";
-            }
-
-            return null;
-        }
-
-        public static bool UrlExists(string url)
-        {
-            return ResolveUsableJacketUrl(url) != null;
-        }
-
         /// <summary>
         /// リダイレクト後 URL を解決し、now_printing 等のプレースホルダなら null。
         /// </summary>

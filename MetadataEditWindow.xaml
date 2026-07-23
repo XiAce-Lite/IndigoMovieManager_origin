@@ -53,7 +53,7 @@
 
             <TextBox
                 Margin="0,0,0,10"
-                materialDesign:HintAssist.Hint="ジャケット裏 URL"
+                materialDesign:HintAssist.Hint="コメント2"
                 materialDesign:TextFieldAssist.HasClearButton="True"
                 materialDesign:TextFieldAssist.HasOutlinedTextField="True"
                 materialDesign:TextFieldAssist.TextFieldCornerRadius="4"
