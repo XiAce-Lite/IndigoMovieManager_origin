@@ -102,7 +102,8 @@ namespace IndigoMovieManager.Services.Dmm
 
         public async Task<DmmSearchResult> SearchByKeywordSiteAsync(
             string keyword,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            int hits = 10)
         {
             if (!_options.IsConfigured)
             {
@@ -114,11 +115,12 @@ namespace IndigoMovieManager.Services.Dmm
                 return DmmSearchResult.FromItems([], "keyword");
             }
 
+            int clampedHits = Math.Clamp(hits, 1, 100);
             string query = BuildQuery(
                 ("api_id", _options.ApiId),
                 ("affiliate_id", _options.AffiliateId),
                 ("site", "FANZA"),
-                ("hits", "10"),
+                ("hits", clampedHits.ToString()),
                 ("keyword", keyword.Trim()),
                 ("output", "json"));
 
