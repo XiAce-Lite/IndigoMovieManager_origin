@@ -16,6 +16,7 @@
     Title="Indigo Movie Manager"
     Width="800"
     Height="Auto"
+    Icon="pack://application:,,,/Assets/app-icon.ico"
     mc:Ignorable="d">
 
     <Window.Resources>

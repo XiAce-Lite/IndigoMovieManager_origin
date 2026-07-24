@@ -10,12 +10,13 @@
     MinHeight="360"
     ResizeMode="CanResizeWithGrip"
     WindowStartupLocation="CenterOwner">
-    <materialDesign:ColorZone Padding="12">
-        <Grid>
+    <materialDesign:ColorZone
+        Padding="12,12,12,0"
+        VerticalAlignment="Stretch">
+        <Grid Margin="0,0,0,8">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
-                <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
@@ -59,45 +60,43 @@
                 </DataGrid.Columns>
             </DataGrid>
 
-            <TextBlock
-                Grid.Row="2"
-                Margin="0,8,0,0"
-                FontSize="11"
-                Foreground="{DynamicResource MaterialDesign.Brush.ForegroundLight}"
-                Text="Powered by FANZA Webサービス"
-                TextWrapping="Wrap" />
-
-            <StackPanel
-                Grid.Row="3"
-                Margin="0,12,0,0"
-                HorizontalAlignment="Right"
-                Orientation="Horizontal">
-                <Button
-                    x:Name="CleanupOrphansButton"
-                    MinWidth="120"
-                    Margin="0,0,8,0"
-                    Click="CleanupOrphansButton_Click"
-                    Content="孤児を削除(_O)"
-                    ToolTip="登録から削除済みのレコードに紐づく未確定候補を一括削除します" />
-                <Button
-                    x:Name="ResolveButton"
-                    MinWidth="96"
-                    Margin="0,0,8,0"
-                    Click="ResolveButton_Click"
-                    Content="候補を選ぶ(_R)" />
-                <Button
-                    x:Name="DiscardButton"
-                    MinWidth="88"
-                    Margin="0,0,8,0"
-                    Click="DiscardButton_Click"
-                    Content="破棄(_D)" />
-                <Button
-                    x:Name="CloseButton"
-                    MinWidth="88"
-                    Click="CloseButton_Click"
-                    Content="閉じる(_C)"
-                    IsCancel="True" />
-            </StackPanel>
+            <Grid Grid.Row="2" Margin="0,8,0,0">
+                <TextBlock
+                    VerticalAlignment="Center"
+                    FontSize="11"
+                    Foreground="{DynamicResource MaterialDesign.Brush.ForegroundLight}"
+                    Text="Powered by FANZA Webサービス"
+                    TextWrapping="Wrap" />
+                <StackPanel
+                    HorizontalAlignment="Right"
+                    Orientation="Horizontal">
+                    <Button
+                        x:Name="CleanupOrphansButton"
+                        MinWidth="120"
+                        Margin="0,0,8,0"
+                        Click="CleanupOrphansButton_Click"
+                        Content="孤児を削除(_O)"
+                        ToolTip="登録から削除済みのレコードに紐づく未確定候補を一括削除します" />
+                    <Button
+                        x:Name="ResolveButton"
+                        MinWidth="96"
+                        Margin="0,0,8,0"
+                        Click="ResolveButton_Click"
+                        Content="候補を選ぶ(_R)" />
+                    <Button
+                        x:Name="DiscardButton"
+                        MinWidth="88"
+                        Margin="0,0,8,0"
+                        Click="DiscardButton_Click"
+                        Content="破棄(_D)" />
+                    <Button
+                        x:Name="CloseButton"
+                        MinWidth="88"
+                        Click="CloseButton_Click"
+                        Content="閉じる(_C)"
+                        IsCancel="True" />
+                </StackPanel>
+            </Grid>
         </Grid>
     </materialDesign:ColorZone>
 </Window>
