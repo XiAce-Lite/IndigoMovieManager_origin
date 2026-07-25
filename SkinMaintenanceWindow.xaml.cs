@@ -119,11 +119,14 @@ namespace IndigoMovieManager
             ThumbColumnsCombo.SelectedItem = 1;
             ThumbRowsCombo.SelectedItem = 1;
 
-            StyleFontFamilyCombo.ItemsSource = Fonts.SystemFontFamilies
-                .Select(f => f.Source)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
-                .ToList();
+            // 先頭は「未指定」。JSON に fontFamily が無いとき先頭の実フォントを選ばない。
+            var families = new List<string> { FontFamilyUnspecifiedDisplay };
+            families.AddRange(
+                Fonts.SystemFontFamilies
+                    .Select(f => f.Source)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(n => n, StringComparer.OrdinalIgnoreCase));
+            StyleFontFamilyCombo.ItemsSource = families;
         }
 
         private void LoadFormFromWorking()
@@ -193,9 +196,26 @@ namespace IndigoMovieManager
             }
 
             StatusBanner.Text = string.Join(" ", lines);
-            SaveButton.IsEnabled = !_isUnsavedNew && !IsProtected;
+            UpdateSaveButtonEnabled();
             DeleteButton.IsEnabled = !_isUnsavedNew && !IsProtected;
             SaveAsButton.IsEnabled = true;
+        }
+
+        private void UpdateSaveButtonEnabled()
+        {
+            // 起動時・保存直後は不活性。1箇所でも直したら活性。
+            SaveButton.IsEnabled = _dirty && !_isUnsavedNew && !IsProtected;
+        }
+
+        private void MarkDirty()
+        {
+            if (_suppressUi)
+            {
+                return;
+            }
+
+            _dirty = true;
+            UpdateSaveButtonEnabled();
         }
 
         private void ApplyFormToWorking()
@@ -279,7 +299,7 @@ namespace IndigoMovieManager
                 return;
             }
 
-            _dirty = true;
+            MarkDirty();
             RefreshPreview();
         }
 
@@ -290,7 +310,7 @@ namespace IndigoMovieManager
                 return;
             }
 
-            _dirty = true;
+            MarkDirty();
             RefreshPreview();
         }
 
@@ -306,7 +326,7 @@ namespace IndigoMovieManager
                 RecalcHeightFromAspect();
             }
 
-            _dirty = true;
+            MarkDirty();
             RefreshPreview();
         }
 
@@ -317,7 +337,7 @@ namespace IndigoMovieManager
                 return;
             }
 
-            _dirty = true;
+            MarkDirty();
             ApplyStyleEditorsToWorking();
             RefreshPreview();
         }
@@ -335,7 +355,7 @@ namespace IndigoMovieManager
                 RecalcHeightFromAspect();
             }
 
-            _dirty = true;
+            MarkDirty();
             RefreshPreview();
         }
 
@@ -411,7 +431,7 @@ namespace IndigoMovieManager
                 return;
             }
 
-            _dirty = true;
+            MarkDirty();
             ApplyStyleEditorsToWorking();
             RefreshPreview();
         }
@@ -432,18 +452,7 @@ namespace IndigoMovieManager
             int fontSize = (int)Math.Round(style.FontSize <= 0 ? 13 : style.FontSize);
             StyleFontSizeSpin.Value = Math.Clamp(fontSize, 6, 72);
 
-            string family = style.FontFamily ?? "";
-            if (!string.IsNullOrWhiteSpace(family)
-                && StyleFontFamilyCombo.Items.OfType<string>()
-                    .Any(n => string.Equals(n, family, StringComparison.OrdinalIgnoreCase)))
-            {
-                StyleFontFamilyCombo.SelectedItem = StyleFontFamilyCombo.Items.OfType<string>()
-                    .First(n => string.Equals(n, family, StringComparison.OrdinalIgnoreCase));
-            }
-            else if (StyleFontFamilyCombo.Items.Count > 0)
-            {
-                StyleFontFamilyCombo.SelectedIndex = 0;
-            }
+            SelectFontFamily(style.FontFamily);
 
             StyleForegroundBox.Text = style.Foreground ?? "";
             StyleBackgroundBox.Text = style.Background ?? "";
@@ -457,10 +466,7 @@ namespace IndigoMovieManager
         private void ClearStyleEditors()
         {
             StyleFontSizeSpin.Value = 13;
-            if (StyleFontFamilyCombo.Items.Count > 0)
-            {
-                StyleFontFamilyCombo.SelectedIndex = 0;
-            }
+            SelectFontFamily(null);
 
             StyleForegroundBox.Text = "";
             StyleBackgroundBox.Text = "";
@@ -484,13 +490,53 @@ namespace IndigoMovieManager
             }
 
             style.FontSize = StyleFontSizeSpin.Value;
-            style.FontFamily = StyleFontFamilyCombo.SelectedItem as string ?? "";
+            // 未指定は null（JSON に fontFamily を書かない）。先頭実フォントを黙って保存しない。
+            style.FontFamily = ResolveSelectedFontFamilyOrNull();
             style.Foreground = StyleForegroundBox.Text?.Trim() ?? "";
             style.Background = StyleBackgroundBox.Text?.Trim() ?? "";
             style.Align = (StyleAlignCombo.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "left";
             style.Bold = StyleBoldCheck.IsChecked == true;
             style.Italic = StyleItalicCheck.IsChecked == true;
             style.Wrap = StyleWrapCheck.IsChecked == true;
+        }
+
+        /// <summary>JSON 未指定・空文字用。実在フォント名と衝突しない表示ラベル。</summary>
+        private const string FontFamilyUnspecifiedDisplay = "(未指定)";
+
+        private void SelectFontFamily(string family)
+        {
+            if (!string.IsNullOrWhiteSpace(family)
+                && StyleFontFamilyCombo.Items.OfType<string>()
+                    .Any(n => string.Equals(n, family, StringComparison.OrdinalIgnoreCase)))
+            {
+                StyleFontFamilyCombo.SelectedItem = StyleFontFamilyCombo.Items.OfType<string>()
+                    .First(n => string.Equals(n, family, StringComparison.OrdinalIgnoreCase));
+                return;
+            }
+
+            // 未指定: 先頭のシステムフォントではなく「(未指定)」を選ぶ
+            if (StyleFontFamilyCombo.Items.OfType<string>()
+                .Any(n => string.Equals(n, FontFamilyUnspecifiedDisplay, StringComparison.Ordinal)))
+            {
+                StyleFontFamilyCombo.SelectedItem = FontFamilyUnspecifiedDisplay;
+            }
+            else
+            {
+                StyleFontFamilyCombo.SelectedIndex = -1;
+                StyleFontFamilyCombo.SelectedItem = null;
+            }
+        }
+
+        private string ResolveSelectedFontFamilyOrNull()
+        {
+            string selected = StyleFontFamilyCombo.SelectedItem as string;
+            if (string.IsNullOrWhiteSpace(selected)
+                || string.Equals(selected, FontFamilyUnspecifiedDisplay, StringComparison.Ordinal))
+            {
+                return null;
+            }
+
+            return selected;
         }
 
         private static string NormalizeAlign(string align)
@@ -546,7 +592,6 @@ namespace IndigoMovieManager
             _dirty = false;
             _gridClampedFromSource = false;
             RefreshChrome();
-            MessageBox.Show(this, $"「{_folderName}」を保存しました。", Title, MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
         private void SaveAsButton_Click(object sender, RoutedEventArgs e)
@@ -601,7 +646,6 @@ namespace IndigoMovieManager
             _dirty = false;
             _gridClampedFromSource = false;
             RefreshChrome();
-            MessageBox.Show(this, $"「{name}」として保存しました。", Title, MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
         private void DeleteButton_Click(object sender, RoutedEventArgs e)

@@ -36,7 +36,7 @@
                         x:Name="SaveButton"
                         Margin="0,0,6,0"
                         Click="SaveButton_Click"
-                        Content="上書き保存(_S)" />
+                        Content="保存(_S)" />
                     <Button
                         x:Name="SaveAsButton"
                         Margin="0,0,6,0"

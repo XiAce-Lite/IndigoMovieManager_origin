@@ -271,19 +271,24 @@ namespace IndigoMovieManager.Services.WpfSkin
         private static UIElement BuildThumbnail(WpfSkinNode node, WpfSkinDefinition def)
         {
             bool preferJacket = def.Thumbnail?.PreferJacket == true;
-            bool stretchInCell = !node.Height.HasValue && !string.IsNullOrEmpty(node.VAlign)
+            // preferJacket は枠サイズを自前制御するためセル伸縮しない
+            bool stretchInCell = !preferJacket
+                && !node.Height.HasValue
+                && !string.IsNullOrEmpty(node.VAlign)
                 && string.Equals(node.VAlign, "stretch", StringComparison.OrdinalIgnoreCase);
 
             double w = node.Width ?? def.Thumbnail.Width;
-            double? h = node.Height ?? (stretchInCell ? null : def.Thumbnail.Height);
+            double? h = preferJacket
+                ? (node.Height ?? (def.Thumbnail.Height > 0 ? def.Thumbnail.Height : null))
+                : (node.Height ?? (stretchInCell ? null : def.Thumbnail.Height));
 
             var label = new Label
             {
                 Background = Brushes.Black,
                 Padding = new Thickness(0),
                 ClipToBounds = true,
-                HorizontalContentAlignment = preferJacket ? HorizontalAlignment.Center : HorizontalAlignment.Stretch,
-                VerticalContentAlignment = preferJacket ? VerticalAlignment.Center : VerticalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                VerticalContentAlignment = VerticalAlignment.Stretch,
             };
 
             if (w > 0)
@@ -310,8 +315,6 @@ namespace IndigoMovieManager.Services.WpfSkin
             UIElement content = image;
             if (preferJacket)
             {
-                // 枠全体に対しジャケ1枚を Uniform・中央。列行はローカルサムネ生成時のみ効く。
-                // MaxWidth/MaxHeight で単セルに縛らない（複数列行スキンでも枠いっぱいにセンター）。
                 image.Stretch = Stretch.Uniform;
 
                 var loadingBar = new ProgressBar
@@ -326,6 +329,14 @@ namespace IndigoMovieManager.Services.WpfSkin
                     Opacity = 0.85,
                 };
 
+                double localH = h ?? (def.Thumbnail.Height > 0 ? def.Thumbnail.Height : 0);
+                double targetAspect = localH > 0 && w > 0 ? w / localH : def.Thumbnail.TargetAspect;
+
+                PreferJacketImageBehavior.SetHost(image, label);
+                PreferJacketImageBehavior.SetFrameWidth(image, w);
+                PreferJacketImageBehavior.SetLocalFrameHeight(image, localH);
+                PreferJacketImageBehavior.SetTargetAspect(image, targetAspect);
+                PreferJacketImageBehavior.SetAspectConverter(image, WpfSkinHostContext.AspectConverter);
                 PreferJacketImageBehavior.SetLoadingIndicator(image, loadingBar);
                 PreferJacketImageBehavior.SetLocalConverter(image, WpfSkinHostContext.ImageConverter);
                 BindingOperations.SetBinding(
@@ -384,6 +395,12 @@ namespace IndigoMovieManager.Services.WpfSkin
                 label.VerticalAlignment = VerticalAlignment.Stretch;
                 label.Width = double.NaN;
                 label.Height = double.NaN;
+            }
+            else if (preferJacket)
+            {
+                // ジャケ／ローカルとも枠サイズは Behavior が更新。初期は JSON 幅・高さ。
+                label.HorizontalAlignment = HorizontalAlignment.Left;
+                label.VerticalAlignment = VerticalAlignment.Top;
             }
 
             return label;

@@ -47,6 +47,12 @@ namespace IndigoMovieManager.Services.WpfSkin
             var panelFactory = new FrameworkElementFactory(typeof(VirtualizingWrapPanel));
             panelFactory.SetValue(VirtualizingWrapPanel.OrientationProperty, Orientation.Horizontal);
 
+            // ジャケ比で行高がアイテムごとに変わるため、先頭行サイズへの均一化を外す
+            if (def?.Thumbnail?.PreferJacket == true)
+            {
+                panelFactory.SetValue(VirtualizingWrapPanel.AllowDifferentSizedItemsProperty, true);
+            }
+
             if (def?.Card?.Stretch == true)
             {
                 // StretchItems: 1 カラムしか入らない幅ではカードをコンテナ幅いっぱいに広げ、

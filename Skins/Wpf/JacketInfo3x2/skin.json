@@ -8,9 +8,21 @@
   },
 
   "styles": {
-    "title": { "fontSize": 15, "foreground": "#000000", "bold": true, "wrap": true },
-    "meta":  { "fontSize": 12, "foreground": "#555555" },
-    "path":  { "fontSize": 11, "foreground": "#888888", "wrap": true }
+    "title": {
+      "fontSize": 15,
+      "foreground": "#000000",
+      "bold": true,
+      "wrap": true
+    },
+    "meta": {
+      "fontSize": 12,
+      "foreground": "#555555"
+    },
+    "path": {
+      "fontSize": 11,
+      "foreground": "#888888",
+      "wrap": true
+    }
   },
 
   "thumbnail": {
@@ -38,8 +50,8 @@
           "col": 0,
           "row": 0,
           "rowSpan": 2,
-          "valign": "stretch",
-          "width": 360
+          "width": 360,
+          "height": 0
         },
         {
           "type": "text",

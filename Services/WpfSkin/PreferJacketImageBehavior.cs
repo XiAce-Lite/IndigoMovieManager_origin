@@ -10,8 +10,8 @@ using IndigoMovieManager.Services.Dmm;
 namespace IndigoMovieManager.Services.WpfSkin
 {
     /// <summary>
-    /// preferJacket 用。まずローカルサムネを出し、Comment1 の HTTP URL が取れたら差し替える。
-    /// 列・行に関わらずジャケは枠全体へ Uniform・中央（非ストレッチ）。失敗時は C×R サムネのまま。
+    /// preferJacket 用。まずローカルサムネ（JSON の W×H）を出し、Comment1 の HTTP URL が取れたら差し替える。
+    /// ジャケ写あり時は枠幅＝JSON 幅、枠高さ＝ジャケ比で自動（黒帯なし）。失敗時はローカルのまま。
     /// </summary>
     internal static class PreferJacketImageBehavior
     {
@@ -45,12 +45,47 @@ namespace IndigoMovieManager.Services.WpfSkin
                 typeof(PreferJacketImageBehavior),
                 new PropertyMetadata(null, OnSourceInputsChanged));
 
+        public static readonly DependencyProperty AspectConverterProperty =
+            DependencyProperty.RegisterAttached(
+                "AspectConverter",
+                typeof(IValueConverter),
+                typeof(PreferJacketImageBehavior),
+                new PropertyMetadata(null));
+
         public static readonly DependencyProperty LoadingIndicatorProperty =
             DependencyProperty.RegisterAttached(
                 "LoadingIndicator",
                 typeof(UIElement),
                 typeof(PreferJacketImageBehavior),
                 new PropertyMetadata(null));
+
+        public static readonly DependencyProperty HostProperty =
+            DependencyProperty.RegisterAttached(
+                "Host",
+                typeof(FrameworkElement),
+                typeof(PreferJacketImageBehavior),
+                new PropertyMetadata(null));
+
+        public static readonly DependencyProperty FrameWidthProperty =
+            DependencyProperty.RegisterAttached(
+                "FrameWidth",
+                typeof(double),
+                typeof(PreferJacketImageBehavior),
+                new PropertyMetadata(0.0));
+
+        public static readonly DependencyProperty LocalFrameHeightProperty =
+            DependencyProperty.RegisterAttached(
+                "LocalFrameHeight",
+                typeof(double),
+                typeof(PreferJacketImageBehavior),
+                new PropertyMetadata(0.0));
+
+        public static readonly DependencyProperty TargetAspectProperty =
+            DependencyProperty.RegisterAttached(
+                "TargetAspect",
+                typeof(double),
+                typeof(PreferJacketImageBehavior),
+                new PropertyMetadata(16.0 / 9.0));
 
         private static readonly DependencyProperty LoadGenerationProperty =
             DependencyProperty.RegisterAttached(
@@ -104,11 +139,41 @@ namespace IndigoMovieManager.Services.WpfSkin
         public static IValueConverter GetLocalConverter(DependencyObject element) =>
             (IValueConverter)element.GetValue(LocalConverterProperty);
 
+        public static void SetAspectConverter(DependencyObject element, IValueConverter value) =>
+            element.SetValue(AspectConverterProperty, value);
+
+        public static IValueConverter GetAspectConverter(DependencyObject element) =>
+            (IValueConverter)element.GetValue(AspectConverterProperty);
+
         public static void SetLoadingIndicator(DependencyObject element, UIElement value) =>
             element.SetValue(LoadingIndicatorProperty, value);
 
         public static UIElement GetLoadingIndicator(DependencyObject element) =>
             (UIElement)element.GetValue(LoadingIndicatorProperty);
+
+        public static void SetHost(DependencyObject element, FrameworkElement value) =>
+            element.SetValue(HostProperty, value);
+
+        public static FrameworkElement GetHost(DependencyObject element) =>
+            (FrameworkElement)element.GetValue(HostProperty);
+
+        public static void SetFrameWidth(DependencyObject element, double value) =>
+            element.SetValue(FrameWidthProperty, value);
+
+        public static double GetFrameWidth(DependencyObject element) =>
+            (double)element.GetValue(FrameWidthProperty);
+
+        public static void SetLocalFrameHeight(DependencyObject element, double value) =>
+            element.SetValue(LocalFrameHeightProperty, value);
+
+        public static double GetLocalFrameHeight(DependencyObject element) =>
+            (double)element.GetValue(LocalFrameHeightProperty);
+
+        public static void SetTargetAspect(DependencyObject element, double value) =>
+            element.SetValue(TargetAspectProperty, value);
+
+        public static double GetTargetAspect(DependencyObject element) =>
+            (double)element.GetValue(TargetAspectProperty);
 
         private static void OnSourceInputsChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
@@ -125,7 +190,6 @@ namespace IndigoMovieManager.Services.WpfSkin
                 && e.Property != JacketUrlProperty
                 && e.Property != null)
             {
-                // 同じジャケ表示中に LocalPath だけ更新 → リモート再取得不要
                 return;
             }
 
@@ -168,7 +232,6 @@ namespace IndigoMovieManager.Services.WpfSkin
             bool localExists = GetLocalExists(image);
             IValueConverter localConverter = GetLocalConverter(image);
 
-            // 常にローカルを先に表示（黒待ちを避ける）
             if (!IsCurrent(image, generation))
             {
                 return;
@@ -211,7 +274,6 @@ namespace IndigoMovieManager.Services.WpfSkin
             {
                 ApplyRemote(image, remote, trimmed);
             }
-            // 失敗時は既に出しているローカルのまま
         }
 
         private static void ApplyLocal(
@@ -220,21 +282,113 @@ namespace IndigoMovieManager.Services.WpfSkin
             string path,
             bool exists)
         {
-            image.Source = LoadLocal(converter, path, exists);
-            image.Stretch = Stretch.Uniform;
+            BitmapSource local = LoadLocal(converter, path, exists);
+            image.Source = local;
             image.SetValue(AppliedJacketUrlProperty, null);
             image.SetValue(ShowingRemoteProperty, false);
+
+            // ローカルは JSON の W×H 枠（従来サムネと同じ）。AspectConverter があればそれに従う。
+            ApplyLocalFrameSize(image);
+            image.Stretch = ResolveLocalStretch(image, local);
+            image.ClearValue(FrameworkElement.MaxWidthProperty);
+            image.ClearValue(FrameworkElement.MaxHeightProperty);
         }
 
         private static void ApplyRemote(Image image, BitmapSource remote, string url)
         {
             image.Source = remote;
-            // 枠全体に対し縦横比維持・中央（Fill しない）
             image.Stretch = Stretch.Uniform;
             image.ClearValue(FrameworkElement.MaxWidthProperty);
             image.ClearValue(FrameworkElement.MaxHeightProperty);
             image.SetValue(AppliedJacketUrlProperty, url);
             image.SetValue(ShowingRemoteProperty, true);
+
+            // 幅＝JSON、高さ＝ジャケ比（枠そのものを合わせる → 黒帯なし）
+            ApplyJacketFrameSize(image, remote);
+        }
+
+        private static void ApplyLocalFrameSize(Image image)
+        {
+            FrameworkElement host = GetHost(image);
+            if (host == null)
+            {
+                return;
+            }
+
+            double width = GetFrameWidth(image);
+            double height = GetLocalFrameHeight(image);
+            if (width > 0)
+            {
+                host.Width = width;
+            }
+
+            if (height > 0)
+            {
+                host.Height = height;
+            }
+            else
+            {
+                host.ClearValue(FrameworkElement.HeightProperty);
+            }
+
+            host.VerticalAlignment = VerticalAlignment.Stretch;
+            host.HorizontalAlignment = HorizontalAlignment.Left;
+        }
+
+        private static void ApplyJacketFrameSize(Image image, BitmapSource remote)
+        {
+            FrameworkElement host = GetHost(image);
+            if (host == null || remote == null || remote.PixelWidth <= 0 || remote.PixelHeight <= 0)
+            {
+                return;
+            }
+
+            double width = GetFrameWidth(image);
+            if (width <= 0)
+            {
+                width = remote.PixelWidth;
+            }
+
+            double aspect = (double)remote.PixelWidth / remote.PixelHeight;
+            if (aspect <= 0)
+            {
+                return;
+            }
+
+            double height = width / aspect;
+            host.Width = width;
+            host.Height = height;
+            // ジャケ枠は内容サイズで確定。行の余白へ黒く伸ばさない。
+            host.VerticalAlignment = VerticalAlignment.Top;
+            host.HorizontalAlignment = HorizontalAlignment.Left;
+        }
+
+        private static Stretch ResolveLocalStretch(Image image, BitmapSource local)
+        {
+            IValueConverter aspectConverter = GetAspectConverter(image);
+            if (aspectConverter == null || local == null)
+            {
+                return Stretch.Uniform;
+            }
+
+            try
+            {
+                object result = aspectConverter.Convert(
+                    local,
+                    typeof(Stretch),
+                    GetTargetAspect(image),
+                    CultureInfo.CurrentCulture);
+                if (result is Stretch stretch)
+                {
+                    return stretch;
+                }
+            }
+            catch
+            {
+                // fall through
+            }
+
+            return Stretch.Uniform;
         }
 
         private static void SetLoading(Image image, bool loading)

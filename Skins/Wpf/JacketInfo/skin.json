@@ -38,8 +38,8 @@
           "col": 0,
           "row": 0,
           "rowSpan": 2,
-          "valign": "stretch",
-          "width": 360
+          "width": 360,
+          "height": 203
         },
         {
           "type": "text",
