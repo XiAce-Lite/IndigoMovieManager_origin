@@ -8,9 +8,9 @@ namespace IndigoMovieManager
         private ObservableCollection<WatchRecords> _Children = null;
 
         private string dir = "";
-        private bool auto = true;
-        private bool watch = true;
-        private bool sub = true;
+        private bool auto;
+        private bool watch;
+        private bool sub;
         private bool dmmAuto;
 
         public WatchRecords() { }

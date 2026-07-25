@@ -23,6 +23,8 @@ namespace IndigoMovieManager
         public bool Radio1IsChecked = true;
         public bool Radio2IsChecked = false;
         public bool OkOnly = false;
+        /// <summary>true のとき Cancel にフォーカスし、Enter も Cancel 扱い（削除確認など）。</summary>
+        public bool PreferCancelFocus = false;
 
         public MessageBoxEx(Window owner)
         {
@@ -59,9 +61,17 @@ namespace IndigoMovieManager
                 OK.Content = "閉じる(_C)";
                 OK.IsCancel = true;
                 Cancel.IsCancel = false;
-                // スペースキーでも閉じられるよう、閉じるボタンにフォーカスを置く
                 Dispatcher.BeginInvoke(
                     () => OK.Focus(),
+                    System.Windows.Threading.DispatcherPriority.Input);
+            }
+            else if (PreferCancelFocus)
+            {
+                OK.IsDefault = false;
+                Cancel.IsDefault = true;
+                Cancel.IsCancel = true;
+                Dispatcher.BeginInvoke(
+                    () => Cancel.Focus(),
                     System.Windows.Threading.DispatcherPriority.Input);
             }
         }
