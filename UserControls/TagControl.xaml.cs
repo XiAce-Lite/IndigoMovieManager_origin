@@ -1,10 +1,8 @@
 ﻿using IndigoMovieManager.Data;
-using IndigoMovieManager.ModelViews;
 using IndigoMovieManager.Services;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using static IndigoMovieManager.Tools;
 
 namespace IndigoMovieManager.UserControls
 {
@@ -47,52 +45,6 @@ namespace IndigoMovieManager.UserControls
 
         private void RemoveTag_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
-            var container = FindParent<DataGridRow>(this)
-                         ?? (DependencyObject)FindParent<ListViewItem>(this)
-                         ?? FindParent<ListBoxItem>(this);
-
-            ItemsControl parent = null;
-            if (container is DataGridRow dgr)
-            {
-                parent = ItemsControl.ItemsControlFromItemContainer(dgr);
-            }
-            else if (container is ListViewItem lvi)
-            {
-                parent = ItemsControl.ItemsControlFromItemContainer(lvi);
-            }
-            else if (container is ListBoxItem lbi)
-            {
-                parent = ItemsControl.ItemsControlFromItemContainer(lbi);
-            }
-
-            object itemData = null;
-            if (container is FrameworkElement fe && fe.DataContext is MovieRecords rec)
-            {
-                itemData = rec;
-            }
-
-            if (parent != null && itemData != null)
-            {
-                if (parent is DataGrid dg)
-                {
-                    dg.SelectedItems.Clear();
-                    dg.SelectedItem = itemData;
-                    dg.ScrollIntoView(itemData);
-                }
-                else if (parent is ListView lv)
-                {
-                    lv.SelectedItems.Clear();
-                    lv.SelectedItem = itemData;
-                    lv.ScrollIntoView(itemData);
-                }
-                else if (parent is ListBox lb)
-                {
-                    lb.SelectedItems.Clear();
-                    lb.SelectedItem = itemData;
-                    lb.ScrollIntoView(itemData);
-                }
-            }
-
             IMainWindowActions actions = MainWindowActionsHelper.GetActions(this);
             if (actions == null || DataContext == null)
             {
@@ -104,29 +56,77 @@ namespace IndigoMovieManager.UserControls
                 return;
             }
 
-            if (itemData is not MovieRecords mv)
+            string tag = DataContext.ToString();
+            if (string.IsNullOrEmpty(tag))
             {
                 return;
             }
 
-            string tag = DataContext.ToString();
-            if (mv.Tag.Contains(tag))
+            MovieRecords owner = ResolveOwnerRecord();
+            IReadOnlyList<MovieRecords> selected = actions.GetSelectedMovies() ?? [];
+            List<MovieRecords> targets;
+            if (selected.Count > 0)
             {
-                mv.Tag.Remove(tag);
-                mv.Tags = ConvertTagsWithNewLine(mv.Tag);
-                actions.UpdateMovieColumn(mv.Movie_Id, MovieColumn.Tag, mv.Tags);
+                targets = [.. selected.Where(m => m?.Tag != null && m.Tag.Contains(tag))];
+                // 詳細パネル等で owner が選択外のときは owner も対象にする
+                if (owner != null
+                    && owner.Tag != null
+                    && owner.Tag.Contains(tag)
+                    && !targets.Exists(m => m.Movie_Id == owner.Movie_Id))
+                {
+                    targets.Add(owner);
+                }
+            }
+            else if (owner != null && owner.Tag != null && owner.Tag.Contains(tag))
+            {
+                targets = [owner];
+            }
+            else
+            {
+                return;
+            }
 
-                try
-                {
-                    actions.RefreshActiveList(actions.CurrentSkinEngine);
-                    actions.RefreshExtDetail();
-                }
-                catch (Exception)
-                {
-                }
+            if (targets.Count == 0)
+            {
+                return;
+            }
+
+            foreach (MovieRecords mv in targets)
+            {
+                TagMutationService.ApplyDelete(mv, tag);
+                actions.UpdateMovieColumn(mv.Movie_Id, MovieColumn.Tag, mv.Tags);
+            }
+
+            try
+            {
+                actions.RefreshActiveList(actions.CurrentSkinEngine);
+                actions.RefreshExtDetail();
+            }
+            catch (Exception)
+            {
             }
 
             e.Handled = true;
+        }
+
+        private MovieRecords ResolveOwnerRecord()
+        {
+            var container = FindParent<DataGridRow>(this)
+                         ?? (DependencyObject)FindParent<ListViewItem>(this)
+                         ?? FindParent<ListBoxItem>(this);
+
+            if (container is FrameworkElement fe && fe.DataContext is MovieRecords fromRow)
+            {
+                return fromRow;
+            }
+
+            ExtDetail detail = FindParent<ExtDetail>(this);
+            if (detail?.DataContext is MovieRecords fromDetail)
+            {
+                return fromDetail;
+            }
+
+            return null;
         }
 
         private void TagGrid_PreviewKeyDown(object sender, KeyEventArgs e)

@@ -19,7 +19,7 @@
             <TextBlock
                 Margin="0,0,0,12"
                 FontSize="14"
-                Text="タイトル・コメント・アーティスト・ジャンルを編集します。" />
+                Text="タイトル・コメント・メーカー・ジャンルを編集します。" />
 
             <TextBox
                 x:Name="TitleBox"
@@ -82,7 +82,7 @@
 
             <TextBox
                 Margin="0,0,0,10"
-                materialDesign:HintAssist.Hint="アーティスト（メーカー等）"
+                materialDesign:HintAssist.Hint="メーカー"
                 materialDesign:TextFieldAssist.HasClearButton="True"
                 materialDesign:TextFieldAssist.HasOutlinedTextField="True"
                 materialDesign:TextFieldAssist.TextFieldCornerRadius="4"

@@ -1,0 +1,23 @@
+<Window
+    x:Class="IndigoMovieManager.JacketLightboxWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="ジャケ写"
+    AllowsTransparency="True"
+    Background="#CC000000"
+    KeyDown="Window_KeyDown"
+    MouseLeftButtonDown="Window_MouseLeftButtonDown"
+    ResizeMode="NoResize"
+    ShowInTaskbar="False"
+    WindowStartupLocation="CenterOwner"
+    WindowState="Maximized"
+    WindowStyle="None">
+    <Grid>
+        <Image
+            x:Name="JacketImage"
+            Margin="48"
+            Cursor="Hand"
+            MouseLeftButtonDown="JacketImage_MouseLeftButtonDown"
+            Stretch="Uniform" />
+    </Grid>
+</Window>

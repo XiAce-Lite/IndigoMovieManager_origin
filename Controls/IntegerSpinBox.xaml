@@ -1,0 +1,40 @@
+<UserControl
+    x:Class="IndigoMovieManager.Controls.IntegerSpinBox"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+    x:Name="Root">
+    <DockPanel>
+        <StackPanel
+            DockPanel.Dock="Right"
+            Margin="2,0,0,0"
+            VerticalAlignment="Center"
+            Orientation="Vertical">
+            <RepeatButton
+                x:Name="UpButton"
+                Width="20"
+                Height="14"
+                Padding="0"
+                Click="UpButton_Click"
+                Focusable="False"
+                FontSize="7"
+                Content="▲" />
+            <RepeatButton
+                x:Name="DownButton"
+                Width="20"
+                Height="14"
+                Padding="0"
+                Click="DownButton_Click"
+                Focusable="False"
+                FontSize="7"
+                Content="▼" />
+        </StackPanel>
+        <TextBox
+            x:Name="ValueBox"
+            materialDesign:HintAssist.Hint="{Binding Hint, ElementName=Root}"
+            materialDesign:HintAssist.IsFloating="True"
+            materialDesign:TextFieldAssist.HasOutlinedTextField="True"
+            LostFocus="ValueBox_LostFocus"
+            KeyDown="ValueBox_KeyDown" />
+    </DockPanel>
+</UserControl>

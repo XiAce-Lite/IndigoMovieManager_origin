@@ -14,6 +14,7 @@ namespace IndigoMovieManager.Services
         private ThumbnailSlot _thumbnail;
         private FolderCheckSlot _folderCheck;
         private FileInfoSlot _fileInfo;
+        private JacketFetchSlot _jacketFetch;
 
         public StatusBarProgressCoordinator(Dispatcher dispatcher)
         {
@@ -99,6 +100,35 @@ namespace IndigoMovieManager.Services
 
                 RunOnUi(() => _viewModel.StatusText = "準備完了");
             }, TaskScheduler.Default);
+        }
+
+        /// <summary>
+        /// ジャケ写 URL 取得の進行中件数。他スロットが無いときステータスバーに表示する。
+        /// </summary>
+        public void SetJacketFetchInFlight(int count)
+        {
+            lock (_sync)
+            {
+                if (count <= 0)
+                {
+                    if (_jacketFetch != null)
+                    {
+                        _jacketFetch.Deactivate();
+                        _jacketFetch = null;
+                        RefreshDisplayLocked();
+                    }
+
+                    return;
+                }
+
+                if (_jacketFetch == null)
+                {
+                    _jacketFetch = new JacketFetchSlot();
+                }
+
+                _jacketFetch.Update(count);
+                RefreshDisplayLocked();
+            }
         }
 
         private int _transientStatusGeneration;
@@ -233,6 +263,11 @@ namespace IndigoMovieManager.Services
             if (_thumbnail?.IsActive == true)
             {
                 return _thumbnail;
+            }
+
+            if (_jacketFetch?.IsActive == true)
+            {
+                return _jacketFetch;
             }
 
             return null;
@@ -433,6 +468,32 @@ namespace IndigoMovieManager.Services
                     ? "フォルダ監視中"
                     : $"フォルダ監視中  {message}";
             }
+        }
+
+        internal sealed class JacketFetchSlot : ISlotState
+        {
+            private int _inFlight;
+
+            public StatusBarProgressKind Kind => StatusBarProgressKind.JacketFetch;
+
+            public bool IsActive { get; private set; } = true;
+
+            // 件数表示が主。確定%が無いのでバーは出さない
+            public bool ShowProgress => false;
+
+            // 件数ベースの確定進捗ではないのでインジケータは満タン寄りに見せない
+            public double ProgressPercent => 0;
+
+            public void Deactivate() => IsActive = false;
+
+            public void Update(int inFlight)
+            {
+                _inFlight = Math.Max(0, inFlight);
+                IsActive = _inFlight > 0;
+            }
+
+            public string BuildStatusText() =>
+                _inFlight <= 0 ? "準備完了" : $"ジャケ写取得中  {_inFlight} 件";
         }
 
         internal sealed class ThumbnailSlotHandle : IDisposable

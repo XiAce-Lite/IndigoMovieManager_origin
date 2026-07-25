@@ -19,8 +19,10 @@ namespace IndigoMovieManager
         {
             string hash = row["hash"].ToString();
             string movieFullPath = row["movie_path"].ToString();
-            string movieBody = Path.GetFileNameWithoutExtension(movieFullPath).ToLowerInvariant();
-            string thumbFile = ThumbnailLayoutCache.GetThumbFileName(movieBody, hash);
+            // 表示は実パスのケースを保持。サムネファイル名だけ小文字（既存資産との一致）。
+            string movieBody = Path.GetFileNameWithoutExtension(movieFullPath);
+            string thumbBody = movieBody.ToLowerInvariant();
+            string thumbFile = ThumbnailLayoutCache.GetThumbFileName(thumbBody, hash);
 
             bool resolveAll = resolveEngineOnly == null;
             string thumbPathWpf = null;
@@ -66,7 +68,7 @@ namespace IndigoMovieManager
             return new MovieRecords
             {
                 Movie_Id = (long)row["movie_id"],
-                Movie_Name = $"{row["movie_name"]}{ext}",
+                Movie_Name = Path.GetFileName(movieFullPath),
                 Movie_Body = movieBody,
                 Movie_Path = row["movie_path"].ToString(),
                 Movie_Length = movieLength,

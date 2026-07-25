@@ -1,0 +1,61 @@
+<Window
+    x:Class="IndigoMovieManager.DmmTagExcludeWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+    Title="DMM タグ除外リスト"
+    Width="420"
+    SizeToContent="Height"
+    Background="{DynamicResource MaterialDesign.Brush.Background}"
+    ResizeMode="NoResize"
+    WindowStartupLocation="CenterOwner">
+    <materialDesign:ColorZone Padding="12,12,12,0">
+        <StackPanel Margin="0,0,0,8" Orientation="Vertical">
+            <TextBlock
+                Margin="0,0,0,4"
+                FontSize="14"
+                Text="ジャンルをタグへマージするとき、次のパターンに一致するものを除外します。"
+                TextWrapping="Wrap" />
+            <TextBlock
+                Margin="0,0,0,8"
+                FontSize="12"
+                Opacity="0.75"
+                Text="1行につき1パターン。女優名と Genre 列には影響しません。"
+                TextWrapping="Wrap" />
+            <TextBox
+                x:Name="PatternEditBox"
+                Height="200"
+                Margin="0,0,0,12"
+                materialDesign:HintAssist.Hint="ハイビジョン&#x0a;4K&#x0a;独占*&#x0a;re:^限定.+配信$"
+                materialDesign:HintAssist.IsFloating="False"
+                materialDesign:TextFieldAssist.HasClearButton="True"
+                materialDesign:TextFieldAssist.HasOutlinedTextField="True"
+                materialDesign:TextFieldAssist.TextFieldCornerRadius="4"
+                AcceptsReturn="True"
+                BorderThickness="2"
+                FontSize="14"
+                ScrollViewer.VerticalScrollBarVisibility="Auto"
+                TabIndex="1"
+                TextWrapping="Wrap" />
+            <TextBlock
+                Margin="0,0,0,12"
+                FontSize="12"
+                Opacity="0.75"
+                Text="簡易: 完全一致 / 独占*（前方） / *版（後方）。高度: re: のあとに正規表現。"
+                TextWrapping="Wrap" />
+            <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
+                <Button
+                    x:Name="OK"
+                    Margin="0,0,10,0"
+                    Click="Button_Click"
+                    Content="OK(_R)"
+                    IsDefault="True" />
+                <Button
+                    x:Name="Cancel"
+                    Click="Button_Click"
+                    Content="Cancel(_C)"
+                    IsCancel="True" />
+            </StackPanel>
+        </StackPanel>
+    </materialDesign:ColorZone>
+</Window>

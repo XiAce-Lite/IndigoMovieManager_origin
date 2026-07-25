@@ -59,6 +59,10 @@ namespace IndigoMovieManager
                 OK.Content = "閉じる(_C)";
                 OK.IsCancel = true;
                 Cancel.IsCancel = false;
+                // スペースキーでも閉じられるよう、閉じるボタンにフォーカスを置く
+                Dispatcher.BeginInvoke(
+                    () => OK.Focus(),
+                    System.Windows.Threading.DispatcherPriority.Input);
             }
         }
 

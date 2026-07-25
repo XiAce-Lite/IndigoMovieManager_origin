@@ -12,6 +12,7 @@ namespace IndigoMovieManager.Services.Dmm
             public bool WroteGenre { get; set; }
             public bool WroteArtist { get; set; }
             public int AddedTagCount { get; set; }
+            public int RemovedTagCount { get; set; }
         }
 
         public ApplySummary Apply(
@@ -71,6 +72,32 @@ namespace IndigoMovieManager.Services.Dmm
                 summary.WroteArtist = true;
             }
 
+            List<string> tagsToRemove = [];
+            if (rec.Tag != null)
+            {
+                foreach (string t in rec.Tag)
+                {
+                    if (string.IsNullOrWhiteSpace(t))
+                    {
+                        continue;
+                    }
+
+                    string trimmed = t.Trim();
+                    if (DmmTagExcludePatternMatcher.Shared.IsExcluded(trimmed))
+                    {
+                        tagsToRemove.Add(trimmed);
+                    }
+                }
+            }
+
+            if (tagsToRemove.Count > 0)
+            {
+                string removed = string.Join(Environment.NewLine, tagsToRemove);
+                RunUi(runOnUi, () => TagMutationService.ApplyDelete(rec, removed));
+                WriteColumn(dbFullPath, rec.Movie_Id, MovieColumn.Tag, rec.Tags);
+                summary.RemovedTagCount = tagsToRemove.Count;
+            }
+
             List<string> tagsToAdd = [];
             HashSet<string> existing = new(StringComparer.OrdinalIgnoreCase);
             if (rec.Tag != null)
@@ -105,6 +132,11 @@ namespace IndigoMovieManager.Services.Dmm
 
             foreach (string name in genres)
             {
+                if (DmmTagExcludePatternMatcher.Shared.IsExcluded(name))
+                {
+                    continue;
+                }
+
                 Consider(name);
             }
 

@@ -5,6 +5,11 @@ namespace IndigoMovieManager
     /// </summary>
     internal static class SortDefinitions
     {
+        /// <summary>ランダムソート（ID 28）用シード。コンボで「ランダム」を選んだときだけ更新する。</summary>
+        public static int RandomSeed { get; private set; } = Environment.TickCount;
+
+        public static void ReseedRandom() => RandomSeed = Random.Shared.Next();
+
         public static string GetSqlOrderClause(string id)
         {
             return id switch
@@ -35,6 +40,7 @@ namespace IndigoMovieManager
                 "25" => "comment2 desc",
                 "26" => "comment3",
                 "27" => "comment3 desc",
+                "28" => "movie_id",
                 _ => "",
             };
         }
@@ -69,6 +75,7 @@ namespace IndigoMovieManager
                 "25" => from x in source orderby x.Comment2 descending select x,
                 "26" => from x in source orderby x.Comment3 select x,
                 "27" => from x in source orderby x.Comment3 descending select x,
+                "28" => source.OrderBy(x => HashCode.Combine(RandomSeed, x.Movie_Id)),
                 _ => source,
             };
         }

@@ -8,9 +8,9 @@ namespace IndigoMovieManager.Services.Dmm
     /// </summary>
     internal static partial class DmmCidNormalizer
     {
-        // 先頭付近の 英字+区切り+数字（例: abcd-123, EFGH_456, abc123）
+        // 英字+区切り+数字（任意で末尾1英字: abcd-123 / abcd-123a / abcd 123）
         [GeneratedRegex(
-            @"(?<![A-Za-z0-9])(?<maker>[A-Za-z]{2,10})[-_ ]?(?<num>\d{2,6})(?![A-Za-z0-9])",
+            @"(?<![A-Za-z0-9])(?<maker>[A-Za-z]{2,10})[-_ ]?(?<num>\d{2,6})(?<branch>[A-Za-z])?(?![A-Za-z0-9])",
             RegexOptions.CultureInvariant)]
         private static partial Regex ProductCodeRegex();
 
@@ -20,9 +20,16 @@ namespace IndigoMovieManager.Services.Dmm
         public sealed class ExtractResult
         {
             public string ProductCode { get; init; }
+            /// <summary>ハイフンをスペースにした表記（例: abcd 123）。</summary>
+            public string SpaceForm { get; init; }
+            /// <summary>数字直後の枝番英字（例: a / b）。無いときは null。</summary>
+            public string BranchLetter { get; init; }
             public IReadOnlyList<string> CidCandidates { get; init; }
 
             public bool HasProductCode => !string.IsNullOrEmpty(ProductCode);
+
+            public string ProductCodeWithBranch =>
+                string.IsNullOrEmpty(BranchLetter) ? ProductCode : ProductCode + BranchLetter;
         }
 
         public static ExtractResult ExtractFromFileName(string movieName)
@@ -47,11 +54,17 @@ namespace IndigoMovieManager.Services.Dmm
 
             string maker = match.Groups["maker"].Value.ToLowerInvariant();
             string num = match.Groups["num"].Value;
+            string branch = match.Groups["branch"].Success
+                ? match.Groups["branch"].Value.ToLowerInvariant()
+                : null;
             string hyphenForm = $"{maker}-{num}";
+            string spaceForm = $"{maker} {num}";
 
             return new ExtractResult
             {
                 ProductCode = hyphenForm,
+                SpaceForm = spaceForm,
+                BranchLetter = branch,
                 CidCandidates = BuildCidCandidates(maker, num),
             };
         }

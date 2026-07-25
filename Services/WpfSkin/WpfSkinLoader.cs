@@ -98,11 +98,16 @@ namespace IndigoMovieManager.Services.WpfSkin
                     parsed.Name = skinName;
                 }
 
+                // Name は表示名になり得るため、フォルダキーは別途保持する
+                parsed.FolderName = skinName;
+
                 definition = parsed;
                 return true;
             }
-            catch
+            catch (Exception ex)
             {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[WpfSkinLoader] TryLoad failed: {skinName} : {ex.Message}");
                 return false;
             }
         }
@@ -113,6 +118,7 @@ namespace IndigoMovieManager.Services.WpfSkin
             return new WpfSkinDefinition
             {
                 Name = DefaultSkinName,
+                FolderName = DefaultSkinName,
                 Type = "card",
                 Thumbnail = new WpfSkinThumbnail
                 {

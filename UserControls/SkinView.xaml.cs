@@ -369,6 +369,35 @@ namespace IndigoMovieManager.UserControls
             }
         }
 
+        /// <summary>
+        /// 既選択ならフォーカスだけ更新。未選択なら単一選択に切り替え。
+        /// </summary>
+        public void FocusOrSelectMovie(MovieRecords record, IEnumerable<MovieRecords> items)
+        {
+            if (record == null)
+            {
+                SelectMovie(null, items);
+                return;
+            }
+
+            if (_selectedIds.Contains(record.Movie_Id))
+            {
+                _focusedId = record.Movie_Id;
+                if (items != null)
+                {
+                    RenderItems(items);
+                }
+                else
+                {
+                    PostSelectionOnly();
+                }
+
+                return;
+            }
+
+            SelectMovie(record, items);
+        }
+
         public MovieRecords GetPrimarySelection(IEnumerable<MovieRecords> source)
         {
             if (source == null || _focusedId == null)

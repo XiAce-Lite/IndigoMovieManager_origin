@@ -89,8 +89,21 @@ namespace IndigoMovieManager.UserControls
 
         private void ThumbnailImage_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
-            if (e.ClickCount != 1 || _displayingRemoteJacket)
+            if (e.ClickCount != 1)
             {
+                return;
+            }
+
+            if (_displayingRemoteJacket)
+            {
+                ImageSource source = DetailImage?.Source;
+                if (source != null)
+                {
+                    Window owner = Window.GetWindow(this);
+                    JacketLightboxWindow.Show(owner, source);
+                    e.Handled = true;
+                }
+
                 return;
             }
 
@@ -198,7 +211,14 @@ namespace IndigoMovieManager.UserControls
                 return;
             }
 
-            BitmapSource frontImage = await LoadRemoteImageAsync(frontUrl).ConfigureAwait(true);
+            // ローカルを先に出し、取得できたら差し替え（待ち中の黒画面を避ける）
+            _frontJacketAvailable = false;
+            ApplyThumbnailDisplay(record);
+            UpdateJacketButtons();
+
+            BitmapSource frontImage = await DmmRemoteImageLoader
+                .LoadAsync(frontUrl, Dispatcher)
+                .ConfigureAwait(true);
             if (generation != _imageLoadGeneration)
             {
                 return;
@@ -273,91 +293,6 @@ namespace IndigoMovieManager.UserControls
             {
                 JacketNextButton.IsEnabled = canFlip && !_showingLocalThumb;
             }
-        }
-
-        private Task<BitmapSource> LoadRemoteImageAsync(string url)
-        {
-            string resolvedUrl = DmmJacketUrls.ResolveUsableJacketUrl(url);
-            if (string.IsNullOrEmpty(resolvedUrl))
-            {
-                return Task.FromResult<BitmapSource>(null);
-            }
-
-            if (!DmmJacketUrls.IsHttpUrl(resolvedUrl))
-            {
-                return Task.FromResult<BitmapSource>(null);
-            }
-
-            var tcs = new TaskCompletionSource<BitmapSource>(TaskCreationOptions.RunContinuationsAsynchronously);
-            Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
-            {
-                try
-                {
-                    var bitmap = new BitmapImage();
-                    bool completed = false;
-
-                    void Finish(BitmapSource result)
-                    {
-                        if (completed)
-                        {
-                            return;
-                        }
-
-                        completed = true;
-                        tcs.TrySetResult(result);
-                    }
-
-                    bitmap.DownloadFailed += (_, _) => Finish(null);
-                    bitmap.DecodeFailed += (_, _) => Finish(null);
-                    bitmap.DownloadCompleted += (_, _) =>
-                    {
-                        Uri loadedUri = bitmap.UriSource;
-                        if (DmmJacketUrls.IsPlaceholderJacketUri(loadedUri))
-                        {
-                            Finish(null);
-                            return;
-                        }
-
-                        if (bitmap.PixelWidth > 0 && bitmap.PixelHeight > 0)
-                        {
-                            bitmap.Freeze();
-                            Finish(bitmap);
-                        }
-                        else
-                        {
-                            Finish(null);
-                        }
-                    };
-
-                    bitmap.BeginInit();
-                    bitmap.CacheOption = BitmapCacheOption.OnLoad;
-                    bitmap.UriSource = new Uri(resolvedUrl.Trim(), UriKind.Absolute);
-                    bitmap.EndInit();
-
-                    if (!bitmap.IsDownloading)
-                    {
-                        if (DmmJacketUrls.IsPlaceholderJacketUri(bitmap.UriSource))
-                        {
-                            Finish(null);
-                        }
-                        else if (bitmap.PixelWidth > 0 && bitmap.PixelHeight > 0)
-                        {
-                            bitmap.Freeze();
-                            Finish(bitmap);
-                        }
-                        else
-                        {
-                            Finish(null);
-                        }
-                    }
-                }
-                catch
-                {
-                    tcs.TrySetResult(null);
-                }
-            });
-
-            return tcs.Task;
         }
 
         private BitmapSource LoadLocalThumbnail(MovieRecords record)

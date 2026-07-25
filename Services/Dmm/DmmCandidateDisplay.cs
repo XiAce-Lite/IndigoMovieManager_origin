@@ -20,6 +20,19 @@ namespace IndigoMovieManager.Services.Dmm
 
             return string.Join(" / ", new[] { maker, label, series }.Where(part => !string.IsNullOrWhiteSpace(part)));
         }
+
+        /// <summary>Large URL があり、now_printing 等のプレースホルダでない。</summary>
+        public static bool HasUsableJacket(DmmItemDto item)
+        {
+            string url = item?.ImageUrl?.Large?.Trim() ?? string.Empty;
+            if (!DmmJacketUrls.IsHttpUrl(url))
+            {
+                return false;
+            }
+
+            return Uri.TryCreate(url, UriKind.Absolute, out Uri uri)
+                && !DmmJacketUrls.IsPlaceholderJacketUri(uri);
+        }
     }
 
     internal sealed class DmmCandidateRow
@@ -29,6 +42,7 @@ namespace IndigoMovieManager.Services.Dmm
         public string MakerLabelSeries { get; init; }
         public string FloorLabel { get; init; }
         public string JacketLabel { get; init; }
+        public bool HasJacket { get; init; }
         public DmmItemDto Item { get; init; }
 
         public static DmmCandidateRow FromEntry(DmmCandidateEntry entry)
@@ -39,22 +53,48 @@ namespace IndigoMovieManager.Services.Dmm
                 {
                     FloorLabel = entry?.FloorLabel ?? string.Empty,
                     JacketLabel = "×",
+                    HasJacket = false,
                 };
             }
 
-            string jacketUrl = entry.Item.ImageUrl?.Large?.Trim() ?? string.Empty;
+            bool hasJacket = DmmCandidateDisplay.HasUsableJacket(entry.Item);
             return new DmmCandidateRow
             {
                 Title = entry.Item.Title?.Trim() ?? string.Empty,
                 ContentId = entry.Item.ContentId?.Trim() ?? string.Empty,
                 MakerLabelSeries = DmmCandidateDisplay.FormatMakerLabelSeries(entry.Item),
                 FloorLabel = entry.FloorLabel ?? string.Empty,
-                JacketLabel = string.IsNullOrEmpty(jacketUrl) ? "×" : "○",
+                JacketLabel = hasJacket ? "○" : "×",
+                HasJacket = hasJacket,
                 Item = entry.Item,
             };
         }
 
-        public static List<DmmCandidateRow> FromEntries(IEnumerable<DmmCandidateEntry> entries) =>
-            entries?.Select(FromEntry).ToList() ?? [];
+        public static List<DmmCandidateRow> FromEntries(IEnumerable<DmmCandidateEntry> entries)
+        {
+            if (entries == null)
+            {
+                return [];
+            }
+
+            // ジャケありを先頭へ（同順位は元の並びを維持）
+            return [.. entries
+                .Select(FromEntry)
+                .Select((row, index) => (row, index))
+                .OrderByDescending(x => x.row.HasJacket)
+                .ThenBy(x => x.index)
+                .Select(x => x.row)];
+        }
+
+        /// <summary>ジャケありを優先。無ければ先頭（単一候補含む）。</summary>
+        public static DmmCandidateRow PreferSelection(IReadOnlyList<DmmCandidateRow> rows)
+        {
+            if (rows == null || rows.Count == 0)
+            {
+                return null;
+            }
+
+            return rows.FirstOrDefault(r => r.HasJacket) ?? rows[0];
+        }
     }
 }

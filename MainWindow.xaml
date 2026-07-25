@@ -17,6 +17,7 @@
     Width="800"
     Height="Auto"
     Icon="pack://application:,,,/Assets/app-icon.ico"
+    PreviewKeyDown="Window_PreviewKeyDown"
     mc:Ignorable="d">
 
     <Window.Resources>
@@ -860,14 +861,72 @@
                                     <TextBlock Style="{StaticResource NavigationDrawerSectionHeaderTextStyle}" Text="ツール" />
                                 </DockPanel>
                             </ToggleButton>
-                            <ListBox
-                                x:Name="ToolNavList"
-                                Margin="19,0,0,0"
-                                ItemContainerStyle="{StaticResource NavigationDrawerListBoxItemStyle}"
-                                ItemsSource="{Binding ToolNavItems}"
-                                PreviewMouseLeftButtonUp="NavigationList_PreviewMouseLeftButtonUp"
-                                Style="{StaticResource NavigationDrawerNestedListBoxStyle}"
-                                Visibility="{Binding IsChecked, ElementName=ToolSectionToggle, Converter={StaticResource BoolToVisibilityConverter}}" />
+                            <StackPanel Visibility="{Binding IsChecked, ElementName=ToolSectionToggle, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <ListBox
+                                    x:Name="ToolRootNavList"
+                                    Margin="19,0,0,0"
+                                    ItemContainerStyle="{StaticResource NavigationDrawerListBoxItemStyle}"
+                                    ItemsSource="{Binding ToolRootNavItems}"
+                                    PreviewMouseLeftButtonUp="NavigationList_PreviewMouseLeftButtonUp"
+                                    Style="{StaticResource NavigationDrawerNestedListBoxStyle}" />
+
+                                <ToggleButton
+                                    x:Name="BulkProcessSectionToggle"
+                                    Margin="10,0,0,0"
+                                    Style="{StaticResource NavigationDrawerSectionHeaderToggleStyle}">
+                                    <DockPanel Margin="1,0,1,0">
+                                        <materialDesign:PackIcon Style="{StaticResource NavigationDrawerSectionChevronStyle}" />
+                                        <materialDesign:PackIcon VerticalAlignment="Center" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" Kind="PlaylistCheck" />
+                                        <TextBlock Style="{StaticResource NavigationDrawerSectionHeaderTextStyle}" Text="一括処理" />
+                                    </DockPanel>
+                                </ToggleButton>
+                                <ListBox
+                                    x:Name="BulkProcessNavList"
+                                    Margin="29,0,0,0"
+                                    ItemContainerStyle="{StaticResource NavigationDrawerListBoxItemStyle}"
+                                    ItemsSource="{Binding BulkProcessNavItems}"
+                                    PreviewMouseLeftButtonUp="NavigationList_PreviewMouseLeftButtonUp"
+                                    Style="{StaticResource NavigationDrawerNestedListBoxStyle}"
+                                    Visibility="{Binding IsChecked, ElementName=BulkProcessSectionToggle, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                                <ToggleButton
+                                    x:Name="DmmToolSectionToggle"
+                                    Margin="10,0,0,0"
+                                    Style="{StaticResource NavigationDrawerSectionHeaderToggleStyle}">
+                                    <DockPanel Margin="1,0,1,0">
+                                        <materialDesign:PackIcon Style="{StaticResource NavigationDrawerSectionChevronStyle}" />
+                                        <materialDesign:PackIcon VerticalAlignment="Center" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" Kind="CloudDownloadOutline" />
+                                        <TextBlock Style="{StaticResource NavigationDrawerSectionHeaderTextStyle}" Text="DMM" />
+                                    </DockPanel>
+                                </ToggleButton>
+                                <ListBox
+                                    x:Name="DmmToolNavList"
+                                    Margin="29,0,0,0"
+                                    ItemContainerStyle="{StaticResource NavigationDrawerListBoxItemStyle}"
+                                    ItemsSource="{Binding DmmToolNavItems}"
+                                    PreviewMouseLeftButtonUp="NavigationList_PreviewMouseLeftButtonUp"
+                                    Style="{StaticResource NavigationDrawerNestedListBoxStyle}"
+                                    Visibility="{Binding IsChecked, ElementName=DmmToolSectionToggle, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                                <ToggleButton
+                                    x:Name="SkinToolSectionToggle"
+                                    Margin="10,0,0,0"
+                                    Style="{StaticResource NavigationDrawerSectionHeaderToggleStyle}">
+                                    <DockPanel Margin="1,0,1,0">
+                                        <materialDesign:PackIcon Style="{StaticResource NavigationDrawerSectionChevronStyle}" />
+                                        <materialDesign:PackIcon VerticalAlignment="Center" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" Kind="PaletteOutline" />
+                                        <TextBlock Style="{StaticResource NavigationDrawerSectionHeaderTextStyle}" Text="スキン" />
+                                    </DockPanel>
+                                </ToggleButton>
+                                <ListBox
+                                    x:Name="SkinToolNavList"
+                                    Margin="29,0,0,0"
+                                    ItemContainerStyle="{StaticResource NavigationDrawerListBoxItemStyle}"
+                                    ItemsSource="{Binding SkinToolNavItems}"
+                                    PreviewMouseLeftButtonUp="NavigationList_PreviewMouseLeftButtonUp"
+                                    Style="{StaticResource NavigationDrawerNestedListBoxStyle}"
+                                    Visibility="{Binding IsChecked, ElementName=SkinToolSectionToggle, Converter={StaticResource BoolToVisibilityConverter}}" />
+                            </StackPanel>
 
                             <ListBox
                                 x:Name="ExitNavList"

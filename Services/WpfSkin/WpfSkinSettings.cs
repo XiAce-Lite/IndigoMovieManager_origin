@@ -9,5 +9,8 @@ namespace IndigoMovieManager.Services.WpfSkin
     {
         /// <summary>現在の WPF スキンのサムネ生成レイアウト（skin.json の thumbnail セクション）。</summary>
         public static ThumbnailLayoutSpec CurrentThumbnailLayout { get; set; }
+
+        /// <summary>現在スキンがジャケ写優先表示か。</summary>
+        public static bool PreferJacket { get; set; }
     }
 }

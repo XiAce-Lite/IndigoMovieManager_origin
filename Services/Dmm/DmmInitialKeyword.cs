@@ -17,7 +17,7 @@ namespace IndigoMovieManager.Services.Dmm
         }
 
         /// <summary>
-        /// 手動検索向け。ファイル名から推定した品番表記の揺れ（xxxx-024 / xxxx024 等）を返す。
+        /// 手動検索向け。ファイル名から推定した品番表記の揺れを返す。
         /// </summary>
         public static IReadOnlyList<string> SuggestSearchVariants(string movieName)
         {
@@ -39,7 +39,15 @@ namespace IndigoMovieManager.Services.Dmm
             DmmCidNormalizer.ExtractResult extracted = DmmCidNormalizer.ExtractFromFileName(movieName);
             if (extracted.HasProductCode)
             {
+                // 枝番付き（xxxx-024a）→ 除去形を先に、元表記も残す
                 Add(extracted.ProductCode);
+                Add(extracted.SpaceForm);
+                if (!string.IsNullOrEmpty(extracted.BranchLetter))
+                {
+                    Add(extracted.ProductCodeWithBranch);
+                    Add(extracted.SpaceForm + extracted.BranchLetter);
+                }
+
                 if (extracted.CidCandidates != null)
                 {
                     foreach (string cid in extracted.CidCandidates)

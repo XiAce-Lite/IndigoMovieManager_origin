@@ -25,14 +25,31 @@ public class DmmInitialKeywordTests
         IReadOnlyList<string> variants = DmmInitialKeyword.SuggestSearchVariants("xxxx-024.mp4");
 
         Assert.Contains("xxxx-024", variants);
+        Assert.Contains("xxxx 024", variants);
         Assert.Contains("xxxx024", variants);
         Assert.True(variants.Count >= 2);
+    }
+
+    [Fact]
+    public void SuggestSearchVariants_includes_space_and_stripped_branch_forms()
+    {
+        IReadOnlyList<string> variants = DmmInitialKeyword.SuggestSearchVariants("xxxx-024b.mp4");
+
+        Assert.Contains("xxxx-024", variants);
+        Assert.Contains("xxxx 024", variants);
+        Assert.Contains("xxxx-024b", variants);
     }
 
     [Fact]
     public void FromMovieName_returns_hyphen_form_for_compact_style_code()
     {
         Assert.Equal("xxxx-024", DmmInitialKeyword.FromMovieName("xxxx-024.mp4"));
+    }
+
+    [Fact]
+    public void FromMovieName_strips_trailing_branch_letter()
+    {
+        Assert.Equal("xxxx-024", DmmInitialKeyword.FromMovieName("xxxx-024a.mp4"));
     }
 }
 
@@ -158,6 +175,56 @@ public class DmmCandidateDisplayTests
         });
 
         Assert.Equal("○", row.JacketLabel);
+        Assert.True(row.HasJacket);
+    }
+
+    [Fact]
+    public void FromEntries_orders_jacket_first_and_PreferSelection_picks_jacket()
+    {
+        var entries = new List<DmmCandidateEntry>
+        {
+            new()
+            {
+                FloorLabel = "dvd",
+                Item = new DmmItemDto
+                {
+                    ContentId = "nojacket",
+                    Title = "ジャケなし",
+                },
+            },
+            new()
+            {
+                FloorLabel = "videoa",
+                Item = new DmmItemDto
+                {
+                    ContentId = "withjacket",
+                    Title = "ジャケあり",
+                    ImageUrl = new DmmImageUrlDto { Large = "https://pics.dmm.co.jp/abc123pl.jpg" },
+                },
+            },
+        };
+
+        List<DmmCandidateRow> rows = DmmCandidateRow.FromEntries(entries);
+        Assert.Equal("withjacket", rows[0].ContentId);
+        Assert.Equal("nojacket", rows[1].ContentId);
+
+        DmmCandidateRow preferred = DmmCandidateRow.PreferSelection(rows);
+        Assert.Equal("withjacket", preferred.ContentId);
+    }
+
+    [Fact]
+    public void PreferSelection_selects_single_candidate_without_jacket()
+    {
+        List<DmmCandidateRow> rows = DmmCandidateRow.FromEntries(
+        [
+            new DmmCandidateEntry
+            {
+                FloorLabel = "dvd",
+                Item = new DmmItemDto { ContentId = "onlyone", Title = "単独" },
+            },
+        ]);
+
+        Assert.Equal("onlyone", DmmCandidateRow.PreferSelection(rows).ContentId);
     }
 }
 

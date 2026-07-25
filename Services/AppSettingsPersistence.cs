@@ -40,5 +40,11 @@ namespace IndigoMovieManager.Services
             Properties.Settings.Default.RecentFiles.AddRange([.. files]);
             Properties.Settings.Default.Save();
         }
+
+        public static void SaveDmmTagExcludePatterns(string multilineText)
+        {
+            Properties.Settings.Default.DmmTagExcludePatterns = multilineText ?? "";
+            Properties.Settings.Default.Save();
+        }
     }
 }
