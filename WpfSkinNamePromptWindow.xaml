@@ -1,0 +1,39 @@
+<Window
+    x:Class="IndigoMovieManager.WpfSkinNamePromptWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+    Title="スキン名"
+    Width="360"
+    SizeToContent="Height"
+    ResizeMode="NoResize"
+    WindowStartupLocation="CenterOwner"
+    Background="{DynamicResource MaterialDesign.Brush.Background}">
+    <materialDesign:ColorZone Padding="12,12,12,0">
+        <StackPanel Margin="0,0,0,8">
+            <TextBlock
+                Margin="0,0,0,8"
+                FontSize="13"
+                Text="保存先フォルダ名（Skins/Wpf/ 配下）" />
+            <TextBox
+                x:Name="NameBox"
+                Margin="0,0,0,12"
+                materialDesign:HintAssist.Hint="例: MySkin"
+                materialDesign:HintAssist.IsFloating="True"
+                materialDesign:TextFieldAssist.HasOutlinedTextField="True"
+                FontSize="14"
+                KeyDown="NameBox_KeyDown" />
+            <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
+                <Button
+                    Margin="0,0,8,0"
+                    Click="OkButton_Click"
+                    Content="OK"
+                    IsDefault="True" />
+                <Button
+                    Click="CancelButton_Click"
+                    Content="キャンセル"
+                    IsCancel="True" />
+            </StackPanel>
+        </StackPanel>
+    </materialDesign:ColorZone>
+</Window>

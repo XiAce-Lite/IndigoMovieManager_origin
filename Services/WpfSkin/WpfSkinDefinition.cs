@@ -8,6 +8,13 @@ namespace IndigoMovieManager.Services.WpfSkin
         public string Name { get; set; } = "CardLarge";
 
         /// <summary>
+        /// 読み込み元フォルダ名（Skins/Wpf/&lt;FolderName&gt;）。JSON には出さない。
+        /// 表示用の <see cref="Name"/> とフォルダ名が異なる場合があるため、再適用・設定保存ではこちらを使う。
+        /// </summary>
+        [JsonIgnore]
+        public string FolderName { get; set; }
+
+        /// <summary>
         /// "light" / "dark" 指定時は JSON の色をそのまま使い、アプリテーマではリマップしない。
         /// 省略時はアプリの Light/Dark/System に追従する。
         /// </summary>
@@ -36,6 +43,13 @@ namespace IndigoMovieManager.Services.WpfSkin
         public int Height { get; set; } = 225;
         public int Columns { get; set; } = 1;
         public int Rows { get; set; } = 1;
+
+        /// <summary>
+        /// true のとき comment1 のジャケ写 URL を一覧サムネとして表示（保存しない）。
+        /// 無い場合のみ通常のローカルサムネを生成・表示する。
+        /// </summary>
+        public bool PreferJacket { get; set; }
+
         public double TargetAspect => Height > 0 ? (double)Width / Height : 16.0 / 9.0;
     }
 

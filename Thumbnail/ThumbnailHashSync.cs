@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
 using System.IO;
+using IndigoMovieManager.Services.Dmm;
+using IndigoMovieManager.Services.WpfSkin;
 using static IndigoMovieManager.SQLite;
 using static IndigoMovieManager.Tools;
 
@@ -115,6 +117,13 @@ namespace IndigoMovieManager.Thumbnail
                 || cache == null
                 || string.IsNullOrWhiteSpace(item.Movie_Path)
                 || !File.Exists(item.Movie_Path))
+            {
+                return false;
+            }
+
+            // ジャケ写優先スキンで URL がある場合はローカルサムネを作らない
+            if (WpfSkinSettings.PreferJacket
+                && !string.IsNullOrEmpty(DmmJacketUrls.GetFrontUrl(item)))
             {
                 return false;
             }

@@ -313,5 +313,17 @@ namespace IndigoMovieManager.Properties {
                 this["DmmAffiliateId"] = value;
             }
         }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string DmmTagExcludePatterns {
+            get {
+                return ((string)(this["DmmTagExcludePatterns"]));
+            }
+            set {
+                this["DmmTagExcludePatterns"] = value;
+            }
+        }
     }
 }

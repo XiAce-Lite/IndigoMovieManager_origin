@@ -72,12 +72,58 @@ namespace IndigoMovieManager.Services.WpfSkin
     {
         public override WpfSkinSpacing Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
-            return reader.TokenType switch
+            switch (reader.TokenType)
             {
-                JsonTokenType.Null => null,
-                JsonTokenType.Number => WpfSkinSpacing.Uniform(reader.GetDouble()),
-                JsonTokenType.String => WpfSkinSpacing.Parse(reader.GetString()),
-                _ => null,
+                case JsonTokenType.Null:
+                    return null;
+                case JsonTokenType.Number:
+                    return WpfSkinSpacing.Uniform(reader.GetDouble());
+                case JsonTokenType.String:
+                    return WpfSkinSpacing.Parse(reader.GetString());
+                case JsonTokenType.StartArray:
+                    return ReadArray(ref reader);
+                default:
+                    throw new JsonException($"margin/padding に未対応の JSON トークンです: {reader.TokenType}");
+            }
+        }
+
+        private static WpfSkinSpacing ReadArray(ref Utf8JsonReader reader)
+        {
+            var values = new List<double>(4);
+            while (reader.Read())
+            {
+                if (reader.TokenType == JsonTokenType.EndArray)
+                {
+                    break;
+                }
+
+                if (reader.TokenType != JsonTokenType.Number)
+                {
+                    throw new JsonException("margin/padding 配列は数値のみです。");
+                }
+
+                values.Add(reader.GetDouble());
+            }
+
+            return values.Count switch
+            {
+                0 => new WpfSkinSpacing(),
+                1 => WpfSkinSpacing.Uniform(values[0]),
+                2 => new WpfSkinSpacing
+                {
+                    Left = values[0],
+                    Top = values[1],
+                    Right = values[0],
+                    Bottom = values[1],
+                },
+                4 => new WpfSkinSpacing
+                {
+                    Left = values[0],
+                    Top = values[1],
+                    Right = values[2],
+                    Bottom = values[3],
+                },
+                _ => throw new JsonException("margin/padding 配列は 1 / 2 / 4 要素である必要があります。"),
             };
         }
 

@@ -1,0 +1,96 @@
+<Window
+    x:Class="IndigoMovieManager.WpfColorPickerWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+    Title="色の選択"
+    Width="360"
+    SizeToContent="Height"
+    ResizeMode="NoResize"
+    WindowStartupLocation="CenterOwner"
+    Background="{DynamicResource MaterialDesign.Brush.Background}">
+    <materialDesign:ColorZone Padding="12,12,12,0">
+        <StackPanel Margin="0,0,0,8">
+            <Border
+                x:Name="PreviewSwatch"
+                Height="40"
+                Margin="0,0,0,8"
+                BorderBrush="{DynamicResource MaterialDesign.Brush.ForegroundLight}"
+                BorderThickness="1"
+                CornerRadius="4" />
+            <UniformGrid
+                x:Name="SwatchGrid"
+                Margin="0,0,0,12"
+                Columns="6" />
+            <TextBox
+                x:Name="HexBox"
+                Margin="0,0,0,12"
+                materialDesign:HintAssist.Hint="#RRGGBB"
+                materialDesign:HintAssist.IsFloating="True"
+                materialDesign:TextFieldAssist.HasOutlinedTextField="True"
+                LostFocus="HexBox_LostFocus" />
+            <DockPanel Margin="0,0,0,6">
+                <TextBlock Width="24" Text="R" VerticalAlignment="Center" />
+                <TextBlock
+                    x:Name="LabelR"
+                    DockPanel.Dock="Right"
+                    Width="36"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Center"
+                    Text="0" />
+                <Slider
+                    x:Name="SliderR"
+                    Maximum="255"
+                    Minimum="0"
+                    IsSnapToTickEnabled="True"
+                    TickFrequency="1"
+                    ValueChanged="Slider_ValueChanged" />
+            </DockPanel>
+            <DockPanel Margin="0,0,0,6">
+                <TextBlock Width="24" Text="G" VerticalAlignment="Center" />
+                <TextBlock
+                    x:Name="LabelG"
+                    DockPanel.Dock="Right"
+                    Width="36"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Center"
+                    Text="0" />
+                <Slider
+                    x:Name="SliderG"
+                    Maximum="255"
+                    Minimum="0"
+                    IsSnapToTickEnabled="True"
+                    TickFrequency="1"
+                    ValueChanged="Slider_ValueChanged" />
+            </DockPanel>
+            <DockPanel Margin="0,0,0,12">
+                <TextBlock Width="24" Text="B" VerticalAlignment="Center" />
+                <TextBlock
+                    x:Name="LabelB"
+                    DockPanel.Dock="Right"
+                    Width="36"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Center"
+                    Text="0" />
+                <Slider
+                    x:Name="SliderB"
+                    Maximum="255"
+                    Minimum="0"
+                    IsSnapToTickEnabled="True"
+                    TickFrequency="1"
+                    ValueChanged="Slider_ValueChanged" />
+            </DockPanel>
+            <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
+                <Button
+                    Margin="0,0,8,0"
+                    Click="OkButton_Click"
+                    Content="OK"
+                    IsDefault="True" />
+                <Button
+                    Click="CancelButton_Click"
+                    Content="キャンセル"
+                    IsCancel="True" />
+            </StackPanel>
+        </StackPanel>
+    </materialDesign:ColorZone>
+</Window>

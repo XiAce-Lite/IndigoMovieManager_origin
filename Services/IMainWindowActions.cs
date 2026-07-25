@@ -22,5 +22,6 @@ namespace IndigoMovieManager.Services
         void OpenMetadataEdit();
         string DbFullPath { get; }
         void UpdateMovieColumn(long movieId, Data.MovieColumn column, object value);
+        IReadOnlyList<MovieRecords> GetSelectedMovies();
     }
 }

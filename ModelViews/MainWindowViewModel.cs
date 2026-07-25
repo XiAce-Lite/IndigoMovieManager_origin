@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.Windows.Data;
 using MaterialDesignThemes.Wpf;
 
@@ -10,7 +10,10 @@ namespace IndigoMovieManager.ModelViews
         public ObservableCollection<NavigationDrawerItem> PrimaryNavItems { get; set; }
         public ObservableCollection<NavigationDrawerItem> RecentFileItems { get; set; }
         public ObservableCollection<NavigationDrawerItem> SettingsNavItems { get; set; }
-        public ObservableCollection<NavigationDrawerItem> ToolNavItems { get; set; }
+        public ObservableCollection<NavigationDrawerItem> ToolRootNavItems { get; set; }
+        public ObservableCollection<NavigationDrawerItem> BulkProcessNavItems { get; set; }
+        public ObservableCollection<NavigationDrawerItem> DmmToolNavItems { get; set; }
+        public ObservableCollection<NavigationDrawerItem> SkinToolNavItems { get; set; }
         public ObservableCollection<NavigationDrawerItem> ExitNavItems { get; set; }
         public ObservableCollection<MovieRecords> MovieRecs { get; set; }
         public ObservableCollection<MovieRecords> BookmarkRecs { get; set; }
@@ -52,7 +55,7 @@ namespace IndigoMovieManager.ModelViews
                     IconKind = PackIconKind.Cogs,
                 },
             ];
-            ToolNavItems =
+            ToolRootNavItems =
             [
                 new NavigationDrawerItem
                 {
@@ -66,6 +69,9 @@ namespace IndigoMovieManager.ModelViews
                     Id = NavigationMenuIds.WatchFolderCheck,
                     IconKind = PackIconKind.Reload,
                 },
+            ];
+            BulkProcessNavItems =
+            [
                 new NavigationDrawerItem
                 {
                     Text = NavigationMenuIds.RecreateAllThumbnails,
@@ -79,6 +85,9 @@ namespace IndigoMovieManager.ModelViews
                     IconKind = PackIconKind.FileDocumentOutline,
                     IsEnabled = SinkuMetadataFetcher.IsAvailable,
                 },
+            ];
+            DmmToolNavItems =
+            [
                 new NavigationDrawerItem
                 {
                     Text = NavigationMenuIds.DmmBulkFetch,
@@ -90,6 +99,33 @@ namespace IndigoMovieManager.ModelViews
                     Text = NavigationMenuIds.DmmPendingCandidates,
                     Id = NavigationMenuIds.DmmPendingCandidates,
                     IconKind = PackIconKind.HelpCircleOutline,
+                },
+                new NavigationDrawerItem
+                {
+                    Text = NavigationMenuIds.DmmTagExcludeList,
+                    Id = NavigationMenuIds.DmmTagExcludeList,
+                    IconKind = PackIconKind.FilterRemoveOutline,
+                },
+            ];
+            SkinToolNavItems =
+            [
+                new NavigationDrawerItem
+                {
+                    Text = NavigationMenuIds.WpfSkinEdit,
+                    Id = NavigationMenuIds.WpfSkinEdit,
+                    IconKind = PackIconKind.PaletteOutline,
+                },
+                new NavigationDrawerItem
+                {
+                    Text = NavigationMenuIds.WpfSkinNew,
+                    Id = NavigationMenuIds.WpfSkinNew,
+                    IconKind = PackIconKind.PaletteAdvanced,
+                },
+                new NavigationDrawerItem
+                {
+                    Text = NavigationMenuIds.WpfSkinDelete,
+                    Id = NavigationMenuIds.WpfSkinDelete,
+                    IconKind = PackIconKind.DeleteOutline,
                 },
             ];
             ExitNavItems =
@@ -135,6 +171,7 @@ namespace IndigoMovieManager.ModelViews
                 new SortItem("25", "コメント2(降順)"),
                 new SortItem("26", "コメント3(昇順)"),
                 new SortItem("27", "コメント3(降順)"),
+                new SortItem("28", "ランダム"),
             ];
         }
 

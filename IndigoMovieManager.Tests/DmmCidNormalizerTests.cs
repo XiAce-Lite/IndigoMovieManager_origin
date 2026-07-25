@@ -12,6 +12,8 @@ public class DmmCidNormalizerTests
     [InlineData("EFGH-456.mkv", "efgh-456", "efgh456")]
     [InlineData("efgh456", "efgh-456", "efgh456")]
     [InlineData("abcd-123_extra.mp4", "abcd-123", "1abcd00123")]
+    [InlineData("abcd-123a.mp4", "abcd-123", "1abcd00123")]
+    [InlineData("xxxx-024b.mp4", "xxxx-024", "xxxx024")]
     public void ExtractFromFileName_builds_expected_candidates(
         string fileName,
         string expectedProductCode,
@@ -22,6 +24,18 @@ public class DmmCidNormalizerTests
         Assert.True(result.HasProductCode);
         Assert.Equal(expectedProductCode, result.ProductCode);
         Assert.Contains(expectedCid, result.CidCandidates);
+        Assert.Equal(expectedProductCode.Replace('-', ' '), result.SpaceForm);
+    }
+
+    [Fact]
+    public void ExtractFromFileName_keeps_branch_letter_separately()
+    {
+        DmmCidNormalizer.ExtractResult result = DmmCidNormalizer.ExtractFromFileName("abcd-123b.mp4");
+
+        Assert.Equal("abcd-123", result.ProductCode);
+        Assert.Equal("b", result.BranchLetter);
+        Assert.Equal("abcd-123b", result.ProductCodeWithBranch);
+        Assert.Equal("abcd 123", result.SpaceForm);
     }
 
     [Theory]

@@ -270,6 +270,7 @@ namespace IndigoMovieManager.Services.WpfSkin
 
         private static UIElement BuildThumbnail(WpfSkinNode node, WpfSkinDefinition def)
         {
+            bool preferJacket = def.Thumbnail?.PreferJacket == true;
             bool stretchInCell = !node.Height.HasValue && !string.IsNullOrEmpty(node.VAlign)
                 && string.Equals(node.VAlign, "stretch", StringComparison.OrdinalIgnoreCase);
 
@@ -281,8 +282,8 @@ namespace IndigoMovieManager.Services.WpfSkin
                 Background = Brushes.Black,
                 Padding = new Thickness(0),
                 ClipToBounds = true,
-                HorizontalContentAlignment = HorizontalAlignment.Stretch,
-                VerticalContentAlignment = VerticalAlignment.Stretch,
+                HorizontalContentAlignment = preferJacket ? HorizontalAlignment.Center : HorizontalAlignment.Stretch,
+                VerticalContentAlignment = preferJacket ? VerticalAlignment.Center : VerticalAlignment.Stretch,
             };
 
             if (w > 0)
@@ -306,21 +307,63 @@ namespace IndigoMovieManager.Services.WpfSkin
             }
 
             var image = new Image();
-            var sourceBinding = new MultiBinding
+            UIElement content = image;
+            if (preferJacket)
             {
-                Converter = new ThumbSourceAdapter(WpfSkinHostContext.ImageConverter),
-            };
-            sourceBinding.Bindings.Add(new Binding(nameof(MovieRecords.ThumbPathWpfSkin)));
-            sourceBinding.Bindings.Add(new Binding(nameof(MovieRecords.IsExists)));
-            image.SetBinding(Image.SourceProperty, sourceBinding);
+                // 枠全体に対しジャケ1枚を Uniform・中央。列行はローカルサムネ生成時のみ効く。
+                // MaxWidth/MaxHeight で単セルに縛らない（複数列行スキンでも枠いっぱいにセンター）。
+                image.Stretch = Stretch.Uniform;
 
-            double targetAspect = h is > 0 ? w / h.Value : def.Thumbnail.TargetAspect;
-            image.SetBinding(Image.StretchProperty, new Binding(nameof(Image.Source))
+                var loadingBar = new ProgressBar
+                {
+                    Height = 3,
+                    Minimum = 0,
+                    Maximum = 1,
+                    IsIndeterminate = true,
+                    VerticalAlignment = VerticalAlignment.Bottom,
+                    HorizontalAlignment = HorizontalAlignment.Stretch,
+                    Visibility = Visibility.Collapsed,
+                    Opacity = 0.85,
+                };
+
+                PreferJacketImageBehavior.SetLoadingIndicator(image, loadingBar);
+                PreferJacketImageBehavior.SetLocalConverter(image, WpfSkinHostContext.ImageConverter);
+                BindingOperations.SetBinding(
+                    image,
+                    PreferJacketImageBehavior.JacketUrlProperty,
+                    new Binding(nameof(MovieRecords.Comment1)));
+                BindingOperations.SetBinding(
+                    image,
+                    PreferJacketImageBehavior.LocalPathProperty,
+                    new Binding(nameof(MovieRecords.ThumbPathWpfSkin)));
+                BindingOperations.SetBinding(
+                    image,
+                    PreferJacketImageBehavior.LocalExistsProperty,
+                    new Binding(nameof(MovieRecords.IsExists)));
+
+                var overlay = new Grid();
+                overlay.Children.Add(image);
+                overlay.Children.Add(loadingBar);
+                content = overlay;
+            }
+            else
             {
-                RelativeSource = new RelativeSource(RelativeSourceMode.Self),
-                Converter = WpfSkinHostContext.AspectConverter,
-                ConverterParameter = targetAspect,
-            });
+                var sourceBinding = new MultiBinding
+                {
+                    Converter = new ThumbSourceAdapter(WpfSkinHostContext.ImageConverter),
+                };
+                sourceBinding.Bindings.Add(new Binding(nameof(MovieRecords.ThumbPathWpfSkin)));
+                sourceBinding.Bindings.Add(new Binding(nameof(MovieRecords.IsExists)));
+                image.SetBinding(Image.SourceProperty, sourceBinding);
+
+                double targetAspect = h is > 0 ? w / h.Value : def.Thumbnail.TargetAspect;
+                image.SetBinding(Image.StretchProperty, new Binding(nameof(Image.Source))
+                {
+                    RelativeSource = new RelativeSource(RelativeSourceMode.Self),
+                    Converter = WpfSkinHostContext.AspectConverter,
+                    ConverterParameter = targetAspect,
+                });
+            }
 
             if (WpfSkinHostContext.ItemContextMenu != null)
             {
@@ -332,7 +375,7 @@ namespace IndigoMovieManager.Services.WpfSkin
                 image.PreviewMouseRightButtonDown += WpfSkinHostContext.ThumbnailRightDown;
             }
 
-            label.Content = image;
+            label.Content = content;
             ApplyBox(label, node, skipSize: true, def);
 
             if (stretchInCell)

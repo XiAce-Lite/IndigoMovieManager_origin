@@ -55,6 +55,16 @@
 
 詳細な WPF スキン記法: [Skins/Wpf/README.md](../Skins/Wpf/README.md)
 
+### WPF スキン読込失敗時のフォールバック
+
+`WpfSkinLoader.TryLoad` が失敗した場合（`skin.json` 欠落・JSON 不正・未知トークンなど）、例外は UI に出さず Debug ログのみとし、`LoadDefault()` で **`CardLarge`** を適用する（`WpfSkinLoader.DefaultSkinName`）。
+
+- **意図**: 壊れたカスタムスキンでもアプリを落とさない
+- **注意**: コンボに選んだスキン名が残っていても、実体のレイアウト／サムネ生成キーは CardLarge（例: `400x225x1x1`）になり得る
+- **CardLarge である理由**: `Default*` は旧タブ再現用の保護スキン。読込失敗時と新規スキン雛形の両方で、ユーザー改変向けサンプルの代表として CardLarge を使う（初回／DB の `system.skin` が Default 系であることとは別）
+
+`CurrentThumbnailLayout` が未設定のときの一覧レイアウト解決も、同様に **400×225×1×1**（CardLarge 相当）へフォールバックする。
+
 ### レイアウトキー
 
 - `ThumbnailLayoutSpec`（`Thumbnail/ThumbnailLayoutSpec.cs`）で `W×H×C×R` を表現
@@ -170,6 +180,18 @@ dotnet publish IndigoMovieManager.csproj -c Release -p:Platform=x64 -p:StandardD
 - 運用: main マージ前にエージェントが前回リリース以降のコミットから数行下書き → 人間が編集・承認 → 承認後に changes を含めて main へマージ
 - 箇条書きが空のときは「細かい修正・改善」をフォールバック表示
 - リリース後、CI が `Clear-ReleaseNotesChanges.ps1` で下書きをコメントのみに戻す（バージョン更新と同じ `[skip ci]` コミット）
+
+## メタデータ欄の対応（DMM / UI）
+
+| DB / モデル | UI 表示名 | 用途 |
+|-------------|-----------|------|
+| `artist` | **メーカー** | DMM 取得時のメーカー名を格納。フィールド名は WhiteBrowser 互換で `artist` のまま |
+| `comment1` | ジャケット表 URL 等 | HTTP(S) URL ならジャケ写として詳細パネル・preferJacket 一覧で表示（一覧はローカル先行→HttpClient 取得で差し替え。タイムアウトあり。列行に関わらず枠全体へ1枚センター） |
+| `comment3` | メーカー / レーベル / シリーズ | DMM のメーカー・レーベル・シリーズを連結して格納する場合あり |
+| `title` | タイトル | 作品タイトル |
+| `genre` | ジャンル | ジャンル文字列 |
+
+`movie_name` は DB 登録時に小文字化する（WhiteBrowser 互換・重複判定）。一覧・詳細の**表示**は `movie_path` から得た実ファイル名のケースを使う。
 
 ## 既知の制限
 

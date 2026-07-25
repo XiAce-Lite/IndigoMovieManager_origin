@@ -98,6 +98,7 @@ namespace IndigoMovieManager
         {
             if (_candidates.Count > 0)
             {
+                SelectPreferredCandidate();
                 return;
             }
 
@@ -111,6 +112,21 @@ namespace IndigoMovieManager
             {
                 _candidates.Add(row);
             }
+
+            SelectPreferredCandidate();
+        }
+
+        private void SelectPreferredCandidate()
+        {
+            DmmCandidateRow preferred = DmmCandidateRow.PreferSelection(_candidates);
+            if (preferred == null)
+            {
+                return;
+            }
+
+            CandidatesGrid.SelectedItem = preferred;
+            CandidatesGrid.CurrentItem = preferred;
+            CandidatesGrid.ScrollIntoView(preferred);
         }
 
         private DmmMetadataResolveService GetResolver()

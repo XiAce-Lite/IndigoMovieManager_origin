@@ -288,7 +288,7 @@
                             FontSize="12"
                             Foreground="{DynamicResource MaterialDesign.Brush.Foreground}"
                             Opacity="0.7"
-                            Text="アーティスト:" />
+                            Text="メーカー:" />
                         <TextBlock
                             MaxWidth="560"
                             FontSize="12"

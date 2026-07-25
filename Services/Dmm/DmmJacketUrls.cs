@@ -63,11 +63,15 @@ namespace IndigoMovieManager.Services.Dmm
                     }
                 }
 
-                return null;
+                // HEAD 拒否・一時失敗時は原 URL を返し、画像 GET 側に任せる
+                return IsPlaceholderJacketUri(new Uri(url.Trim(), UriKind.Absolute))
+                    ? null
+                    : url.Trim();
             }
             catch
             {
-                return null;
+                // 解決失敗でも原 URL で画像取得を試せるようにする
+                return IsHttpUrl(url) ? url.Trim() : null;
             }
         }
 

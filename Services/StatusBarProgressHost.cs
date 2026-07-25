@@ -14,5 +14,7 @@ namespace IndigoMovieManager.Services
 
         public static StatusBarProgressCoordinator Coordinator =>
             _coordinator ?? throw new InvalidOperationException("StatusBarProgressHost is not initialized.");
+
+        public static StatusBarProgressCoordinator CoordinatorOrNull => _coordinator;
     }
 }

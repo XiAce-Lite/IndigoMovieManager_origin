@@ -243,7 +243,7 @@ namespace IndigoMovieManager
             AppThemeService.ApplyHeaderZone(HeaderZone);
             if (_wpfSkin != null)
             {
-                ApplyWpfSkin(_wpfSkin.Name);
+                ApplyWpfSkin(GetCurrentWpfSkinFolder());
                 WpfSkinList.Items.Refresh();
                 Dispatcher.BeginInvoke(ReapplyWpfSkinListSurface, System.Windows.Threading.DispatcherPriority.Loaded);
                 Dispatcher.BeginInvoke(ReapplyWpfSkinListSurface, System.Windows.Threading.DispatcherPriority.Render);
@@ -318,38 +318,41 @@ namespace IndigoMovieManager
                 return;
             }
 
-            IReadOnlyList<MovieRecords> records = useFullLibrary
+            // 表示は常に現在のフィルタ結果（ランダム等の並びを維持）。
+            // useFullLibrary はサムネ生成キューの対象だけライブラリ全体にする。
+            IReadOnlyList<MovieRecords> displayRecords = GetActiveFilterRecords();
+            IReadOnlyList<MovieRecords> thumbRecords = useFullLibrary
                 ? MainVM.MovieRecs as IReadOnlyList<MovieRecords> ?? [.. MainVM.MovieRecs]
-                : GetActiveFilterRecords();
+                : displayRecords;
 
             // スキン切替時は対象0件でも直前ジョブを必ず止める（{::error} 0件→別スキン→0件戻し等）
             AbandonTabThumbnailWork(layout.Key);
             EndThumbnailScanProgress();
             ThumbnailQueueProcessor.RequestDismissProgress();
 
-            ThumbPathHelper.ResolveThumbPathsForEngine(records, _thumbLayoutCache, _currentSkinEngine);
+            ThumbPathHelper.ResolveThumbPathsForEngine(thumbRecords, _thumbLayoutCache, _currentSkinEngine);
 
             if (_currentSkinEngine == SkinEngine.Wb)
             {
-                SkinViewGridWb.Tag = records;
-                SkinViewGridWb.RenderItems(records);
+                SkinViewGridWb.Tag = displayRecords;
+                SkinViewGridWb.RenderItems(displayRecords);
             }
             else
             {
-                WpfSkinList.ItemsSource = records;
+                WpfSkinList.ItemsSource = displayRecords;
             }
 
-            if (records.Count == 0)
+            if (thumbRecords.Count == 0)
             {
                 return;
             }
 
             string skinName = GetActiveSkinDisplayName();
-            bool showScanProgress = records.Count > 64;
+            bool showScanProgress = thumbRecords.Count > 64;
 
             StartTabSwitchThumbnailJob(
                 layout,
-                records,
+                thumbRecords,
                 skinName,
                 showScanProgress: showScanProgress,
                 skipAbandon: true,
@@ -360,7 +363,8 @@ namespace IndigoMovieManager
         private string GetActiveSkinDisplayName() =>
             _currentSkinEngine == SkinEngine.Wb
                 ? WhiteBrowserSkinSettings.ActiveSkinFolder
-                : _wpfSkin?.Name ?? "Indigo";
+                // 進捗表示はコンボと同じフォルダ名（name は Save As 後も元スキンのまま残りやすい）
+                : _wpfSkin?.FolderName ?? _wpfSkin?.Name ?? "Indigo";
 
         private bool ShouldUseFullLibraryForThumbnailRestart() =>
             string.IsNullOrWhiteSpace(MainVM.DbInfo.SearchKeyword);
@@ -417,7 +421,9 @@ namespace IndigoMovieManager
             {
                 IReadOnlyList<string> skins = Services.WpfSkin.WpfSkinLoader.EnumerateSkins();
                 ComboSkin.ItemsSource = skins;
-                ComboSkin.SelectedItem = skins.Contains(_wpfSkin?.Name) ? _wpfSkin.Name : skins.FirstOrDefault();
+                ComboSkin.SelectedItem = skins.Contains(GetCurrentWpfSkinFolder())
+                    ? GetCurrentWpfSkinFolder()
+                    : skins.FirstOrDefault();
             }
             else
             {
@@ -526,9 +532,9 @@ namespace IndigoMovieManager
                     : Properties.Settings.Default.LastWpfSkinName;
                 ApplyWpfSkin(string.IsNullOrWhiteSpace(skinName) ? null : skinName);
 
-                if (!string.IsNullOrWhiteSpace(_wpfSkin?.Name))
+                if (!string.IsNullOrWhiteSpace(GetCurrentWpfSkinFolder()))
                 {
-                    Properties.Settings.Default.LastWpfSkinName = _wpfSkin.Name;
+                    Properties.Settings.Default.LastWpfSkinName = GetCurrentWpfSkinFolder();
                 }
             }
 
@@ -574,7 +580,7 @@ namespace IndigoMovieManager
 
         private void ReloadSkin_Click(object sender, RoutedEventArgs e)
         {
-            string skinName = ComboSkin.SelectedItem as string ?? _wpfSkin?.Name;
+            string skinName = ComboSkin.SelectedItem as string ?? GetCurrentWpfSkinFolder();
             ApplyWpfSkin(skinName);
             _ = OnSkinLayoutChangedAsync();
         }
@@ -590,12 +596,16 @@ namespace IndigoMovieManager
         /// <summary>skin.json から WPF ネイティブスキンの ItemsPanel / ItemTemplate を組み立てて適用する。</summary>
         private void ApplyWpfSkin(string skinName = null)
         {
+            // 旧スキンのジャケ写取得を捨て、ステータスバー件数もリセット
+            Services.Dmm.DmmRemoteImageLoader.CancelPendingAndResetProgress();
+
             _wpfSkin = skinName != null && Services.WpfSkin.WpfSkinLoader.TryLoad(skinName, out var def)
                 ? def
                 : Services.WpfSkin.WpfSkinLoader.LoadDefault();
 
             Services.WpfSkin.WpfSkinSettings.CurrentThumbnailLayout =
                 Thumbnail.ThumbnailLayoutSpec.FromWpfSkinThumbnail(_wpfSkin.Thumbnail);
+            Services.WpfSkin.WpfSkinSettings.PreferJacket = _wpfSkin.Thumbnail?.PreferJacket == true;
 
             var context = new Services.WpfSkin.WpfSkinTemplateBuilder.BuildContext
             {
@@ -626,6 +636,12 @@ namespace IndigoMovieManager
             System.Windows.Media.Brush surfaceBg = Services.WpfSkin.WpfSkinTemplateBuilder.ParseSurfaceBackground(_wpfSkin);
             Services.WpfSkin.WpfSkinListChrome.ApplySurface(WpfSkinList, surfaceBg, WpfSkinHost, MovieListHost);
         }
+
+        /// <summary>コンボ／設定用のフォルダキー。表示名 <see cref="Services.WpfSkin.WpfSkinDefinition.Name"/> とは別。</summary>
+        private string GetCurrentWpfSkinFolder() =>
+            !string.IsNullOrWhiteSpace(_wpfSkin?.FolderName)
+                ? _wpfSkin.FolderName
+                : _wpfSkin?.Name;
 
         private void ReapplyWpfSkinListSurface()
         {
@@ -1990,7 +2006,7 @@ namespace IndigoMovieManager
                 return;
             }
 
-            string skinName = _wpfSkin?.Name;
+            string skinName = GetCurrentWpfSkinFolder();
             if (!string.IsNullOrWhiteSpace(skinName))
             {
                 UpsertSystemTable(Properties.Settings.Default.LastDoc, "skin", skinName);
@@ -2054,11 +2070,13 @@ namespace IndigoMovieManager
                 foreach (var item in MainVM.MovieRecs.Where(x => x.Movie_Path == oldFullPath))
                 {
                     item.Movie_Path = eFullPath;
-                    item.Movie_Name = Path.GetFileNameWithoutExtension(eFullPath).ToLower();
+                    item.Movie_Name = Path.GetFileName(eFullPath);
+                    item.Movie_Body = Path.GetFileNameWithoutExtension(eFullPath);
+                    string dbMovieName = Path.GetFileNameWithoutExtension(eFullPath).ToLowerInvariant();
 
                     //DB内のデータ更新＆サムネイルのファイル名変更処理
                     UpdateMovieSingleColumn(MainVM.DbInfo.DBFullPath, item.Movie_Id, "movie_path", item.Movie_Path);
-                    UpdateMovieSingleColumn(MainVM.DbInfo.DBFullPath, item.Movie_Id, "movie_name", item.Movie_Name);
+                    UpdateMovieSingleColumn(MainVM.DbInfo.DBFullPath, item.Movie_Id, "movie_name", dbMovieName);
 
                     //サムネイルのリネーム
                     var checkFileName = Path.GetFileNameWithoutExtension(oldFullPath);
@@ -2066,7 +2084,7 @@ namespace IndigoMovieManager
                         MainVM.DbInfo.ThumbFolder,
                         MainVM.DbInfo.DBName,
                         checkFileName,
-                        item.Movie_Name,
+                        dbMovieName,
                         item.Hash,
                         item);
 
@@ -2076,8 +2094,8 @@ namespace IndigoMovieManager
                             MainVM.DbInfo.BookmarkFolder,
                             MainVM.DbInfo.DBName,
                             checkFileName,
-                            item.Movie_Name);
-                        UpdateBookmarkRename(MainVM.DbInfo.DBFullPath, checkFileName, item.Movie_Name);
+                            dbMovieName);
+                        UpdateBookmarkRename(MainVM.DbInfo.DBFullPath, checkFileName, dbMovieName);
                     }
                 }
                 GetBookmarkTable();
@@ -2650,9 +2668,9 @@ namespace IndigoMovieManager
 
             //実態ファイルのリネームと新旧ファイルパス作成
             FileInfo mvFile = new(mv.Movie_Path);
-            var destMoveFile = mv.Movie_Path.Replace(checkFileName, newFilePath);
+            var destMoveFile = mv.Movie_Path.Replace(checkFileName, newFilePath, StringComparison.CurrentCultureIgnoreCase);
             var destFolder = Path.GetDirectoryName(destMoveFile);
-            destMoveFile = destMoveFile.Replace(checkExt, newExt);
+            destMoveFile = destMoveFile.Replace(checkExt, newExt, StringComparison.OrdinalIgnoreCase);
             try
             {
                 mvFile.MoveTo(destMoveFile, true);
@@ -2793,12 +2811,12 @@ namespace IndigoMovieManager
 
         private void RefreshDmmPendingMenuBadge()
         {
-            if (MainVM?.ToolNavItems == null)
+            if (MainVM?.DmmToolNavItems == null)
             {
                 return;
             }
 
-            NavigationDrawerItem item = MainVM.ToolNavItems
+            NavigationDrawerItem item = MainVM.DmmToolNavItems
                 .FirstOrDefault(nav => nav.Id == NavigationMenuIds.DmmPendingCandidates);
             if (item == null)
             {
@@ -3102,7 +3120,11 @@ namespace IndigoMovieManager
                 }
 
                 string summary =
-                    $"成功 {applied} / 品番なし {noCode} / 未ヒット {notFound} / 複数候補 {ambiguous} / エラー {httpErrors}\n\n" +
+                    $"成功 : {applied}\n" +
+                    $"品番なし : {noCode}\n" +
+                    $"未ヒット : {notFound}\n" +
+                    $"複数候補 : {ambiguous}\n" +
+                    $"エラー : {httpErrors}\n\n" +
                     "Powered by FANZA Webサービス";
                 _statusBarProgress.ShowIdleStatusMessage(
                     $"DMM情報取得: 成功{applied} 品番なし{noCode} 未ヒット{notFound} 複数{ambiguous} エラー{httpErrors}");
@@ -3567,6 +3589,14 @@ namespace IndigoMovieManager
                 case NavigationMenuIds.DmmPendingCandidates:
                     ExecuteToolNavigation(id);
                     break;
+                case NavigationMenuIds.DmmTagExcludeList:
+                    ExecuteDmmTagExcludeNavigation();
+                    break;
+                case NavigationMenuIds.WpfSkinEdit:
+                case NavigationMenuIds.WpfSkinNew:
+                case NavigationMenuIds.WpfSkinDelete:
+                    ExecuteWpfSkinMaintenanceNavigation(id);
+                    break;
                 default:
                     OpenRecentFile(id);
                     break;
@@ -3703,6 +3733,165 @@ namespace IndigoMovieManager
                 case NavigationMenuIds.DmmPendingCandidates:
                     BeginDmmPendingCandidatesFromMenu();
                     break;
+            }
+        }
+
+        /// <summary>DMM タグ除外リスト。アプリ共通のため DB 未選択でも利用できる。</summary>
+        private void ExecuteDmmTagExcludeNavigation()
+        {
+            MenuToggleButton.IsChecked = false;
+            var window = new DmmTagExcludeWindow
+            {
+                Owner = this,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            };
+            window.ShowDialog();
+        }
+
+        /// <summary>WPF スキンメンテ。DB 未選択でも利用できる。</summary>
+        private void ExecuteWpfSkinMaintenanceNavigation(string menuId)
+        {
+            MenuToggleButton.IsChecked = false;
+            switch (menuId)
+            {
+                case NavigationMenuIds.WpfSkinEdit:
+                    OpenWpfSkinMaintenance(SkinMaintenanceWindow.OpenMode.EditExisting, ResolveWpfSkinEditTarget());
+                    break;
+                case NavigationMenuIds.WpfSkinNew:
+                    OpenWpfSkinMaintenance(SkinMaintenanceWindow.OpenMode.CreateNew, null);
+                    break;
+                case NavigationMenuIds.WpfSkinDelete:
+                    BeginWpfSkinDeleteFromMenu();
+                    break;
+            }
+        }
+
+        private string ResolveWpfSkinEditTarget()
+        {
+            if (_currentSkinEngine == SkinEngine.Wpf && ComboSkin.SelectedItem is string selected
+                && !string.IsNullOrWhiteSpace(selected))
+            {
+                return selected;
+            }
+
+            string last = Properties.Settings.Default.LastWpfSkinName;
+            if (!string.IsNullOrWhiteSpace(last)
+                && Services.WpfSkin.WpfSkinStorage.FolderExists(last))
+            {
+                return last;
+            }
+
+            return Services.WpfSkin.WpfSkinLoader.DefaultSkinName;
+        }
+
+        private void OpenWpfSkinMaintenance(SkinMaintenanceWindow.OpenMode mode, string folderName)
+        {
+            var window = new SkinMaintenanceWindow(this, mode, folderName);
+            window.ShowDialog();
+            if (window.SkinWasSaved || window.SkinWasDeleted)
+            {
+                RefreshWpfSkinListAfterMaintenance(window.ResultSkinFolderName, preferSelectSaved: window.SkinWasSaved);
+            }
+            else if (_currentSkinEngine == SkinEngine.Wpf)
+            {
+                // プレビューが HostContext を上書きするため、キャンセル時も本番側へ戻す。
+                // Name（表示名）ではなくフォルダキーで再適用する（不一致だと CardLarge へ落ちる）。
+                string skinName = ComboSkin.SelectedItem as string
+                    ?? GetCurrentWpfSkinFolder()
+                    ?? Properties.Settings.Default.LastWpfSkinName;
+                ApplyWpfSkin(string.IsNullOrWhiteSpace(skinName) ? null : skinName);
+                _ = OnSkinLayoutChangedAsync();
+            }
+        }
+
+        private void BeginWpfSkinDeleteFromMenu()
+        {
+            IReadOnlyList<string> deletable = Services.WpfSkin.WpfSkinStorage.EnumerateDeletableSkins();
+            if (deletable.Count == 0)
+            {
+                MessageBox.Show(
+                    this,
+                    "削除できるユーザースキンがありません。\n（Default 系はアプリから削除できません）",
+                    Assembly.GetExecutingAssembly().GetName().Name,
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            var pick = new WpfSkinPickWindow(
+                this,
+                "WPFスキンを削除",
+                "ゴミ箱へ移動するスキンを選んでください。（Default 系は一覧に出ません）",
+                deletable);
+            if (pick.ShowDialog() != true || string.IsNullOrWhiteSpace(pick.SelectedSkinName))
+            {
+                return;
+            }
+
+            string name = pick.SelectedSkinName;
+            var confirm = new MessageBoxEx(this)
+            {
+                DlogTitle = "スキンをゴミ箱へ",
+                DlogMessage = $"スキン「{name}」をゴミ箱へ移動します。よろしいですか？",
+                PackIconKind = MaterialDesignThemes.Wpf.PackIconKind.Delete,
+            };
+            confirm.ShowDialog();
+            if (confirm.CloseStatus() != MessageBoxResult.OK)
+            {
+                return;
+            }
+
+            if (!Services.WpfSkin.WpfSkinStorage.TryDeleteToRecycleBin(name, out string error))
+            {
+                MessageBox.Show(this, error ?? "削除に失敗しました。", Assembly.GetExecutingAssembly().GetName().Name,
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            RefreshWpfSkinListAfterMaintenance(name, preferSelectSaved: false);
+        }
+
+        private void RefreshWpfSkinListAfterMaintenance(string affectedName, bool preferSelectSaved)
+        {
+            bool wasWpf = _currentSkinEngine == SkinEngine.Wpf;
+            string previous = GetCurrentWpfSkinFolder();
+            RebuildSkinCombo(isWpf: true);
+
+            if (!wasWpf)
+            {
+                return;
+            }
+
+            IReadOnlyList<string> skins = Services.WpfSkin.WpfSkinLoader.EnumerateSkins();
+            string select = null;
+            if (preferSelectSaved
+                && !string.IsNullOrWhiteSpace(affectedName)
+                && skins.Contains(affectedName))
+            {
+                select = affectedName;
+            }
+            else if (!string.IsNullOrWhiteSpace(previous) && skins.Contains(previous))
+            {
+                select = previous;
+            }
+            else if (skins.Contains(Services.WpfSkin.WpfSkinLoader.DefaultSkinName))
+            {
+                select = Services.WpfSkin.WpfSkinLoader.DefaultSkinName;
+            }
+            else
+            {
+                select = skins.FirstOrDefault();
+            }
+
+            if (!string.IsNullOrWhiteSpace(select))
+            {
+                _suppressSkinComboChange = true;
+                ComboSkin.SelectedItem = select;
+                _suppressSkinComboChange = false;
+                ApplyWpfSkin(select);
+                Properties.Settings.Default.LastWpfSkinName = select;
+                Properties.Settings.Default.Save();
+                _ = OnSkinLayoutChangedAsync();
             }
         }
 
@@ -3863,6 +4052,33 @@ namespace IndigoMovieManager
             if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath)) { return; }
             if (_isDeletingSearchHistory) { return; }
             if (_isApplyingSearchKeyword) { return; }
+        }
+
+        private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.E
+                && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control
+                && (Keyboard.Modifiers & ModifierKeys.Alt) == 0)
+            {
+                FocusSearchBox();
+                e.Handled = true;
+            }
+        }
+
+        private void FocusSearchBox()
+        {
+            if (SearchBox == null)
+            {
+                return;
+            }
+
+            // ドロワーが開いていれば閉じずとも検索は触れるが、フォーカスを確実に移す
+            _ = SearchBox.Focus();
+            if (SearchBox.Template?.FindName("PART_EditableTextBox", SearchBox) is TextBox editable)
+            {
+                _ = editable.Focus();
+                editable.SelectAll();
+            }
         }
 
         private async void SearchBox_LostFocus(object sender, RoutedEventArgs e)
@@ -4749,15 +4965,29 @@ namespace IndigoMovieManager
 
         private void SkinView_RemoveTagRequested(object sender, (long MovieId, string Tag) e)
         {
-            MovieRecords mv = filterList.FirstOrDefault(x => x.Movie_Id == e.MovieId);
-            if (mv == null || mv.Tag == null || !mv.Tag.Contains(e.Tag))
+            List<MovieRecords> selected = GetSelectedMovies() ?? [];
+            List<MovieRecords> targets;
+            if (selected.Exists(x => x.Movie_Id == e.MovieId))
+            {
+                targets = [.. selected.Where(m => m.Tag != null && m.Tag.Contains(e.Tag))];
+            }
+            else
+            {
+                MovieRecords mv = filterList.FirstOrDefault(x => x.Movie_Id == e.MovieId);
+                targets = mv != null && mv.Tag != null && mv.Tag.Contains(e.Tag) ? [mv] : [];
+            }
+
+            if (targets.Count == 0)
             {
                 return;
             }
 
-            mv.Tag.Remove(e.Tag);
-            mv.Tags = ConvertTagsWithNewLine(mv.Tag);
-            UpdateMovieSingleColumn(MainVM.DbInfo.DBFullPath, mv.Movie_Id, MovieColumn.Tag, mv.Tags);
+            foreach (MovieRecords mv in targets)
+            {
+                TagMutationService.ApplyDelete(mv, e.Tag);
+                UpdateMovieSingleColumn(MainVM.DbInfo.DBFullPath, mv.Movie_Id, MovieColumn.Tag, mv.Tags);
+            }
+
             Refresh();
         }
 
@@ -4875,7 +5105,7 @@ namespace IndigoMovieManager
 
                 if (_contextMenuMovie != null)
                 {
-                    SelectMovieRecord(_contextMenuMovie);
+                    SelectMovieRecordPreservingMulti(_contextMenuMovie);
                 }
             }
 
@@ -4914,7 +5144,7 @@ namespace IndigoMovieManager
                 && item.DataContext is MovieRecords record)
             {
                 _contextMenuMovie = record;
-                SelectMovieRecord(record);
+                SelectMovieRecordPreservingMulti(record);
             }
         }
 
@@ -4950,6 +5180,32 @@ namespace IndigoMovieManager
                     break;
                 case SkinEngine.Wb:
                     SkinViewGridWb.SelectMovie(record, filterList);
+                    break;
+            }
+        }
+
+        /// <summary>
+        /// 右クリック等。既に複数選択に含まれていれば選択を崩さずフォーカスだけ合わせる。
+        /// </summary>
+        private void SelectMovieRecordPreservingMulti(MovieRecords record)
+        {
+            if (record == null)
+            {
+                return;
+            }
+
+            switch (_currentSkinEngine)
+            {
+                case SkinEngine.Wpf:
+                    if (WpfSkinList.SelectedItems.Contains(record))
+                    {
+                        return;
+                    }
+
+                    WpfSkinList.SelectedItem = record;
+                    break;
+                case SkinEngine.Wb:
+                    SkinViewGridWb.FocusOrSelectMovie(record, filterList);
                     break;
             }
         }
@@ -5075,6 +5331,12 @@ namespace IndigoMovieManager
                     if (senderObj.SelectedValue != null)
                     {
                         var id = senderObj.SelectedValue.ToString();
+                        if (id == "28")
+                        {
+                            SortDefinitions.ReseedRandom();
+                            InvalidateAllItemsFilterCache();
+                        }
+
                         MainVM.DbInfo.Sort = id;
                         await ApplyFilterAndSortAsync(id).ConfigureAwait(true);
                         SelectFirstItem();
@@ -6067,6 +6329,9 @@ namespace IndigoMovieManager
 
         void IMainWindowActions.UpdateMovieColumn(long movieId, MovieColumn column, object value) =>
             UpdateMovieSingleColumn(MainVM.DbInfo.DBFullPath, movieId, column, value);
+
+        IReadOnlyList<MovieRecords> IMainWindowActions.GetSelectedMovies() =>
+            GetSelectedMovies() ?? [];
 
         UserControls.ExtDetail IMainWindowListHost.ViewExtDetail => viewExtDetail;
 

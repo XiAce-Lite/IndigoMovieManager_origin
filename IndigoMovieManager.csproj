@@ -7,6 +7,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <Title>IndigoMovieManager</Title>
+    <ApplicationIcon>Assets\app-icon.ico</ApplicationIcon>
     <Platforms>AnyCPU;x64</Platforms>
     <PlatformTarget>AnyCPU</PlatformTarget>
     <FileVersion>1.0.0.85</FileVersion>
@@ -72,6 +73,10 @@
     <PackageReference Include="VirtualizingWrapPanel" Version="2.3.2" />
     <!-- SQLite ネイティブバイナリのバンドルを追加 -->
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.10" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\app-icon.ico" />
   </ItemGroup>
 
   <ItemGroup>

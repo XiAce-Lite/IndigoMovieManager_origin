@@ -4,9 +4,9 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
     Title="DMM 候補検索"
-    Width="860"
+    Width="1000"
     Height="560"
-    MinWidth="720"
+    MinWidth="860"
     MinHeight="460"
     ResizeMode="CanResizeWithGrip"
     WindowStartupLocation="CenterOwner">
@@ -80,28 +80,50 @@
                 ScrollViewer.HorizontalScrollBarVisibility="Auto"
                 ScrollViewer.VerticalScrollBarVisibility="Auto"
                 SelectionMode="Single"
-                SelectionUnit="Cell">
+                SelectionUnit="FullRow">
                 <DataGrid.Columns>
                     <DataGridTextColumn
-                        Width="48"
+                        Width="64"
+                        MinWidth="64"
                         Binding="{Binding JacketLabel}"
                         Header="ジャケ"
                         IsReadOnly="True" />
                     <DataGridTextColumn
+                        Width="320"
+                        MinWidth="200"
+                        Binding="{Binding Title}"
+                        Header="タイトル">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                <Setter Property="ToolTip" Value="{Binding Title}" />
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+                    <DataGridTextColumn
+                        Width="168"
+                        MinWidth="120"
+                        Binding="{Binding ContentId}"
+                        Header="品番">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                <Setter Property="ToolTip" Value="{Binding ContentId}" />
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+                    <DataGridTextColumn
                         Width="280"
                         MinWidth="180"
-                        Binding="{Binding Title}"
-                        Header="タイトル" />
-                    <DataGridTextColumn
-                        Width="140"
-                        MinWidth="100"
-                        Binding="{Binding ContentId}"
-                        Header="品番" />
-                    <DataGridTextColumn
-                        Width="240"
-                        MinWidth="160"
                         Binding="{Binding MakerLabelSeries}"
-                        Header="メーカー / レーベル / シリーズ" />
+                        Header="メーカー / レーベル / シリーズ">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                <Setter Property="ToolTip" Value="{Binding MakerLabelSeries}" />
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
                     <DataGridTextColumn
                         Width="100"
                         MinWidth="80"

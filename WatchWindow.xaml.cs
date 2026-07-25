@@ -73,28 +73,38 @@ namespace IndigoMovieManager
 
         private void OpenFolder_Click(object sender, RoutedEventArgs e)
         {
-
-            try
+            WatchRecords item = null;
+            if (sender is FrameworkElement fe && fe.DataContext is WatchRecords fromButton)
             {
-
-                WatchRecords item = (WatchRecords)WatchDataGrid.SelectedItem;
-
-                var ofd = new OpenFolderDialog
-                {
-                    InitialDirectory = item.Dir.ToString() ?? Directory.GetCurrentDirectory(),
-                    Multiselect = false,
-                    Title = "監視フォルダの選択",
-                };
-
-                var result = ofd.ShowDialog();
-                if (result == true)
-                {
-                    item.Dir = ofd.FolderName;
-                }
-
+                item = fromButton;
             }
-            catch (InvalidCastException)
+            else if (WatchDataGrid.SelectedItem is WatchRecords selected)
             {
+                item = selected;
+            }
+
+            // 新規行プレースホルダでは DataContext が WatchRecords にならないため、ここで行を作る。
+            if (item == null)
+            {
+                item = new WatchRecords();
+                WatchVM.WatchRecs.Add(item);
+                WatchDataGrid.SelectedItem = item;
+            }
+
+            string initial = string.IsNullOrWhiteSpace(item.Dir)
+                ? Directory.GetCurrentDirectory()
+                : item.Dir;
+
+            var ofd = new OpenFolderDialog
+            {
+                InitialDirectory = initial,
+                Multiselect = false,
+                Title = "監視フォルダの選択",
+            };
+
+            if (ofd.ShowDialog() == true)
+            {
+                item.Dir = ofd.FolderName;
             }
         }
     }

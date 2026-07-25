@@ -1,61 +1,60 @@
-﻿<Window
-    x:Class="IndigoMovieManager.TagEdit"
-    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-    xmlns:local="clr-namespace:IndigoMovieManager"
-    xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
-    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    Title="タグ編集"
-    Width="320"
-    SizeToContent="Height"
-    MinHeight="200"
-    d:DataContext="{d:DesignInstance Type=local:MovieRecords}"
-    Background="{DynamicResource MaterialDesign.Brush.Background}"
-    ResizeMode="NoResize"
-    WindowStartupLocation="CenterOwner"
-    mc:Ignorable="d">
-    <materialDesign:ColorZone Padding="12,12,12,12">
-        <StackPanel Orientation="Vertical">
-            <TextBlock
-                x:Name="TagDescription"
-                Margin="0,0,0,8"
-                FontSize="14"
-                Text="タグは改行で区切ってください。" />
-            <TextBlock
-                Margin="0,0,0,4"
-                FontSize="12"
-                Opacity="0.75"
-                Text="1行につき1つのタグです。" />
-            <TextBox
-                x:Name="TagEditBox"
-                Height="165"
-                Margin="0,0,0,12"
-                materialDesign:TextFieldAssist.HasClearButton="True"
-                materialDesign:TextFieldAssist.HasOutlinedTextField="True"
-                materialDesign:TextFieldAssist.TextFieldCornerRadius="4"
-                AcceptsReturn="True"
-                BorderThickness="2,2,2,2"
-                FontSize="14"
-                ScrollViewer.VerticalScrollBarVisibility="Auto"
-                TabIndex="1"
-                Text="{Binding Tags}"
-                TextWrapping="Wrap" />
-            <StackPanel
-                HorizontalAlignment="Right"
-                Orientation="Horizontal">
-                <Button
-                    x:Name="OK"
-                    Margin="0,0,10,0"
-                    Click="Button_Click"
-                    Content="OK(_R)"
-                    IsDefault="True" />
-                <Button
-                    x:Name="Cancel"
-                    Click="Button_Click"
-                    Content="Cancel(_C)"
-                    IsCancel="true" />
-            </StackPanel>
-        </StackPanel>
-    </materialDesign:ColorZone>
-</Window>
+﻿<Window
+    x:Class="IndigoMovieManager.TagEdit"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="clr-namespace:IndigoMovieManager"
+    xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    Title="タグ編集"
+    Width="320"
+    SizeToContent="Height"
+    d:DataContext="{d:DesignInstance Type=local:MovieRecords}"
+    Background="{DynamicResource MaterialDesign.Brush.Background}"
+    ResizeMode="NoResize"
+    WindowStartupLocation="CenterOwner"
+    mc:Ignorable="d">
+    <materialDesign:ColorZone Padding="12,12,12,0">
+        <StackPanel Margin="0,0,0,8" Orientation="Vertical">
+            <TextBlock
+                x:Name="TagDescription"
+                Margin="0,0,0,8"
+                FontSize="14"
+                Text="タグは改行で区切ってください。" />
+            <TextBlock
+                Margin="0,0,0,4"
+                FontSize="12"
+                Opacity="0.75"
+                Text="1行につき1つのタグです。" />
+            <TextBox
+                x:Name="TagEditBox"
+                Height="165"
+                Margin="0,0,0,12"
+                materialDesign:TextFieldAssist.HasClearButton="True"
+                materialDesign:TextFieldAssist.HasOutlinedTextField="True"
+                materialDesign:TextFieldAssist.TextFieldCornerRadius="4"
+                AcceptsReturn="True"
+                BorderThickness="2,2,2,2"
+                FontSize="14"
+                ScrollViewer.VerticalScrollBarVisibility="Auto"
+                TabIndex="1"
+                Text="{Binding Tags}"
+                TextWrapping="Wrap" />
+            <StackPanel
+                HorizontalAlignment="Right"
+                Orientation="Horizontal">
+                <Button
+                    x:Name="OK"
+                    Margin="0,0,10,0"
+                    Click="Button_Click"
+                    Content="OK(_R)"
+                    IsDefault="True" />
+                <Button
+                    x:Name="Cancel"
+                    Click="Button_Click"
+                    Content="Cancel(_C)"
+                    IsCancel="true" />
+            </StackPanel>
+        </StackPanel>
+    </materialDesign:ColorZone>
+</Window>

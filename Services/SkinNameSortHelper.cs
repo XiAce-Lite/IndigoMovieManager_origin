@@ -13,6 +13,14 @@ namespace IndigoMovieManager.Services
     {
         private const string DefaultPrefix = "Default";
 
+        /// <summary>
+        /// アプリからの上書き・削除を禁止する同梱 Default 系か。
+        /// フォルダ名が Default で始まるもの（大文字小文字無視）。
+        /// </summary>
+        public static bool IsProtectedDefaultSkin(string name) =>
+            !string.IsNullOrWhiteSpace(name)
+            && name.StartsWith(DefaultPrefix, StringComparison.OrdinalIgnoreCase);
+
         public static IReadOnlyList<string> OrderDefaultFirst(IEnumerable<string> names)
         {
             if (names == null)

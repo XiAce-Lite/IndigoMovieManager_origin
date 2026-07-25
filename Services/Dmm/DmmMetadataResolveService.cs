@@ -21,7 +21,11 @@ namespace IndigoMovieManager.Services.Dmm
                 return Task.FromResult(DmmResolveResult.Skip(DmmResolveOutcome.NoProductCode, "品番なし"));
             }
 
-            return ResolveByProductCodeAsync(extracted.ProductCode, extracted.CidCandidates, cancellationToken);
+            return ResolveByProductCodeAsync(
+                extracted.ProductCode,
+                extracted.SpaceForm,
+                extracted.CidCandidates,
+                cancellationToken);
         }
 
         public async Task<DmmKeywordSearchResult> SearchKeywordAsync(
@@ -42,8 +46,8 @@ namespace IndigoMovieManager.Services.Dmm
         }
 
         /// <summary>
-        /// 手動検索向け。入力語から CID 直検索とキーワード検索の両方を行い、候補をマージする。
-        /// キーワード検索は最大 30 件取得する。
+        /// 手動検索。CID＋入力語キーワードを試し、ジャケありで打ち切り。
+        /// ジャケなしならスペース表記を1回だけ追加検索する。
         /// </summary>
         public async Task<DmmKeywordSearchResult> SearchManualAsync(
             string keyword,
@@ -56,15 +60,103 @@ namespace IndigoMovieManager.Services.Dmm
 
             string trimmed = keyword.Trim();
             var merged = new List<DmmCandidateEntry>();
-
             DmmCidNormalizer.ExtractResult extracted = DmmCidNormalizer.ExtractFromFileName(trimmed);
+
+            DmmKeywordSearchResult phase1 = await RunManualFirstPhaseAsync(
+                    trimmed,
+                    extracted,
+                    merged,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (phase1 != null)
+            {
+                return phase1;
+            }
+
+            // ジャケなし → スペース表記を1回だけ追加
+            string spaceForm = extracted.SpaceForm;
+            if (!string.IsNullOrWhiteSpace(spaceForm)
+                && !string.Equals(spaceForm, trimmed, StringComparison.OrdinalIgnoreCase))
+            {
+                DmmKeywordSearchResult spaceResult = await SearchKeywordAsync(spaceForm, cancellationToken, hits: 30)
+                    .ConfigureAwait(false);
+                if (!spaceResult.IsConfigured)
+                {
+                    return spaceResult;
+                }
+
+                if (!string.IsNullOrWhiteSpace(spaceResult.ErrorMessage) && merged.Count == 0)
+                {
+                    return spaceResult;
+                }
+
+                MergeCandidates(merged, spaceResult.Candidates);
+            }
+
+            if (merged.Count == 0)
+            {
+                return DmmKeywordSearchResult.Empty(trimmed);
+            }
+
+            return DmmKeywordSearchResult.FromItems(trimmed, merged);
+        }
+
+        /// <summary>
+        /// 第1段（CID＋入力語KW）。未設定/HTTPエラーのみ即返す。ジャケありなら打ち切り用に merged を埋めて null 以外はエラー系。
+        /// 通常の継続時は null。
+        /// </summary>
+        private async Task<DmmKeywordSearchResult> RunManualFirstPhaseAsync(
+            string trimmed,
+            DmmCidNormalizer.ExtractResult extracted,
+            List<DmmCandidateEntry> merged,
+            CancellationToken cancellationToken)
+        {
             if (extracted.HasProductCode && extracted.CidCandidates is { Count: > 0 })
             {
-                IReadOnlyList<DmmCandidateEntry> cidHits = await CollectAllCidHitsAsync(
-                        extracted.CidCandidates,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-                MergeCandidates(merged, cidHits);
+                foreach (string cid in extracted.CidCandidates)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    DmmSearchResult digital = await _client
+                        .SearchByCidDigitalAsync(cid, cancellationToken)
+                        .ConfigureAwait(false);
+                    if (digital.Status == DmmSearchStatus.NotConfigured)
+                    {
+                        return DmmKeywordSearchResult.NotConfigured(trimmed);
+                    }
+
+                    if (digital.Status == DmmSearchStatus.HttpError && merged.Count == 0)
+                    {
+                        // CID エラーでも他経路を試すため一旦継続（最終的に0件なら後で Empty）
+                    }
+                    else
+                    {
+                        AppendSearchHits(merged, digital);
+                    }
+
+                    if (DmmJacketHitEvaluator.HasAnyUsableJacket(merged))
+                    {
+                        return DmmKeywordSearchResult.FromItems(trimmed, merged);
+                    }
+
+                    await DelayAsync(cancellationToken).ConfigureAwait(false);
+
+                    DmmSearchResult dvd = await _client
+                        .SearchByCidDvdAsync(cid, cancellationToken)
+                        .ConfigureAwait(false);
+                    if (dvd.Status == DmmSearchStatus.NotConfigured)
+                    {
+                        return DmmKeywordSearchResult.NotConfigured(trimmed);
+                    }
+
+                    AppendSearchHits(merged, dvd);
+                    if (DmmJacketHitEvaluator.HasAnyUsableJacket(merged))
+                    {
+                        return DmmKeywordSearchResult.FromItems(trimmed, merged);
+                    }
+
+                    await DelayAsync(cancellationToken).ConfigureAwait(false);
+                }
             }
 
             DmmKeywordSearchResult keywordResult = await SearchKeywordAsync(trimmed, cancellationToken, hits: 30)
@@ -80,35 +172,35 @@ namespace IndigoMovieManager.Services.Dmm
             }
 
             MergeCandidates(merged, keywordResult.Candidates);
-
-            if (merged.Count == 0 && !string.IsNullOrWhiteSpace(keywordResult.ErrorMessage))
+            if (DmmJacketHitEvaluator.HasAnyUsableJacket(merged))
             {
-                return DmmKeywordSearchResult.HttpError(trimmed, keywordResult.ErrorMessage);
+                return DmmKeywordSearchResult.FromItems(trimmed, merged);
             }
 
-            return DmmKeywordSearchResult.FromItems(trimmed, merged);
+            return null;
         }
 
         private async Task<DmmResolveResult> ResolveByProductCodeAsync(
             string productCode,
+            string spaceForm,
             IReadOnlyList<string> cidCandidates,
             CancellationToken cancellationToken)
         {
             bool sawHttpError = false;
             string lastHttpError = null;
-            List<DmmCandidateEntry> ambiguousCandidates = [];
+            List<DmmCandidateEntry> candidates = [];
 
-            foreach (string cid in cidCandidates)
+            foreach (string cid in cidCandidates ?? [])
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
                 DmmSearchResult digital = await _client
                     .SearchByCidDigitalAsync(cid, cancellationToken)
                     .ConfigureAwait(false);
-                DmmResolveResult digitalResult = Interpret(
+                DmmResolveResult digitalResult = InterpretWithJacketPolicy(
                     digital,
                     productCode,
-                    ambiguousCandidates,
+                    candidates,
                     ref sawHttpError,
                     ref lastHttpError);
                 if (digitalResult != null)
@@ -121,10 +213,10 @@ namespace IndigoMovieManager.Services.Dmm
                 DmmSearchResult dvd = await _client
                     .SearchByCidDvdAsync(cid, cancellationToken)
                     .ConfigureAwait(false);
-                DmmResolveResult dvdResult = Interpret(
+                DmmResolveResult dvdResult = InterpretWithJacketPolicy(
                     dvd,
                     productCode,
-                    ambiguousCandidates,
+                    candidates,
                     ref sawHttpError,
                     ref lastHttpError);
                 if (dvdResult != null)
@@ -135,26 +227,49 @@ namespace IndigoMovieManager.Services.Dmm
                 await DelayAsync(cancellationToken).ConfigureAwait(false);
             }
 
-            DmmSearchResult keyword = await _client
+            // 第1段のキーワード（ハイフン品番）
+            DmmSearchResult hyphenKeyword = await _client
                 .SearchByKeywordSiteAsync(productCode, cancellationToken)
                 .ConfigureAwait(false);
-            DmmResolveResult keywordResult = Interpret(
-                keyword,
+            DmmResolveResult hyphenResult = InterpretWithJacketPolicy(
+                hyphenKeyword,
                 productCode,
-                ambiguousCandidates,
+                candidates,
                 ref sawHttpError,
                 ref lastHttpError);
-            if (keywordResult != null)
+            if (hyphenResult != null)
             {
-                return keywordResult;
+                return hyphenResult;
             }
 
-            if (ambiguousCandidates.Count > 0)
+            // ジャケなし（または未ヒット）→ スペース表記を1回だけ
+            if (!string.IsNullOrWhiteSpace(spaceForm)
+                && !string.Equals(spaceForm, productCode, StringComparison.OrdinalIgnoreCase))
+            {
+                await DelayAsync(cancellationToken).ConfigureAwait(false);
+
+                DmmSearchResult spaceKeyword = await _client
+                    .SearchByKeywordSiteAsync(spaceForm, cancellationToken)
+                    .ConfigureAwait(false);
+                DmmResolveResult spaceResult = InterpretWithJacketPolicy(
+                    spaceKeyword,
+                    productCode,
+                    candidates,
+                    ref sawHttpError,
+                    ref lastHttpError);
+                if (spaceResult != null)
+                {
+                    return spaceResult;
+                }
+            }
+
+            // ジャケなしのまま終了（候補は残す）
+            if (candidates.Count > 0)
             {
                 return DmmResolveResult.Ambiguous(
-                    ambiguousCandidates,
+                    candidates,
                     productCode,
-                    DmmInitialKeyword.FromMovieName(productCode));
+                    productCode);
             }
 
             if (sawHttpError)
@@ -165,32 +280,28 @@ namespace IndigoMovieManager.Services.Dmm
             return DmmResolveResult.Skip(DmmResolveOutcome.NotFound, "未ヒット");
         }
 
-        private async Task<IReadOnlyList<DmmCandidateEntry>> CollectAllCidHitsAsync(
-            IReadOnlyList<string> cidCandidates,
-            CancellationToken cancellationToken)
+        private static DmmResolveResult InterpretWithJacketPolicy(
+            DmmSearchResult result,
+            string productCode,
+            List<DmmCandidateEntry> candidates,
+            ref bool sawHttpError,
+            ref string lastHttpError)
         {
-            var collected = new List<DmmCandidateEntry>();
-
-            foreach (string cid in cidCandidates)
+            switch (result.Status)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-
-                DmmSearchResult digital = await _client
-                    .SearchByCidDigitalAsync(cid, cancellationToken)
-                    .ConfigureAwait(false);
-                AppendSearchHits(collected, digital);
-
-                await DelayAsync(cancellationToken).ConfigureAwait(false);
-
-                DmmSearchResult dvd = await _client
-                    .SearchByCidDvdAsync(cid, cancellationToken)
-                    .ConfigureAwait(false);
-                AppendSearchHits(collected, dvd);
-
-                await DelayAsync(cancellationToken).ConfigureAwait(false);
+                case DmmSearchStatus.NotConfigured:
+                    return DmmResolveResult.Skip(DmmResolveOutcome.NotConfigured, "API未設定");
+                case DmmSearchStatus.HttpError:
+                    sawHttpError = true;
+                    lastHttpError = result.ErrorMessage;
+                    return null;
+                case DmmSearchStatus.OneHit:
+                case DmmSearchStatus.MultipleHits:
+                    AppendSearchHits(candidates, result);
+                    return DmmJacketHitEvaluator.TryConclude(candidates, productCode);
+                default:
+                    return null;
             }
-
-            return collected;
         }
 
         private static void AppendSearchHits(List<DmmCandidateEntry> target, DmmSearchResult result)
@@ -247,31 +358,6 @@ namespace IndigoMovieManager.Services.Dmm
             foreach (DmmCandidateEntry entry in source)
             {
                 AddSingleCandidate(target, entry.Item, entry.FloorLabel);
-            }
-        }
-
-        private static DmmResolveResult Interpret(
-            DmmSearchResult result,
-            string productCode,
-            List<DmmCandidateEntry> ambiguousCandidates,
-            ref bool sawHttpError,
-            ref string lastHttpError)
-        {
-            switch (result.Status)
-            {
-                case DmmSearchStatus.NotConfigured:
-                    return DmmResolveResult.Skip(DmmResolveOutcome.NotConfigured, "API未設定");
-                case DmmSearchStatus.OneHit:
-                    return DmmResolveResult.Applied(result.Item, productCode);
-                case DmmSearchStatus.MultipleHits:
-                    AddCandidates(ambiguousCandidates, result);
-                    return null;
-                case DmmSearchStatus.HttpError:
-                    sawHttpError = true;
-                    lastHttpError = result.ErrorMessage;
-                    return null;
-                default:
-                    return null;
             }
         }
 
@@ -352,4 +438,3 @@ namespace IndigoMovieManager.Services.Dmm
             new() { Keyword = keyword ?? string.Empty, Candidates = candidates ?? [] };
     }
 }
-
