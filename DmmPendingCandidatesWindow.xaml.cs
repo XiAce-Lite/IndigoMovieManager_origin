@@ -1,5 +1,9 @@
 using System.Collections.ObjectModel;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Threading;
 using IndigoMovieManager.Services.Dmm;
 
 namespace IndigoMovieManager
@@ -80,12 +84,61 @@ namespace IndigoMovieManager
             return PendingGrid.SelectedItem as DmmPendingRow;
         }
 
+        private List<DmmPendingRow> GetSelectedRows()
+        {
+            var selected = new List<DmmPendingRow>();
+            foreach (object item in PendingGrid.SelectedItems)
+            {
+                if (item is DmmPendingRow row)
+                {
+                    selected.Add(row);
+                }
+            }
+
+            return selected;
+        }
+
+        private void SelectAllButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_rows.Count == 0)
+            {
+                return;
+            }
+
+            PendingGrid.Focus();
+            PendingGrid.SelectAll();
+        }
+
         private void ResolveButton_Click(object sender, RoutedEventArgs e)
         {
             DmmPendingRow row = GetSelectedRow();
             if (row == null)
             {
                 MessageBox.Show(this, "保留レコードを選択してください。", Title, MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            OpenResolveWindow(row);
+        }
+
+        private void PendingGrid_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            if (FindAncestor<DataGridRow>(e.OriginalSource as DependencyObject)?.Item is not DmmPendingRow row)
+            {
+                return;
+            }
+
+            // ダブルクリックの MouseUp が直後に開く候補画面へ届くのを防ぐ。
+            e.Handled = true;
+            Dispatcher.BeginInvoke(
+                new Action(() => OpenResolveWindow(row)),
+                DispatcherPriority.ApplicationIdle);
+        }
+
+        private void OpenResolveWindow(DmmPendingRow row)
+        {
+            if (row == null)
+            {
                 return;
             }
 
@@ -121,16 +174,20 @@ namespace IndigoMovieManager
 
         private void DiscardButton_Click(object sender, RoutedEventArgs e)
         {
-            DmmPendingRow row = GetSelectedRow();
-            if (row == null)
+            List<DmmPendingRow> selected = GetSelectedRows();
+            if (selected.Count == 0)
             {
                 MessageBox.Show(this, "破棄する保留レコードを選択してください。", Title, MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
+            string confirmMessage = selected.Count == 1
+                ? $"「{selected[0].MovieName}」の未確定候補を破棄します。よろしいですか？"
+                : $"選択中の未確定候補 {selected.Count} 件を破棄します。よろしいですか？";
+
             MessageBoxResult confirm = MessageBox.Show(
                 this,
-                $"「{row.MovieName}」の未確定候補を破棄します。よろしいですか？",
+                confirmMessage,
                 Title,
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Question);
@@ -139,7 +196,7 @@ namespace IndigoMovieManager
                 return;
             }
 
-            DmmPendingCandidateStore.Delete(_dbPath, row.PendingId);
+            DmmPendingCandidateStore.DeleteMany(_dbPath, selected.Select(row => row.PendingId));
             Reload();
             _onResolved?.Invoke();
         }
@@ -167,6 +224,22 @@ namespace IndigoMovieManager
         private void CloseButton_Click(object sender, RoutedEventArgs e)
         {
             Close();
+        }
+
+        private static T FindAncestor<T>(DependencyObject current)
+            where T : DependencyObject
+        {
+            while (current != null)
+            {
+                if (current is T match)
+                {
+                    return match;
+                }
+
+                current = VisualTreeHelper.GetParent(current);
+            }
+
+            return null;
         }
     }
 }

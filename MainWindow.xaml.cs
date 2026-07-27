@@ -3226,27 +3226,45 @@ namespace IndigoMovieManager
             // 検索で絞り込んだ一覧を母数にする（未絞り込み時は全件表示と同じ）。
             IReadOnlyList<MovieRecords> scope = GetActiveFilterRecords();
             int scopeCount = scope.Count;
-            List<DmmAutoFetchJob> targets = [.. scope
-                .Where(record => DmmMetadataEligibility.NeedsFetch(record.Title, record.Comment1))
-                .Select(record => new DmmAutoFetchJob
+            string dbPath = MainVM.DbInfo.DBFullPath;
+            HashSet<long> pendingMovieIds = DmmPendingCandidateStore.GetPendingMovieIds(dbPath);
+            int pendingExcluded = 0;
+            List<DmmAutoFetchJob> targets = [];
+            foreach (MovieRecords record in scope)
+            {
+                if (!DmmMetadataEligibility.NeedsFetch(record.Title, record.Comment1))
+                {
+                    continue;
+                }
+
+                if (pendingMovieIds.Contains(record.Movie_Id))
+                {
+                    pendingExcluded++;
+                    continue;
+                }
+
+                targets.Add(new DmmAutoFetchJob
                 {
                     MovieId = record.Movie_Id,
                     MovieName = string.IsNullOrWhiteSpace(record.Movie_Path)
                         ? (record.Movie_Name ?? string.Empty)
                         : Path.GetFileName(record.Movie_Path),
-                    DbPath = MainVM.DbInfo.DBFullPath,
+                    DbPath = dbPath,
                     Source = "bulk",
-                })];
+                });
+            }
 
             if (targets.Count == 0)
             {
+                string emptyMessage = scopeCount == 0
+                    ? "現在の一覧が空です。検索条件を確認してください。"
+                    : pendingExcluded > 0
+                        ? $"現在の一覧は {scopeCount} 件ですが、一括取得の対象はありません。\n（未確定候補 {pendingExcluded} 件は対象外です。タイトル／コメント1が既にある行も対象外です）"
+                        : $"現在の一覧は {scopeCount} 件ですが、タイトルとコメント1が両方空のレコードはありません。\n（既に取得済み、または片方でも入力がある行は対象外です）";
                 var emptyDialog = new MessageBoxEx(this)
                 {
                     DlogTitle = "DMM 情報を一括取得",
-                    DlogMessage =
-                        scopeCount == 0
-                            ? "現在の一覧が空です。検索条件を確認してください。"
-                            : $"現在の一覧は {scopeCount} 件ですが、タイトルとコメント1が両方空のレコードはありません。\n（既に取得済み、または片方でも入力がある行は対象外です）",
+                    DlogMessage = emptyMessage,
                     PackIconKind = MaterialDesignThemes.Wpf.PackIconKind.InformationOutline,
                     OkOnly = true,
                 };
@@ -3254,11 +3272,14 @@ namespace IndigoMovieManager
                 return;
             }
 
+            string pendingNote = pendingExcluded > 0
+                ? $"\n未確定候補 {pendingExcluded} 件は対象外です。"
+                : string.Empty;
             var confirmDialog = new MessageBoxEx(this)
             {
                 DlogTitle = "DMM 情報を一括取得",
                 DlogMessage =
-                    $"現在の一覧 {scopeCount} 件のうち、メタデータ未設定の {targets.Count} 件に DMM 情報を取得します。\n件数によっては長時間かかります。よろしいですか？\n\nPowered by FANZA Webサービス",
+                    $"現在の一覧 {scopeCount} 件のうち、メタデータ未設定の {targets.Count} 件に DMM 情報を取得します。{pendingNote}\n件数によっては長時間かかります。よろしいですか？\n\nPowered by FANZA Webサービス",
                 PackIconKind = MaterialDesignThemes.Wpf.PackIconKind.CloudDownloadOutline,
             };
             confirmDialog.ShowDialog();

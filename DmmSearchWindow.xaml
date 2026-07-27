@@ -34,6 +34,8 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <TextBox
                     x:Name="KeywordBox"
@@ -48,8 +50,22 @@
                     x:Name="SearchButton"
                     Grid.Column="1"
                     MinWidth="88"
+                    Margin="0,0,8,0"
                     Click="SearchButton_Click"
                     Content="検索(_S)" />
+                <Button
+                    x:Name="PlayButton"
+                    Grid.Column="2"
+                    Margin="0,0,8,0"
+                    MinWidth="88"
+                    Click="PlayButton_Click"
+                    Content="再生(_P)" />
+                <Button
+                    x:Name="TagEditButton"
+                    Grid.Column="3"
+                    MinWidth="88"
+                    Click="TagEditButton_Click"
+                    Content="タグ編集(_T)" />
             </Grid>
 
             <StackPanel Grid.Row="2" Margin="0,0,0,8">
@@ -147,8 +163,7 @@
                         MinWidth="88"
                         Margin="0,0,8,0"
                         Click="ApplyButton_Click"
-                        Content="適用(_A)"
-                        IsDefault="True" />
+                        Content="適用(_A)" />
                     <Button
                         x:Name="CloseButton"
                         MinWidth="88"

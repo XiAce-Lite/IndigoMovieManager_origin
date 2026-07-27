@@ -46,8 +46,8 @@ namespace IndigoMovieManager.Services.Dmm
         }
 
         /// <summary>
-        /// 手動検索。CID＋入力語キーワードを試し、ジャケありで打ち切り。
-        /// ジャケなしならスペース表記を1回だけ追加検索する。
+        /// 手動検索。CID＋入力語キーワードを試し、品番一致ジャケ（品番なし時は任意ジャケ）で打ち切り。
+        /// 未確定ならスペース表記・5桁ゼロ埋めキーワードを最大1回ずつ追加する。
         /// </summary>
         public async Task<DmmKeywordSearchResult> SearchManualAsync(
             string keyword,
@@ -73,7 +73,7 @@ namespace IndigoMovieManager.Services.Dmm
                 return phase1;
             }
 
-            // ジャケなし → スペース表記を1回だけ追加
+            // 一致ジャケなし → スペース表記を1回だけ追加
             string spaceForm = extracted.SpaceForm;
             if (!string.IsNullOrWhiteSpace(spaceForm)
                 && !string.Equals(spaceForm, trimmed, StringComparison.OrdinalIgnoreCase))
@@ -91,7 +91,15 @@ namespace IndigoMovieManager.Services.Dmm
                 }
 
                 MergeCandidates(merged, spaceResult.Candidates);
+                if (ShouldStopManualSearch(merged, extracted))
+                {
+                    return DmmKeywordSearchResult.FromItems(trimmed, merged);
+                }
             }
+
+            // まだ一致ジャケなし → maker+5桁ゼロ埋めを1回
+            await TryAppendPadded5KeywordAsync(trimmed, extracted, merged, cancellationToken)
+                .ConfigureAwait(false);
 
             if (merged.Count == 0)
             {
@@ -102,7 +110,7 @@ namespace IndigoMovieManager.Services.Dmm
         }
 
         /// <summary>
-        /// 第1段（CID＋入力語KW）。未設定/HTTPエラーのみ即返す。ジャケありなら打ち切り用に merged を埋めて null 以外はエラー系。
+        /// 第1段（CID＋入力語KW）。未設定/HTTPエラーのみ即返す。打ち切り条件を満たせば結果を返す。
         /// 通常の継続時は null。
         /// </summary>
         private async Task<DmmKeywordSearchResult> RunManualFirstPhaseAsync(
@@ -134,7 +142,7 @@ namespace IndigoMovieManager.Services.Dmm
                         AppendSearchHits(merged, digital);
                     }
 
-                    if (DmmJacketHitEvaluator.HasAnyUsableJacket(merged))
+                    if (ShouldStopManualSearch(merged, extracted))
                     {
                         return DmmKeywordSearchResult.FromItems(trimmed, merged);
                     }
@@ -150,7 +158,7 @@ namespace IndigoMovieManager.Services.Dmm
                     }
 
                     AppendSearchHits(merged, dvd);
-                    if (DmmJacketHitEvaluator.HasAnyUsableJacket(merged))
+                    if (ShouldStopManualSearch(merged, extracted))
                     {
                         return DmmKeywordSearchResult.FromItems(trimmed, merged);
                     }
@@ -172,7 +180,7 @@ namespace IndigoMovieManager.Services.Dmm
             }
 
             MergeCandidates(merged, keywordResult.Candidates);
-            if (DmmJacketHitEvaluator.HasAnyUsableJacket(merged))
+            if (ShouldStopManualSearch(merged, extracted))
             {
                 return DmmKeywordSearchResult.FromItems(trimmed, merged);
             }
@@ -242,7 +250,7 @@ namespace IndigoMovieManager.Services.Dmm
                 return hyphenResult;
             }
 
-            // ジャケなし（または未ヒット）→ スペース表記を1回だけ
+            // 一致ジャケなし → スペース表記を1回だけ
             if (!string.IsNullOrWhiteSpace(spaceForm)
                 && !string.Equals(spaceForm, productCode, StringComparison.OrdinalIgnoreCase))
             {
@@ -263,7 +271,30 @@ namespace IndigoMovieManager.Services.Dmm
                 }
             }
 
-            // ジャケなしのまま終了（候補は残す）
+            // まだ一致ジャケなし → maker+5桁ゼロ埋めキーワードを1回
+            string padded5 = DmmProductCodeMatcher.BuildPadded5Keyword(productCode);
+            if (!string.IsNullOrWhiteSpace(padded5)
+                && !string.Equals(padded5, productCode, StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(padded5, spaceForm, StringComparison.OrdinalIgnoreCase))
+            {
+                await DelayAsync(cancellationToken).ConfigureAwait(false);
+
+                DmmSearchResult paddedKeyword = await _client
+                    .SearchByKeywordSiteAsync(padded5, cancellationToken)
+                    .ConfigureAwait(false);
+                DmmResolveResult paddedResult = InterpretWithJacketPolicy(
+                    paddedKeyword,
+                    productCode,
+                    candidates,
+                    ref sawHttpError,
+                    ref lastHttpError);
+                if (paddedResult != null)
+                {
+                    return paddedResult;
+                }
+            }
+
+            // 一致ジャケなしのまま終了（候補は残す）
             if (candidates.Count > 0)
             {
                 return DmmResolveResult.Ambiguous(
@@ -278,6 +309,49 @@ namespace IndigoMovieManager.Services.Dmm
             }
 
             return DmmResolveResult.Skip(DmmResolveOutcome.NotFound, "未ヒット");
+        }
+
+        private async Task TryAppendPadded5KeywordAsync(
+            string trimmed,
+            DmmCidNormalizer.ExtractResult extracted,
+            List<DmmCandidateEntry> merged,
+            CancellationToken cancellationToken)
+        {
+            if (!extracted.HasProductCode || ShouldStopManualSearch(merged, extracted))
+            {
+                return;
+            }
+
+            string padded5 = DmmProductCodeMatcher.BuildPadded5Keyword(extracted.ProductCode);
+            if (string.IsNullOrWhiteSpace(padded5)
+                || string.Equals(padded5, trimmed, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(padded5, extracted.SpaceForm, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            await DelayAsync(cancellationToken).ConfigureAwait(false);
+
+            DmmKeywordSearchResult paddedResult = await SearchKeywordAsync(padded5, cancellationToken, hits: 30)
+                .ConfigureAwait(false);
+            if (!paddedResult.IsConfigured || !string.IsNullOrWhiteSpace(paddedResult.ErrorMessage))
+            {
+                return;
+            }
+
+            MergeCandidates(merged, paddedResult.Candidates);
+        }
+
+        private static bool ShouldStopManualSearch(
+            List<DmmCandidateEntry> merged,
+            DmmCidNormalizer.ExtractResult extracted)
+        {
+            if (extracted.HasProductCode)
+            {
+                return DmmJacketHitEvaluator.HasProductMatchingUsableJacket(merged, extracted.ProductCode);
+            }
+
+            return DmmJacketHitEvaluator.HasAnyUsableJacket(merged);
         }
 
         private static DmmResolveResult InterpretWithJacketPolicy(

@@ -81,7 +81,7 @@ namespace IndigoMovieManager.Services.Dmm
             cmd.CommandText = @"
                 SELECT pending_id, movie_id, movie_name, initial_keyword, candidates_json, source, created_at
                 FROM dmm_pending
-                ORDER BY created_at DESC, pending_id DESC";
+                ORDER BY movie_name COLLATE NOCASE ASC, pending_id ASC";
             using SQLiteDataReader reader = cmd.ExecuteReader();
 
             var records = new List<DmmPendingCandidateRecord>();
@@ -104,6 +104,40 @@ namespace IndigoMovieManager.Services.Dmm
             cmd.ExecuteNonQuery();
         }
 
+        public static int DeleteMany(string dbFullPath, IEnumerable<long> pendingIds)
+        {
+            if (pendingIds == null)
+            {
+                return 0;
+            }
+
+            long[] ids = [.. pendingIds.Distinct()];
+            if (ids.Length == 0)
+            {
+                return 0;
+            }
+
+            EnsureTable(dbFullPath);
+            using SQLiteConnection connection = new($"Data Source={dbFullPath}");
+            connection.Open();
+            using SQLiteTransaction transaction = connection.BeginTransaction();
+            int removed = 0;
+            using (SQLiteCommand cmd = connection.CreateCommand())
+            {
+                cmd.Transaction = transaction;
+                cmd.CommandText = "DELETE FROM dmm_pending WHERE pending_id = @pending_id";
+                var param = cmd.Parameters.Add("@pending_id", System.Data.DbType.Int64);
+                foreach (long pendingId in ids)
+                {
+                    param.Value = pendingId;
+                    removed += cmd.ExecuteNonQuery();
+                }
+            }
+
+            transaction.Commit();
+            return removed;
+        }
+
         public static void DeleteByMovieId(string dbFullPath, long movieId)
         {
             EnsureTable(dbFullPath);
@@ -124,6 +158,45 @@ namespace IndigoMovieManager.Services.Dmm
             cmd.CommandText = "SELECT COUNT(*) FROM dmm_pending";
             object result = cmd.ExecuteScalar();
             return result == null || result == DBNull.Value ? 0 : Convert.ToInt32(result);
+        }
+
+        public static bool ExistsMovieId(string dbFullPath, long movieId)
+        {
+            if (string.IsNullOrWhiteSpace(dbFullPath))
+            {
+                return false;
+            }
+
+            EnsureTable(dbFullPath);
+            using SQLiteConnection connection = new($"Data Source={dbFullPath}");
+            connection.Open();
+            using SQLiteCommand cmd = connection.CreateCommand();
+            cmd.CommandText = "SELECT 1 FROM dmm_pending WHERE movie_id = @movie_id LIMIT 1";
+            cmd.Parameters.AddWithValue("@movie_id", movieId);
+            object result = cmd.ExecuteScalar();
+            return result != null && result != DBNull.Value;
+        }
+
+        public static HashSet<long> GetPendingMovieIds(string dbFullPath)
+        {
+            var ids = new HashSet<long>();
+            if (string.IsNullOrWhiteSpace(dbFullPath))
+            {
+                return ids;
+            }
+
+            EnsureTable(dbFullPath);
+            using SQLiteConnection connection = new($"Data Source={dbFullPath}");
+            connection.Open();
+            using SQLiteCommand cmd = connection.CreateCommand();
+            cmd.CommandText = "SELECT movie_id FROM dmm_pending";
+            using SQLiteDataReader reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                ids.Add(Convert.ToInt64(reader["movie_id"]));
+            }
+
+            return ids;
         }
 
         /// <summary>

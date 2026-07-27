@@ -23,7 +23,7 @@
             <TextBlock
                 Grid.Row="0"
                 Margin="0,0,0,8"
-                Text="複数候補のため保留されたレコードです。選択して候補を確定してください。"
+                Text="複数候補のため保留されたレコードです。選択して候補を確定してください。ダブルクリックでも候補選択を開けます。Ctrl+クリック／Shift+クリックで複数選択できます。"
                 TextWrapping="Wrap" />
 
             <DataGrid
@@ -34,7 +34,8 @@
                 CanUserDeleteRows="False"
                 HeadersVisibility="Column"
                 IsReadOnly="True"
-                SelectionMode="Single"
+                MouseDoubleClick="PendingGrid_MouseDoubleClick"
+                SelectionMode="Extended"
                 SelectionUnit="FullRow">
                 <DataGrid.Columns>
                     <DataGridTextColumn
@@ -71,6 +72,13 @@
                     HorizontalAlignment="Right"
                     Orientation="Horizontal">
                     <Button
+                        x:Name="SelectAllButton"
+                        MinWidth="96"
+                        Margin="0,0,8,0"
+                        Click="SelectAllButton_Click"
+                        Content="全選択(_A)"
+                        ToolTip="一覧の未確定候補をすべて選択します" />
+                    <Button
                         x:Name="CleanupOrphansButton"
                         MinWidth="120"
                         Margin="0,0,8,0"
@@ -88,7 +96,8 @@
                         MinWidth="88"
                         Margin="0,0,8,0"
                         Click="DiscardButton_Click"
-                        Content="破棄(_D)" />
+                        Content="破棄(_D)"
+                        ToolTip="選択中の未確定候補を破棄します（全選択後に実行すれば全件削除）" />
                     <Button
                         x:Name="CloseButton"
                         MinWidth="88"

@@ -1,8 +1,10 @@
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using IndigoMovieManager.Services;
 using IndigoMovieManager.Services.Dmm;
 
 namespace IndigoMovieManager
@@ -24,6 +26,8 @@ namespace IndigoMovieManager
         private readonly DmmMetadataApplyService _applier = new();
         private DmmMetadataResolveService _resolver;
         private bool _isSearching;
+        /// <summary>親画面のダブルクリック MouseUp がセルクリックに化けるのを抑止する。</summary>
+        private DateTime _suppressCellClickUntilUtc;
 
         public bool AppliedSuccessfully { get; private set; }
 
@@ -53,6 +57,8 @@ namespace IndigoMovieManager
             {
                 SetCandidates(initialCandidates);
                 StatusText.Text = $"{_candidates.Count} 件の候補を表示しています。";
+                // 未確定一覧からのダブルクリック直後に開く場合の誤クリック吸収
+                _suppressCellClickUntilUtc = DateTime.UtcNow.AddMilliseconds(400);
             }
 
             Loaded += DmmSearchWindow_Loaded;
@@ -107,18 +113,20 @@ namespace IndigoMovieManager
 
         private void SetCandidates(IReadOnlyList<DmmCandidateEntry> entries)
         {
+            string productCode = ResolveProductCodeForSort();
             _candidates.Clear();
-            foreach (DmmCandidateRow row in DmmCandidateRow.FromEntries(entries))
+            foreach (DmmCandidateRow row in DmmCandidateRow.FromEntries(entries, productCode))
             {
                 _candidates.Add(row);
             }
 
-            SelectPreferredCandidate();
+            SelectPreferredCandidate(productCode);
         }
 
-        private void SelectPreferredCandidate()
+        private void SelectPreferredCandidate(string productCode = null)
         {
-            DmmCandidateRow preferred = DmmCandidateRow.PreferSelection(_candidates);
+            productCode ??= ResolveProductCodeForSort();
+            DmmCandidateRow preferred = DmmCandidateRow.PreferSelection(_candidates, productCode);
             if (preferred == null)
             {
                 return;
@@ -127,6 +135,18 @@ namespace IndigoMovieManager
             CandidatesGrid.SelectedItem = preferred;
             CandidatesGrid.CurrentItem = preferred;
             CandidatesGrid.ScrollIntoView(preferred);
+        }
+
+        private string ResolveProductCodeForSort()
+        {
+            DmmCidNormalizer.ExtractResult fromKeyword = DmmCidNormalizer.ExtractFromFileName(KeywordBox.Text);
+            if (fromKeyword.HasProductCode)
+            {
+                return fromKeyword.ProductCode;
+            }
+
+            DmmCidNormalizer.ExtractResult fromName = DmmCidNormalizer.ExtractFromFileName(_record.Movie_Name);
+            return fromName.HasProductCode ? fromName.ProductCode : null;
         }
 
         private DmmMetadataResolveService GetResolver()
@@ -143,6 +163,12 @@ namespace IndigoMovieManager
 
         private void CandidatesGrid_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
         {
+            if (DateTime.UtcNow < _suppressCellClickUntilUtc)
+            {
+                e.Handled = true;
+                return;
+            }
+
             if (e.OriginalSource is not DependencyObject source)
             {
                 return;
@@ -278,6 +304,67 @@ namespace IndigoMovieManager
                     chip.IsEnabled = enabled;
                 }
             }
+        }
+
+        private async void PlayButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (string.IsNullOrWhiteSpace(_record.Movie_Path) || !Path.Exists(_record.Movie_Path))
+            {
+                StatusText.Text = "再生対象のファイルが見つかりません。";
+                return;
+            }
+
+            var dbSettings = string.IsNullOrWhiteSpace(_dbPath)
+                ? null
+                : new DatabaseSettings(_dbPath);
+            string moviePathQuoted = $"\"{_record.Movie_Path}\"";
+            ExternalPlayerLaunchRequest request = ExternalPlayerLauncher.BuildRequest(
+                dbSettings?.PlayerPrg,
+                dbSettings?.PlayerParam,
+                Properties.Settings.Default.DefaultPlayerPath,
+                Properties.Settings.Default.DefaultPlayerParam,
+                _record,
+                moviePathQuoted,
+                0);
+
+            try
+            {
+                await ExternalPlayerLauncher.LaunchAsync(request, this).ConfigureAwait(true);
+            }
+            catch (Exception ex)
+            {
+                StatusText.Text = $"再生エラー: {ex.Message}";
+            }
+        }
+
+        private void TagEditButton_Click(object sender, RoutedEventArgs e)
+        {
+            var tagEditWindow = new TagEdit
+            {
+                Title = "タグ編集",
+                Owner = this,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                DataContext = _record,
+            };
+            tagEditWindow.ShowDialog();
+
+            if (tagEditWindow.CloseStatus() == MessageBoxResult.Cancel)
+            {
+                return;
+            }
+
+            if (tagEditWindow.DataContext is not MovieRecords dc)
+            {
+                return;
+            }
+
+            TagMutationService.ApplyEdit(_record, dc.Tags);
+            if (!string.IsNullOrWhiteSpace(_dbPath))
+            {
+                SQLite.UpdateMovieSingleColumn(_dbPath, _record.Movie_Id, "tag", _record.Tags);
+            }
+
+            StatusText.Text = "タグを更新しました。";
         }
 
         private void ApplyButton_Click(object sender, RoutedEventArgs e)

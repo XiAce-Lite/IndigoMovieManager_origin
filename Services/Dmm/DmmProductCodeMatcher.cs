@@ -57,7 +57,27 @@ namespace IndigoMovieManager.Services.Dmm
                 }
             }
 
+            // 任意接頭辞 + maker + 番号（ゼロ埋め可）で終わる CID / 品番
+            if (MatchesMakerNumberSuffix(item.ContentId, wantMaker, wantNumKey)
+                || MatchesMakerNumberSuffix(item.ProductId, wantMaker, wantNumKey))
+            {
+                return true;
+            }
+
             return false;
+        }
+
+        /// <summary>
+        /// maker+5桁ゼロ埋めのキーワード（例: abcd-123 → abcd00123）。生成できなければ null。
+        /// </summary>
+        public static string BuildPadded5Keyword(string productCode)
+        {
+            if (!TryGetMakerNumber(productCode, out string maker, out string number))
+            {
+                return null;
+            }
+
+            return maker + number.PadLeft(5, '0');
         }
 
         public static bool TryGetMakerNumber(string value, out string maker, out string number)
@@ -95,6 +115,32 @@ namespace IndigoMovieManager.Services.Dmm
 
             string trimmed = digits.Trim().TrimStart('0');
             return trimmed.Length == 0 ? "0" : trimmed;
+        }
+
+        /// <summary>
+        /// 接頭辞を問わず、末尾が maker+番号(+枝番) で数字キーが一致するか。
+        /// </summary>
+        internal static bool MatchesMakerNumberSuffix(string source, string wantMaker, string wantNumKey)
+        {
+            if (string.IsNullOrWhiteSpace(source)
+                || string.IsNullOrWhiteSpace(wantMaker)
+                || string.IsNullOrWhiteSpace(wantNumKey))
+            {
+                return false;
+            }
+
+            string pattern =
+                $@"(?i)(?<![A-Za-z]){Regex.Escape(wantMaker)}(?<num>\d{{2,6}})(?<branch>[A-Za-z])?$";
+            Match match = Regex.Match(source.Trim(), pattern, RegexOptions.CultureInvariant);
+            if (!match.Success)
+            {
+                return false;
+            }
+
+            return string.Equals(
+                NormalizeNumberKey(match.Groups["num"].Value),
+                wantNumKey,
+                StringComparison.Ordinal);
         }
 
         private static bool SplitHyphenProductCode(string productCode, out string maker, out string number)

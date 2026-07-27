@@ -248,6 +248,13 @@ namespace IndigoMovieManager.Services.Dmm
                     return;
                 }
 
+                if (!string.IsNullOrWhiteSpace(job.DbPath)
+                    && DmmPendingCandidateStore.ExistsMovieId(job.DbPath, job.MovieId))
+                {
+                    Interlocked.Increment(ref _batchSkipped);
+                    return;
+                }
+
                 string resolveName = ResolveMovieName(job, rec);
                 reportPath = resolveName;
 

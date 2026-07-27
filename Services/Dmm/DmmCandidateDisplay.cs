@@ -43,9 +43,10 @@ namespace IndigoMovieManager.Services.Dmm
         public string FloorLabel { get; init; }
         public string JacketLabel { get; init; }
         public bool HasJacket { get; init; }
+        public bool MatchesProductCode { get; init; }
         public DmmItemDto Item { get; init; }
 
-        public static DmmCandidateRow FromEntry(DmmCandidateEntry entry)
+        public static DmmCandidateRow FromEntry(DmmCandidateEntry entry, string productCode = null)
         {
             if (entry?.Item == null)
             {
@@ -54,10 +55,13 @@ namespace IndigoMovieManager.Services.Dmm
                     FloorLabel = entry?.FloorLabel ?? string.Empty,
                     JacketLabel = "×",
                     HasJacket = false,
+                    MatchesProductCode = false,
                 };
             }
 
             bool hasJacket = DmmCandidateDisplay.HasUsableJacket(entry.Item);
+            bool matches = !string.IsNullOrWhiteSpace(productCode)
+                && DmmProductCodeMatcher.ItemMatchesProductCode(entry.Item, productCode);
             return new DmmCandidateRow
             {
                 Title = entry.Item.Title?.Trim() ?? string.Empty,
@@ -66,35 +70,75 @@ namespace IndigoMovieManager.Services.Dmm
                 FloorLabel = entry.FloorLabel ?? string.Empty,
                 JacketLabel = hasJacket ? "○" : "×",
                 HasJacket = hasJacket,
+                MatchesProductCode = matches,
                 Item = entry.Item,
             };
         }
 
-        public static List<DmmCandidateRow> FromEntries(IEnumerable<DmmCandidateEntry> entries)
+        public static List<DmmCandidateRow> FromEntries(
+            IEnumerable<DmmCandidateEntry> entries,
+            string productCode = null)
         {
             if (entries == null)
             {
                 return [];
             }
 
-            // ジャケありを先頭へ（同順位は元の並びを維持）
+            // 品番一致＋ジャケ → 品番一致 → ジャケあり → その他（同順位は元の並びを維持）
             return [.. entries
-                .Select(FromEntry)
+                .Select(entry => FromEntry(entry, productCode))
                 .Select((row, index) => (row, index))
-                .OrderByDescending(x => x.row.HasJacket)
+                .OrderBy(x => SortRank(x.row))
                 .ThenBy(x => x.index)
                 .Select(x => x.row)];
         }
 
-        /// <summary>ジャケありを優先。無ければ先頭（単一候補含む）。</summary>
-        public static DmmCandidateRow PreferSelection(IReadOnlyList<DmmCandidateRow> rows)
+        /// <summary>品番一致かつジャケありを優先。無ければ先頭（単一候補含む）。</summary>
+        public static DmmCandidateRow PreferSelection(
+            IReadOnlyList<DmmCandidateRow> rows,
+            string productCode = null)
         {
             if (rows == null || rows.Count == 0)
             {
                 return null;
             }
 
+            if (!string.IsNullOrWhiteSpace(productCode))
+            {
+                DmmCandidateRow matchWithJacket = rows.FirstOrDefault(r => r.MatchesProductCode && r.HasJacket);
+                if (matchWithJacket != null)
+                {
+                    return matchWithJacket;
+                }
+
+                DmmCandidateRow matchOnly = rows.FirstOrDefault(r => r.MatchesProductCode);
+                if (matchOnly != null)
+                {
+                    return matchOnly;
+                }
+            }
+
             return rows.FirstOrDefault(r => r.HasJacket) ?? rows[0];
+        }
+
+        private static int SortRank(DmmCandidateRow row)
+        {
+            if (row.MatchesProductCode && row.HasJacket)
+            {
+                return 0;
+            }
+
+            if (row.MatchesProductCode)
+            {
+                return 1;
+            }
+
+            if (row.HasJacket)
+            {
+                return 2;
+            }
+
+            return 3;
         }
     }
 }
