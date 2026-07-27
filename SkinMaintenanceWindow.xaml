@@ -135,22 +135,12 @@
                             materialDesign:TextFieldAssist.HasOutlinedTextField="True"
                             TextChanged="Field_Changed" />
                     </DockPanel>
-                    <UniformGrid Columns="2" Margin="0,0,0,6">
-                        <controls:IntegerSpinBox
-                            x:Name="CardWidthSpin"
-                            Margin="0,0,4,0"
-                            Hint="card.width"
-                            Minimum="0"
-                            Maximum="4000"
-                            ValueChanged="Spin_Changed" />
-                        <controls:IntegerSpinBox
-                            x:Name="CardHeightSpin"
-                            Margin="4,0,0,0"
-                            Hint="card.height"
-                            Minimum="0"
-                            Maximum="4000"
-                            ValueChanged="Spin_Changed" />
-                    </UniformGrid>
+                    <TextBlock
+                        Margin="0,0,0,6"
+                        FontSize="11"
+                        Opacity="0.75"
+                        TextWrapping="Wrap"
+                        Text="カード幅・高さは layout 依存のため UI 非表示。変更は skin.json を直接編集してください。" />
                     <UniformGrid Columns="2" Margin="0,0,0,6">
                         <controls:IntegerSpinBox
                             x:Name="CardPaddingSpin"

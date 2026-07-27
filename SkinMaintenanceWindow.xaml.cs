@@ -135,8 +135,7 @@ namespace IndigoMovieManager
             SelectComboByContent(TypeCombo, string.IsNullOrWhiteSpace(_working.Type) ? "card" : _working.Type);
             SelectColorProfile(_working.ColorProfile);
             SurfaceBackgroundBox.Text = _working.Surface?.Background ?? "";
-            CardWidthSpin.Value = (int)Math.Round(_working.Card?.Width ?? 0);
-            CardHeightSpin.Value = (int)Math.Round(_working.Card?.Height ?? 0);
+            // card.width / card.height は UI 非表示。_working の既存値を保存時も維持する。
             CardPaddingSpin.Value = (int)Math.Round(_working.Card?.Padding ?? 0);
             CardBackgroundBox.Text = _working.Card?.Background ?? "";
             CardStretchCheck.IsChecked = _working.Card?.Stretch == true;
@@ -226,8 +225,7 @@ namespace IndigoMovieManager
             _working.Surface ??= new WpfSkinSurface();
             _working.Surface.Background = SurfaceBackgroundBox.Text?.Trim() ?? "";
             _working.Card ??= new WpfSkinCard();
-            _working.Card.Width = CardWidthSpin.Value;
-            _working.Card.Height = CardHeightSpin.Value;
+            // Width / Height は触らない（layout 付きスキンの意図を維持）
             _working.Card.Padding = CardPaddingSpin.Value;
             _working.Card.Background = CardBackgroundBox.Text?.Trim() ?? "";
             _working.Card.Stretch = CardStretchCheck.IsChecked == true;
