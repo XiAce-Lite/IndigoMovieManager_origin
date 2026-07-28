@@ -5,7 +5,7 @@ namespace IndigoMovieManager.Services.WpfSkin
 {
     public sealed class WpfSkinDefinition
     {
-        public string Name { get; set; } = "CardLarge";
+        public string Name { get; set; } = "";
 
         /// <summary>
         /// 読み込み元フォルダ名（Skins/Wpf/&lt;FolderName&gt;）。JSON には出さない。

@@ -92,18 +92,23 @@ namespace IndigoMovieManager.Services.Dmm
 
         public Task<DmmSearchResult> SearchByCidDigitalAsync(
             string cid,
-            CancellationToken cancellationToken = default) =>
-            SearchByCidAsync(cid, "digital", "videoa", cancellationToken);
+            CancellationToken cancellationToken = default,
+            int hits = 10,
+            int offset = 1) =>
+            SearchByCidAsync(cid, "digital", "videoa", cancellationToken, hits, offset);
 
         public Task<DmmSearchResult> SearchByCidDvdAsync(
             string cid,
-            CancellationToken cancellationToken = default) =>
-            SearchByCidAsync(cid, "mono", "dvd", cancellationToken);
+            CancellationToken cancellationToken = default,
+            int hits = 10,
+            int offset = 1) =>
+            SearchByCidAsync(cid, "mono", "dvd", cancellationToken, hits, offset);
 
         public async Task<DmmSearchResult> SearchByKeywordSiteAsync(
             string keyword,
             CancellationToken cancellationToken = default,
-            int hits = 10)
+            int hits = 10,
+            int offset = 1)
         {
             if (!_options.IsConfigured)
             {
@@ -115,14 +120,12 @@ namespace IndigoMovieManager.Services.Dmm
                 return DmmSearchResult.FromItems([], "keyword");
             }
 
-            int clampedHits = Math.Clamp(hits, 1, 100);
-            string query = BuildQuery(
-                ("api_id", _options.ApiId),
-                ("affiliate_id", _options.AffiliateId),
-                ("site", "FANZA"),
-                ("hits", clampedHits.ToString()),
-                ("keyword", keyword.Trim()),
-                ("output", "json"));
+            string query = BuildKeywordSearchQuery(
+                _options.ApiId,
+                _options.AffiliateId,
+                keyword.Trim(),
+                hits,
+                offset);
 
             return await GetAsync(query, "keyword", cancellationToken).ConfigureAwait(false);
         }
@@ -131,7 +134,9 @@ namespace IndigoMovieManager.Services.Dmm
             string cid,
             string service,
             string floor,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            int hits = 10,
+            int offset = 1)
         {
             if (!_options.IsConfigured)
             {
@@ -143,18 +148,61 @@ namespace IndigoMovieManager.Services.Dmm
                 return DmmSearchResult.FromItems([], $"{service}/{floor}");
             }
 
-            string query = BuildQuery(
-                ("api_id", _options.ApiId),
-                ("affiliate_id", _options.AffiliateId),
-                ("site", "FANZA"),
-                ("service", service),
-                ("floor", floor),
-                ("hits", "10"),
-                ("cid", cid.Trim()),
-                ("output", "json"));
+            string query = BuildCidSearchQuery(
+                _options.ApiId,
+                _options.AffiliateId,
+                cid.Trim(),
+                service,
+                floor,
+                hits,
+                offset);
 
             return await GetAsync(query, $"{service}/{floor}", cancellationToken)
                 .ConfigureAwait(false);
+        }
+
+        /// <summary>単体テスト向け。キーワード検索クエリを組み立てる。</summary>
+        internal static string BuildKeywordSearchQuery(
+            string apiId,
+            string affiliateId,
+            string keyword,
+            int hits = 10,
+            int offset = 1)
+        {
+            int clampedHits = Math.Clamp(hits, 1, 100);
+            int clampedOffset = Math.Max(1, offset);
+            return BuildQuery(
+                ("api_id", apiId),
+                ("affiliate_id", affiliateId),
+                ("site", "FANZA"),
+                ("hits", clampedHits.ToString()),
+                ("offset", clampedOffset.ToString()),
+                ("keyword", keyword ?? string.Empty),
+                ("output", "json"));
+        }
+
+        /// <summary>単体テスト向け。CID 検索クエリを組み立てる。</summary>
+        internal static string BuildCidSearchQuery(
+            string apiId,
+            string affiliateId,
+            string cid,
+            string service,
+            string floor,
+            int hits = 10,
+            int offset = 1)
+        {
+            int clampedHits = Math.Clamp(hits, 1, 100);
+            int clampedOffset = Math.Max(1, offset);
+            return BuildQuery(
+                ("api_id", apiId),
+                ("affiliate_id", affiliateId),
+                ("site", "FANZA"),
+                ("service", service ?? string.Empty),
+                ("floor", floor ?? string.Empty),
+                ("hits", clampedHits.ToString()),
+                ("offset", clampedOffset.ToString()),
+                ("cid", cid ?? string.Empty),
+                ("output", "json"));
         }
 
         private async Task<DmmSearchResult> GetAsync(

@@ -40,7 +40,15 @@ namespace IndigoMovieManager.Services.Dmm
                 Detail = "複数候補",
             };
 
-        public static DmmResolveResult Skip(DmmResolveOutcome outcome, string detail = null) =>
-            new() { Outcome = outcome, Detail = detail };
+        public static DmmResolveResult Skip(
+            DmmResolveOutcome outcome,
+            string detail = null,
+            string initialKeyword = null) =>
+            new()
+            {
+                Outcome = outcome,
+                Detail = detail,
+                InitialKeyword = initialKeyword,
+            };
     }
 }

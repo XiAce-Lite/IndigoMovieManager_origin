@@ -79,7 +79,7 @@ namespace IndigoMovieManager.Services.WpfSkin
                 {
                     Text = child.Header,
                     FontWeight = FontWeights.Bold,
-                    FontFamily = new FontFamily("Yu Gothic UI"),
+                    FontFamily = new FontFamily(WpfSkinFontResolver.DefaultFontFamily),
                     Foreground = WpfSkinColorResolver.ResolveBrush("#000000", Brushes.Black, def),
                     Padding = child.Padding != null && !child.Padding.IsEmpty
                         ? child.Padding.ToThickness()
@@ -214,7 +214,8 @@ namespace IndigoMovieManager.Services.WpfSkin
 
             if (!string.IsNullOrEmpty(style.FontFamily))
             {
-                text.FontFamily = new FontFamily(style.FontFamily);
+                text.FontFamily = new FontFamily(
+                    WpfSkinFontResolver.ResolveFamilyName(style.FontFamily));
             }
 
             // field 未指定で label のみのノードは静的ラベル（バインドしない）。
