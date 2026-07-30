@@ -118,6 +118,11 @@ namespace IndigoMovieManager.Services.WpfSkin
         public string Foreground { get; set; } = "";
         public bool Wrap { get; set; }
 
+        /// <summary>
+        /// path/dir/drive 等をリンク表示するか。null のときは Path 種別 field なら true。
+        /// </summary>
+        public bool? Link { get; set; }
+
         /// <summary>styles 辞書のキー。</summary>
         public string Style { get; set; } = "";
 

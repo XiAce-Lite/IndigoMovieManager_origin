@@ -87,6 +87,16 @@ namespace IndigoMovieManager.Services.WpfSkin
                 typeof(PreferJacketImageBehavior),
                 new PropertyMetadata(16.0 / 9.0));
 
+        /// <summary>
+        /// true のとき host の Width を固定せず親セル幅に Stretch する（スプリッター連動用）。
+        /// </summary>
+        public static readonly DependencyProperty TrackParentWidthProperty =
+            DependencyProperty.RegisterAttached(
+                "TrackParentWidth",
+                typeof(bool),
+                typeof(PreferJacketImageBehavior),
+                new PropertyMetadata(false));
+
         private static readonly DependencyProperty LoadGenerationProperty =
             DependencyProperty.RegisterAttached(
                 "LoadGeneration",
@@ -174,6 +184,12 @@ namespace IndigoMovieManager.Services.WpfSkin
 
         public static double GetTargetAspect(DependencyObject element) =>
             (double)element.GetValue(TargetAspectProperty);
+
+        public static void SetTrackParentWidth(DependencyObject element, bool value) =>
+            element.SetValue(TrackParentWidthProperty, value);
+
+        public static bool GetTrackParentWidth(DependencyObject element) =>
+            (bool)element.GetValue(TrackParentWidthProperty);
 
         private static void OnSourceInputsChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
@@ -315,8 +331,27 @@ namespace IndigoMovieManager.Services.WpfSkin
                 return;
             }
 
+            bool trackParent = GetTrackParentWidth(image);
             double width = GetFrameWidth(image);
             double height = GetLocalFrameHeight(image);
+
+            if (trackParent)
+            {
+                host.ClearValue(FrameworkElement.WidthProperty);
+                host.HorizontalAlignment = HorizontalAlignment.Stretch;
+                host.VerticalAlignment = VerticalAlignment.Top;
+                if (height > 0)
+                {
+                    host.Height = height;
+                }
+                else
+                {
+                    host.ClearValue(FrameworkElement.HeightProperty);
+                }
+
+                return;
+            }
+
             if (width > 0)
             {
                 host.Width = width;
@@ -343,20 +378,43 @@ namespace IndigoMovieManager.Services.WpfSkin
                 return;
             }
 
-            double width = GetFrameWidth(image);
-            if (width <= 0)
-            {
-                width = remote.PixelWidth;
-            }
-
+            bool trackParent = GetTrackParentWidth(image);
             double aspect = (double)remote.PixelWidth / remote.PixelHeight;
             if (aspect <= 0)
             {
                 return;
             }
 
-            double height = width / aspect;
-            host.Width = width;
+            if (trackParent)
+            {
+                // 幅は親に任せ、高さだけジャケ比で合わせる（スプリッターで縮む）
+                host.ClearValue(FrameworkElement.WidthProperty);
+                host.HorizontalAlignment = HorizontalAlignment.Stretch;
+                host.VerticalAlignment = VerticalAlignment.Top;
+
+                double width = host.ActualWidth > 1 ? host.ActualWidth : GetFrameWidth(image);
+                if (width <= 0)
+                {
+                    // 初回レイアウト前は参照フレーム幅があれば使う
+                    width = GetFrameWidth(image);
+                }
+
+                if (width > 0)
+                {
+                    host.Height = width / aspect;
+                }
+
+                return;
+            }
+
+            double frameWidth = GetFrameWidth(image);
+            if (frameWidth <= 0)
+            {
+                frameWidth = remote.PixelWidth;
+            }
+
+            double height = frameWidth / aspect;
+            host.Width = frameWidth;
             host.Height = height;
             // ジャケ枠は内容サイズで確定。行の余白へ黒く伸ばさない。
             host.VerticalAlignment = VerticalAlignment.Top;

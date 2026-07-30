@@ -21,6 +21,7 @@ namespace IndigoMovieManager.Services.WpfSkin
             public System.Windows.Data.IValueConverter ImageConverter { get; init; }
             public System.Windows.Data.IValueConverter AspectConverter { get; init; }
             public System.Windows.Data.IValueConverter FileSizeConverter { get; init; }
+            public Action<MovieRecords, string> PathLinkClick { get; init; }
         }
 
         public static void ApplyHostContext(BuildContext context)
@@ -32,6 +33,7 @@ namespace IndigoMovieManager.Services.WpfSkin
             WpfSkinHostContext.ImageConverter = context.ImageConverter;
             WpfSkinHostContext.AspectConverter = context.AspectConverter;
             WpfSkinHostContext.FileSizeConverter = context.FileSizeConverter;
+            WpfSkinHostContext.PathLinkClick = context.PathLinkClick;
         }
 
         public static ItemsPanelTemplate BuildItemsPanel(WpfSkinDefinition def)

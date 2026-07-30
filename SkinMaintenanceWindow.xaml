@@ -4,15 +4,17 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="clr-namespace:IndigoMovieManager.Controls"
     xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+    xmlns:userControls="clr-namespace:IndigoMovieManager.UserControls"
     Title="WPFスキン編集"
-    Width="1040"
-    Height="720"
-    MinWidth="820"
-    MinHeight="520"
+    Width="1360"
+    Height="820"
+    MinWidth="1080"
+    MinHeight="640"
     ResizeMode="CanResizeWithGrip"
     WindowStartupLocation="CenterOwner"
     Background="{DynamicResource MaterialDesign.Brush.Background}"
-    Closing="Window_Closing">
+    Closing="Window_Closing"
+    PreviewKeyDown="Window_PreviewKeyDown">
     <Window.Resources>
         <Style x:Key="ColorPickButton" TargetType="Button">
             <Setter Property="Width" Value="28" />
@@ -22,6 +24,9 @@
             <Setter Property="VerticalAlignment" Value="Center" />
             <Setter Property="ToolTip" Value="色を選択" />
         </Style>
+        <HierarchicalDataTemplate x:Key="LayoutNodeTemplate" ItemsSource="{Binding Children}">
+            <TextBlock Text="{Binding DisplayName}" />
+        </HierarchicalDataTemplate>
     </Window.Resources>
     <DockPanel>
         <Border
@@ -32,6 +37,18 @@
                 <StackPanel
                     DockPanel.Dock="Right"
                     Orientation="Horizontal">
+                    <Button
+                        x:Name="UndoButton"
+                        Margin="0,0,6,0"
+                        Click="UndoButton_Click"
+                        Content="元に戻す"
+                        IsEnabled="False" />
+                    <Button
+                        x:Name="RedoButton"
+                        Margin="0,0,6,0"
+                        Click="RedoButton_Click"
+                        Content="やり直す"
+                        IsEnabled="False" />
                     <Button
                         x:Name="SaveButton"
                         Margin="0,0,6,0"
@@ -70,9 +87,11 @@
 
         <Grid Margin="10">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="0.95*" MinWidth="300" />
+                <ColumnDefinition Width="300" MinWidth="300" />
                 <ColumnDefinition Width="6" />
-                <ColumnDefinition Width="*" MinWidth="300" />
+                <ColumnDefinition Width="*" MinWidth="420" />
+                <ColumnDefinition Width="6" />
+                <ColumnDefinition Width="320" MinWidth="320" />
             </Grid.ColumnDefinitions>
 
             <ScrollViewer
@@ -140,30 +159,37 @@
                         FontSize="11"
                         Opacity="0.75"
                         TextWrapping="Wrap"
-                        Text="カード幅・高さは layout 依存のため UI 非表示。変更は skin.json を直接編集してください。" />
+                        Text="カード幅はプレビューの横幅目安です。stretch ON のときは一覧でスロット幅に追従します。" />
                     <UniformGrid Columns="2" Margin="0,0,0,6">
                         <controls:IntegerSpinBox
-                            x:Name="CardPaddingSpin"
+                            x:Name="CardWidthSpin"
                             Margin="0,0,4,0"
+                            Hint="card.width (px)"
+                            Minimum="0"
+                            Maximum="4000"
+                            ValueChanged="Spin_Changed" />
+                        <controls:IntegerSpinBox
+                            x:Name="CardPaddingSpin"
+                            Margin="4,0,0,0"
                             Hint="card.padding"
                             Minimum="0"
                             Maximum="200"
                             ValueChanged="Spin_Changed" />
-                        <DockPanel Margin="4,0,0,0">
-                            <Button
-                                Style="{StaticResource ColorPickButton}"
-                                DockPanel.Dock="Right"
-                                Click="CardBackgroundPick_Click">
-                                <materialDesign:PackIcon Kind="Palette" Width="14" Height="14" />
-                            </Button>
-                            <TextBox
-                                x:Name="CardBackgroundBox"
-                                materialDesign:HintAssist.Hint="card.background"
-                                materialDesign:HintAssist.IsFloating="True"
-                                materialDesign:TextFieldAssist.HasOutlinedTextField="True"
-                                TextChanged="Field_Changed" />
-                        </DockPanel>
                     </UniformGrid>
+                    <DockPanel Margin="0,0,0,6">
+                        <Button
+                            Style="{StaticResource ColorPickButton}"
+                            DockPanel.Dock="Right"
+                            Click="CardBackgroundPick_Click">
+                            <materialDesign:PackIcon Kind="Palette" Width="14" Height="14" />
+                        </Button>
+                        <TextBox
+                            x:Name="CardBackgroundBox"
+                            materialDesign:HintAssist.Hint="card.background"
+                            materialDesign:HintAssist.IsFloating="True"
+                            materialDesign:TextFieldAssist.HasOutlinedTextField="True"
+                            TextChanged="Field_Changed" />
+                    </DockPanel>
                     <CheckBox
                         x:Name="CardStretchCheck"
                         Margin="0,0,0,10"
@@ -215,104 +241,161 @@
                             materialDesign:TextFieldAssist.HasOutlinedTextField="True"
                             SelectionChanged="Field_Changed" />
                     </UniformGrid>
+                    <CheckBox
+                        x:Name="ThumbPreferJacketCheck"
+                        Margin="0,0,0,10"
+                        Content="preferJacket（Comment1 のジャケ写を優先）"
+                        Checked="Field_Changed"
+                        Unchecked="Field_Changed" />
 
                     <TextBlock
                         Margin="0,0,0,6"
                         FontSize="13"
                         FontWeight="SemiBold"
-                        Text="styles" />
+                        Text="配置できる項目" />
                     <TextBlock
                         Margin="0,0,0,4"
                         FontSize="11"
                         Foreground="{DynamicResource MaterialDesign.Brush.ForegroundLight}"
-                        Text="layout は編集しません。styles の見た目のみ。"
+                        Text="未配置の DB 項目です。中央プレビュー／右ツリーへドラッグ、またはダブルクリックで配置（選択中の stack/grid があればその中へ）。プレビューからここへ戻すと解除。同じ項目は1つまでです。"
                         TextWrapping="Wrap" />
-                    <DockPanel Margin="0,0,0,6" LastChildFill="True">
-                        <StackPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
-                            <UniformGrid Columns="2" Margin="0,0,0,6">
-                                <controls:IntegerSpinBox
-                                    x:Name="StyleFontSizeSpin"
+                    <ListBox
+                        x:Name="FieldPaletteList"
+                        Height="180"
+                        Margin="0,0,0,10"
+                        DisplayMemberPath="DisplayName"
+                        AllowDrop="True"
+                        Background="{DynamicResource MaterialDesign.Brush.Background}"
+                        PreviewMouseLeftButtonDown="FieldPalette_PreviewMouseLeftButtonDown"
+                        PreviewMouseMove="FieldPalette_PreviewMouseMove"
+                        MouseDoubleClick="FieldPalette_MouseDoubleClick"
+                        PreviewDragOver="FieldPalette_DragOver"
+                        DragOver="FieldPalette_DragOver"
+                        Drop="FieldPalette_Drop" />
+
+                    <Expander
+                        Header="共通 styles（上級者向け）"
+                        IsExpanded="False"
+                        Margin="0,0,0,6">
+                        <StackPanel Margin="0,8,0,0">
+                            <TextBlock
+                                Margin="0,0,0,4"
+                                FontSize="11"
+                                Foreground="{DynamicResource MaterialDesign.Brush.ForegroundLight}"
+                                Text="通常は DB 項目ごとに title / meta / path が自動設定されます。ここは複数ノードで共通の見た目をまとめて直したいときだけ使います。"
+                                TextWrapping="Wrap" />
+                            <TextBox
+                                x:Name="StyleKeyBox"
+                                Margin="0,0,0,6"
+                                materialDesign:HintAssist.Hint="style キー"
+                                materialDesign:HintAssist.IsFloating="True"
+                                materialDesign:TextFieldAssist.HasOutlinedTextField="True" />
+                            <UniformGrid Columns="3" Margin="0,0,0,6">
+                                <Button
                                     Margin="0,0,4,0"
-                                    Hint="fontSize"
-                                    Minimum="6"
-                                    Maximum="72"
-                                    ValueChanged="StyleSpin_Changed" />
-                                <ComboBox
-                                    x:Name="StyleFontFamilyCombo"
+                                    Click="StyleAddButton_Click"
+                                    Content="追加" />
+                                <Button
+                                    Margin="4,0,4,0"
+                                    Click="StyleRenameButton_Click"
+                                    Content="リネーム" />
+                                <Button
                                     Margin="4,0,0,0"
-                                    materialDesign:HintAssist.Hint="fontFamily"
-                                    materialDesign:HintAssist.IsFloating="True"
-                                    materialDesign:TextFieldAssist.HasOutlinedTextField="True"
-                                    SelectionChanged="StyleField_Changed" />
+                                    Click="StyleDeleteButton_Click"
+                                    Content="削除" />
                             </UniformGrid>
-                            <UniformGrid Columns="2" Margin="0,0,0,6">
-                                <DockPanel Margin="0,0,4,0">
-                                    <Button
-                                        Style="{StaticResource ColorPickButton}"
-                                        DockPanel.Dock="Right"
-                                        Click="StyleForegroundPick_Click">
-                                        <materialDesign:PackIcon Kind="Palette" Width="14" Height="14" />
-                                    </Button>
-                                    <TextBox
-                                        x:Name="StyleForegroundBox"
-                                        materialDesign:HintAssist.Hint="foreground"
-                                        materialDesign:HintAssist.IsFloating="True"
-                                        materialDesign:TextFieldAssist.HasOutlinedTextField="True"
-                                        TextChanged="StyleField_Changed" />
-                                </DockPanel>
-                                <DockPanel Margin="4,0,0,0">
-                                    <Button
-                                        Style="{StaticResource ColorPickButton}"
-                                        DockPanel.Dock="Right"
-                                        Click="StyleBackgroundPick_Click">
-                                        <materialDesign:PackIcon Kind="Palette" Width="14" Height="14" />
-                                    </Button>
-                                    <TextBox
-                                        x:Name="StyleBackgroundBox"
-                                        materialDesign:HintAssist.Hint="background"
-                                        materialDesign:HintAssist.IsFloating="True"
-                                        materialDesign:TextFieldAssist.HasOutlinedTextField="True"
-                                        TextChanged="StyleField_Changed" />
-                                </DockPanel>
-                            </UniformGrid>
-                            <UniformGrid Columns="2" Margin="0,0,0,6">
-                                <ComboBox
-                                    x:Name="StyleAlignCombo"
-                                    Margin="0,0,4,0"
-                                    materialDesign:HintAssist.Hint="align"
-                                    materialDesign:HintAssist.IsFloating="True"
-                                    materialDesign:TextFieldAssist.HasOutlinedTextField="True"
-                                    SelectionChanged="StyleField_Changed">
-                                    <ComboBoxItem Content="left" IsSelected="True" />
-                                    <ComboBoxItem Content="center" />
-                                    <ComboBoxItem Content="right" />
-                                </ComboBox>
-                                <StackPanel Margin="4,8,0,0" Orientation="Horizontal">
-                                    <CheckBox
-                                        x:Name="StyleBoldCheck"
-                                        Margin="0,0,10,0"
-                                        Content="bold"
-                                        Checked="StyleField_Changed"
-                                        Unchecked="StyleField_Changed" />
-                                    <CheckBox
-                                        x:Name="StyleItalicCheck"
-                                        Margin="0,0,10,0"
-                                        Content="italic"
-                                        Checked="StyleField_Changed"
-                                        Unchecked="StyleField_Changed" />
-                                    <CheckBox
-                                        x:Name="StyleWrapCheck"
-                                        Content="wrap"
-                                        Checked="StyleField_Changed"
-                                        Unchecked="StyleField_Changed" />
+                            <Button
+                                Margin="0,0,0,6"
+                                Click="StyleApplyToSelectedNodeButton_Click"
+                                Content="選択ノードへ適用" />
+                            <DockPanel Margin="0,0,0,6" LastChildFill="True">
+                                <StackPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
+                                    <UniformGrid Columns="2" Margin="0,0,0,6">
+                                        <controls:IntegerSpinBox
+                                            x:Name="StyleFontSizeSpin"
+                                            Margin="0,0,4,0"
+                                            Hint="fontSize"
+                                            Minimum="6"
+                                            Maximum="72"
+                                            ValueChanged="StyleSpin_Changed" />
+                                        <ComboBox
+                                            x:Name="StyleFontFamilyCombo"
+                                            Margin="4,0,0,0"
+                                            materialDesign:HintAssist.Hint="fontFamily"
+                                            materialDesign:HintAssist.IsFloating="True"
+                                            materialDesign:TextFieldAssist.HasOutlinedTextField="True"
+                                            SelectionChanged="StyleField_Changed" />
+                                    </UniformGrid>
+                                    <UniformGrid Columns="2" Margin="0,0,0,6">
+                                        <DockPanel Margin="0,0,4,0">
+                                            <Button
+                                                Style="{StaticResource ColorPickButton}"
+                                                DockPanel.Dock="Right"
+                                                Click="StyleForegroundPick_Click">
+                                                <materialDesign:PackIcon Kind="Palette" Width="14" Height="14" />
+                                            </Button>
+                                            <TextBox
+                                                x:Name="StyleForegroundBox"
+                                                materialDesign:HintAssist.Hint="foreground"
+                                                materialDesign:HintAssist.IsFloating="True"
+                                                materialDesign:TextFieldAssist.HasOutlinedTextField="True"
+                                                TextChanged="StyleField_Changed" />
+                                        </DockPanel>
+                                        <DockPanel Margin="4,0,0,0">
+                                            <Button
+                                                Style="{StaticResource ColorPickButton}"
+                                                DockPanel.Dock="Right"
+                                                Click="StyleBackgroundPick_Click">
+                                                <materialDesign:PackIcon Kind="Palette" Width="14" Height="14" />
+                                            </Button>
+                                            <TextBox
+                                                x:Name="StyleBackgroundBox"
+                                                materialDesign:HintAssist.Hint="background"
+                                                materialDesign:HintAssist.IsFloating="True"
+                                                materialDesign:TextFieldAssist.HasOutlinedTextField="True"
+                                                TextChanged="StyleField_Changed" />
+                                        </DockPanel>
+                                    </UniformGrid>
+                                    <UniformGrid Columns="2" Margin="0,0,0,6">
+                                        <ComboBox
+                                            x:Name="StyleAlignCombo"
+                                            Margin="0,0,4,0"
+                                            materialDesign:HintAssist.Hint="align"
+                                            materialDesign:HintAssist.IsFloating="True"
+                                            materialDesign:TextFieldAssist.HasOutlinedTextField="True"
+                                            SelectionChanged="StyleField_Changed">
+                                            <ComboBoxItem Content="left" IsSelected="True" />
+                                            <ComboBoxItem Content="center" />
+                                            <ComboBoxItem Content="right" />
+                                        </ComboBox>
+                                        <StackPanel Margin="4,8,0,0" Orientation="Horizontal">
+                                            <CheckBox
+                                                x:Name="StyleBoldCheck"
+                                                Margin="0,0,10,0"
+                                                Content="bold"
+                                                Checked="StyleField_Changed"
+                                                Unchecked="StyleField_Changed" />
+                                            <CheckBox
+                                                x:Name="StyleItalicCheck"
+                                                Margin="0,0,10,0"
+                                                Content="italic"
+                                                Checked="StyleField_Changed"
+                                                Unchecked="StyleField_Changed" />
+                                            <CheckBox
+                                                x:Name="StyleWrapCheck"
+                                                Content="wrap"
+                                                Checked="StyleField_Changed"
+                                                Unchecked="StyleField_Changed" />
+                                        </StackPanel>
+                                    </UniformGrid>
                                 </StackPanel>
-                            </UniformGrid>
+                                <ListBox
+                                    x:Name="StyleList"
+                                    Height="100"
+                                    SelectionChanged="StyleList_SelectionChanged" />
+                            </DockPanel>
                         </StackPanel>
-                        <ListBox
-                            x:Name="StyleList"
-                            Height="100"
-                            SelectionChanged="StyleList_SelectionChanged" />
-                    </DockPanel>
+                    </Expander>
                 </StackPanel>
             </ScrollViewer>
 
@@ -322,24 +405,357 @@
                 HorizontalAlignment="Stretch"
                 Background="Transparent" />
 
-            <DockPanel Grid.Column="2">
-                <TextBlock
-                    DockPanel.Dock="Top"
-                    Margin="0,0,0,6"
-                    FontSize="13"
-                    FontWeight="SemiBold"
-                    Text="プレビュー" />
+            <DockPanel Grid.Column="2" Margin="0,0,6,0">
+                <StackPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+                    <TextBlock
+                        FontSize="13"
+                        FontWeight="SemiBold"
+                        Text="プレビュー" />
+                    <TextBlock
+                        x:Name="PreviewSourceCaption"
+                        Margin="0,4,0,0"
+                        FontSize="11"
+                        Foreground="{DynamicResource MaterialDesign.Brush.ForegroundLight}"
+                        TextWrapping="Wrap" />
+                    <TextBlock
+                        Margin="0,4,0,0"
+                        FontSize="11"
+                        Foreground="{DynamicResource MaterialDesign.Brush.ForegroundLight}"
+                        Text="左の項目をここへドロップして配置。配置済みはドラッグで並べ替え／移動、左パレットへ戻すと解除。右クリックでプロパティ。Ctrl+Z / Ctrl+Y 対応。"
+                        TextWrapping="Wrap" />
+                </StackPanel>
                 <Border
+                    x:Name="PreviewSurface"
                     BorderBrush="{DynamicResource MaterialDesign.Brush.ForegroundLight}"
                     BorderThickness="1"
-                    CornerRadius="4">
-                    <ListView
-                        x:Name="PreviewList"
-                        BorderThickness="0"
-                        ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                        ScrollViewer.VerticalScrollBarVisibility="Auto" />
+                    CornerRadius="4"
+                    Padding="12"
+                    AllowDrop="True"
+                    Background="#01000000"
+                    PreviewDragOver="PreviewSurface_PreviewDragOver"
+                    PreviewDrop="PreviewSurface_PreviewDrop"
+                    PreviewDragLeave="PreviewSurface_PreviewDragLeave">
+                    <ScrollViewer
+                        x:Name="PreviewScroll"
+                        HorizontalScrollBarVisibility="Auto"
+                        VerticalScrollBarVisibility="Auto">
+                        <StackPanel
+                            HorizontalAlignment="Stretch"
+                            VerticalAlignment="Stretch"
+                            MinHeight="200"
+                            MinWidth="200"
+                            Background="#01000000">
+                            <ContentControl
+                                x:Name="PreviewListHeaderHost"
+                                Margin="0,0,0,4"
+                                HorizontalAlignment="Left" />
+                            <userControls:WpfSkinItemPresenter
+                                x:Name="PreviewPresenter"
+                                HorizontalAlignment="Left"
+                                VerticalAlignment="Top" />
+                        </StackPanel>
+                    </ScrollViewer>
                 </Border>
             </DockPanel>
+
+            <GridSplitter
+                Grid.Column="3"
+                Width="6"
+                HorizontalAlignment="Stretch"
+                Background="Transparent" />
+
+            <ScrollViewer
+                Grid.Column="4"
+                VerticalScrollBarVisibility="Auto"
+                HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Margin="0,0,0,4">
+                    <TextBlock
+                        Margin="0,0,0,6"
+                        FontSize="13"
+                        FontWeight="SemiBold"
+                        Text="配置のヒント" />
+                    <TextBlock
+                        Margin="0,0,0,10"
+                        FontSize="11"
+                        Foreground="{DynamicResource MaterialDesign.Brush.ForegroundLight}"
+                        Text="左の項目を中央プレビューへドロップして配置します。配置済み要素を右クリックするとプロパティを編集できます。下の詳細レイアウトは stack/grid など上級者向けです。"
+                        TextWrapping="Wrap" />
+
+                    <Expander
+                        Header="詳細レイアウト（ツリー / 属性）"
+                        IsExpanded="True"
+                        Margin="0,0,0,8">
+                        <StackPanel Margin="0,8,0,0">
+                    <TextBlock
+                        Margin="0,0,0,6"
+                        FontSize="11"
+                        Foreground="{DynamicResource MaterialDesign.Brush.ForegroundLight}"
+                        Text="stack / grid / text / thumbnail / tags を追加し、順序や属性を編集します。"
+                        TextWrapping="Wrap" />
+                    <TextBlock
+                        Margin="0,0,0,6"
+                        FontSize="11"
+                        Foreground="{DynamicResource MaterialDesign.Brush.ForegroundLight}"
+                        Text="下のボタンはクリック追加に加えてドラッグ元としても使えます。ツリー内ノードもドラッグで並べ替えできます。"
+                        TextWrapping="Wrap" />
+                    <Border
+                        BorderBrush="{DynamicResource MaterialDesign.Brush.ForegroundLight}"
+                        BorderThickness="1"
+                        CornerRadius="4"
+                        Padding="4"
+                        Margin="0,0,0,6">
+                        <TreeView
+                            x:Name="LayoutTree"
+                            Height="220"
+                            AllowDrop="True"
+                            ItemTemplate="{StaticResource LayoutNodeTemplate}"
+                            PreviewMouseLeftButtonDown="LayoutTree_PreviewMouseLeftButtonDown"
+                            PreviewMouseMove="LayoutTree_PreviewMouseMove"
+                            DragOver="LayoutTree_DragOver"
+                            Drop="LayoutTree_Drop"
+                            SelectedItemChanged="LayoutTree_SelectedItemChanged" />
+                    </Border>
+                    <UniformGrid Columns="5" Margin="0,0,0,6">
+                        <Button FontSize="11" Margin="0,0,4,0" Tag="Text" Click="AddTextNodeButton_Click" Content="text" PreviewMouseLeftButtonDown="PaletteButton_PreviewMouseLeftButtonDown" PreviewMouseMove="PaletteButton_PreviewMouseMove" />
+                        <Button FontSize="11" Margin="4,0,4,0" Tag="Thumbnail" Click="AddThumbnailNodeButton_Click" Content="thumbnail" PreviewMouseLeftButtonDown="PaletteButton_PreviewMouseLeftButtonDown" PreviewMouseMove="PaletteButton_PreviewMouseMove" />
+                        <Button FontSize="11" Margin="4,0,4,0" Tag="Tags" Click="AddTagsNodeButton_Click" Content="tags" PreviewMouseLeftButtonDown="PaletteButton_PreviewMouseLeftButtonDown" PreviewMouseMove="PaletteButton_PreviewMouseMove" />
+                        <Button FontSize="11" Margin="4,0,4,0" Tag="Stack" Click="AddStackNodeButton_Click" Content="stack" PreviewMouseLeftButtonDown="PaletteButton_PreviewMouseLeftButtonDown" PreviewMouseMove="PaletteButton_PreviewMouseMove" />
+                        <Button FontSize="11" Margin="4,0,0,0" Tag="Grid" Click="AddGridNodeButton_Click" Content="grid" PreviewMouseLeftButtonDown="PaletteButton_PreviewMouseLeftButtonDown" PreviewMouseMove="PaletteButton_PreviewMouseMove" />
+                    </UniformGrid>
+                    <UniformGrid Columns="3" Margin="0,0,0,10">
+                        <Button Margin="0,0,4,0" Click="MoveNodeUpButton_Click" Content="上へ" />
+                        <Button Margin="4,0,4,0" Click="MoveNodeDownButton_Click" Content="下へ" />
+                        <Button Margin="4,0,0,0" Click="DeleteNodeButton_Click" Content="削除" />
+                    </UniformGrid>
+
+                    <TextBlock
+                        Margin="0,0,0,6"
+                        FontSize="13"
+                        FontWeight="SemiBold"
+                        Text="選択ノード" />
+                    <TextBlock
+                        x:Name="SelectedNodePathText"
+                        Margin="0,0,0,6"
+                        FontSize="11"
+                        Foreground="{DynamicResource MaterialDesign.Brush.ForegroundLight}"
+                        Text="ルートを選択してください。"
+                        TextWrapping="Wrap" />
+                    <TextBlock
+                        Margin="0,0,0,6"
+                        FontSize="11"
+                        Foreground="{DynamicResource MaterialDesign.Brush.ForegroundLight}"
+                        Text="grid の rows / columns はカンマ区切りです（例: auto,*）。子要素の row / col / span はその grid 配下のノードで編集します。"
+                        TextWrapping="Wrap" />
+                    <UniformGrid Columns="2" Margin="0,0,0,6">
+                        <ComboBox
+                            x:Name="NodePanelCombo"
+                            Margin="0,0,4,0"
+                            materialDesign:HintAssist.Hint="panel"
+                            materialDesign:HintAssist.IsFloating="True"
+                            materialDesign:TextFieldAssist.HasOutlinedTextField="True"
+                            SelectionChanged="NodeField_Changed">
+                            <ComboBoxItem Content="stack" />
+                            <ComboBoxItem Content="grid" />
+                        </ComboBox>
+                        <ComboBox
+                            x:Name="NodeStackCombo"
+                            Margin="4,0,0,0"
+                            materialDesign:HintAssist.Hint="stack"
+                            materialDesign:HintAssist.IsFloating="True"
+                            materialDesign:TextFieldAssist.HasOutlinedTextField="True"
+                            SelectionChanged="NodeField_Changed">
+                            <ComboBoxItem Content="vertical" />
+                            <ComboBoxItem Content="horizontal" />
+                        </ComboBox>
+                    </UniformGrid>
+                    <UniformGrid Columns="2" Margin="0,0,0,6">
+                        <ComboBox
+                            x:Name="NodeTypeCombo"
+                            Margin="0,0,4,0"
+                            materialDesign:HintAssist.Hint="type"
+                            materialDesign:HintAssist.IsFloating="True"
+                            materialDesign:TextFieldAssist.HasOutlinedTextField="True"
+                            SelectionChanged="NodeField_Changed">
+                            <ComboBoxItem Content="text" />
+                            <ComboBoxItem Content="thumbnail" />
+                            <ComboBoxItem Content="tags" />
+                        </ComboBox>
+                        <ComboBox
+                            x:Name="NodeFieldCombo"
+                            Margin="4,0,0,0"
+                            IsEditable="True"
+                            materialDesign:HintAssist.Hint="field"
+                            materialDesign:HintAssist.IsFloating="True"
+                            materialDesign:TextFieldAssist.HasOutlinedTextField="True"
+                            IsTextSearchEnabled="False"
+                            LostFocus="NodeField_Changed"
+                            SelectionChanged="NodeField_Changed" />
+                    </UniformGrid>
+                    <TextBox
+                        x:Name="NodeLabelBox"
+                        Margin="0,0,0,6"
+                        materialDesign:HintAssist.Hint="label"
+                        materialDesign:HintAssist.IsFloating="True"
+                        materialDesign:TextFieldAssist.HasOutlinedTextField="True"
+                        TextChanged="NodeField_Changed" />
+                    <UniformGrid Columns="2" Margin="0,0,0,6">
+                            <TextBox
+                            x:Name="NodeHeaderBox"
+                            Margin="0,0,4,0"
+                            materialDesign:HintAssist.Hint="header（list の列見出し）"
+                            materialDesign:HintAssist.IsFloating="True"
+                            materialDesign:TextFieldAssist.HasOutlinedTextField="True"
+                            TextChanged="NodeField_Changed" />
+                        <TextBox
+                            x:Name="NodeFormatBox"
+                            Margin="4,0,0,0"
+                            materialDesign:HintAssist.Hint="format"
+                            materialDesign:HintAssist.IsFloating="True"
+                            materialDesign:TextFieldAssist.HasOutlinedTextField="True"
+                            TextChanged="NodeField_Changed" />
+                    </UniformGrid>
+                    <UniformGrid Columns="2" Margin="0,0,0,6">
+                        <ComboBox
+                            x:Name="NodeStyleCombo"
+                            Margin="0,0,4,0"
+                            IsEditable="True"
+                            materialDesign:HintAssist.Hint="style"
+                            materialDesign:HintAssist.IsFloating="True"
+                            materialDesign:TextFieldAssist.HasOutlinedTextField="True"
+                            IsTextSearchEnabled="False"
+                            LostFocus="NodeField_Changed"
+                            SelectionChanged="NodeField_Changed" />
+                        <ComboBox
+                            x:Name="NodeAlignCombo"
+                            Margin="4,0,0,0"
+                            materialDesign:HintAssist.Hint="align"
+                            materialDesign:HintAssist.IsFloating="True"
+                            materialDesign:TextFieldAssist.HasOutlinedTextField="True"
+                            SelectionChanged="NodeField_Changed">
+                            <ComboBoxItem Content="" />
+                            <ComboBoxItem Content="left" />
+                            <ComboBoxItem Content="center" />
+                            <ComboBoxItem Content="right" />
+                        </ComboBox>
+                    </UniformGrid>
+                    <UniformGrid Columns="2" Margin="0,0,0,6">
+                        <TextBox
+                            x:Name="NodeRowsBox"
+                            Margin="0,0,4,0"
+                            materialDesign:HintAssist.Hint="rows (例: auto,*)"
+                            materialDesign:HintAssist.IsFloating="True"
+                            materialDesign:TextFieldAssist.HasOutlinedTextField="True"
+                            TextChanged="NodeField_Changed" />
+                        <TextBox
+                            x:Name="NodeColumnsBox"
+                            Margin="4,0,0,0"
+                            materialDesign:HintAssist.Hint="columns (例: 2*,*)"
+                            materialDesign:HintAssist.IsFloating="True"
+                            materialDesign:TextFieldAssist.HasOutlinedTextField="True"
+                            TextChanged="NodeField_Changed" />
+                    </UniformGrid>
+                    <UniformGrid Columns="4" Margin="0,0,0,6">
+                        <controls:IntegerSpinBox x:Name="NodeRowSpin" Margin="0,0,4,0" Hint="row" Minimum="0" Maximum="20" ValueChanged="NodeSpin_Changed" />
+                        <controls:IntegerSpinBox x:Name="NodeColSpin" Margin="4,0,4,0" Hint="col" Minimum="0" Maximum="20" ValueChanged="NodeSpin_Changed" />
+                        <controls:IntegerSpinBox x:Name="NodeRowSpanSpin" Margin="4,0,4,0" Hint="rowSpan" Minimum="1" Maximum="20" ValueChanged="NodeSpin_Changed" />
+                        <controls:IntegerSpinBox x:Name="NodeColSpanSpin" Margin="4,0,0,0" Hint="colSpan" Minimum="1" Maximum="20" ValueChanged="NodeSpin_Changed" />
+                    </UniformGrid>
+                    <UniformGrid Columns="2" Margin="0,0,0,6">
+                        <controls:IntegerSpinBox x:Name="NodeFontSizeSpin" Margin="0,0,4,0" Hint="fontSize" Minimum="0" Maximum="72" ValueChanged="NodeSpin_Changed" />
+                        <ComboBox
+                            x:Name="NodeFontFamilyCombo"
+                            Margin="4,0,0,0"
+                            materialDesign:HintAssist.Hint="fontFamily"
+                            materialDesign:HintAssist.IsFloating="True"
+                            materialDesign:TextFieldAssist.HasOutlinedTextField="True"
+                            IsEditable="True"
+                            IsTextSearchEnabled="False"
+                            LostFocus="NodeField_Changed"
+                            SelectionChanged="NodeField_Changed" />
+                    </UniformGrid>
+                    <UniformGrid Columns="2" Margin="0,0,0,6">
+                        <TextBox
+                            x:Name="NodeMarginBox"
+                            Margin="0,0,4,0"
+                            materialDesign:HintAssist.Hint="margin"
+                            materialDesign:HintAssist.IsFloating="True"
+                            materialDesign:TextFieldAssist.HasOutlinedTextField="True"
+                            TextChanged="NodeField_Changed" />
+                        <TextBox
+                            x:Name="NodePaddingBox"
+                            Margin="4,0,0,0"
+                            materialDesign:HintAssist.Hint="padding"
+                            materialDesign:HintAssist.IsFloating="True"
+                            materialDesign:TextFieldAssist.HasOutlinedTextField="True"
+                            TextChanged="NodeField_Changed" />
+                    </UniformGrid>
+                    <UniformGrid Columns="2" Margin="0,0,0,6">
+                        <DockPanel Margin="0,0,4,0">
+                            <Button
+                                Style="{StaticResource ColorPickButton}"
+                                DockPanel.Dock="Right"
+                                Click="NodeForegroundPick_Click">
+                                <materialDesign:PackIcon Kind="Palette" Width="14" Height="14" />
+                            </Button>
+                            <TextBox
+                                x:Name="NodeForegroundBox"
+                                materialDesign:HintAssist.Hint="foreground"
+                                materialDesign:HintAssist.IsFloating="True"
+                                materialDesign:TextFieldAssist.HasOutlinedTextField="True"
+                                TextChanged="NodeField_Changed" />
+                        </DockPanel>
+                        <DockPanel Margin="4,0,0,0">
+                            <Button
+                                Style="{StaticResource ColorPickButton}"
+                                DockPanel.Dock="Right"
+                                Click="NodeBackgroundPick_Click">
+                                <materialDesign:PackIcon Kind="Palette" Width="14" Height="14" />
+                            </Button>
+                            <TextBox
+                                x:Name="NodeBackgroundBox"
+                                materialDesign:HintAssist.Hint="background"
+                                materialDesign:HintAssist.IsFloating="True"
+                                materialDesign:TextFieldAssist.HasOutlinedTextField="True"
+                                TextChanged="NodeField_Changed" />
+                        </DockPanel>
+                    </UniformGrid>
+                    <UniformGrid Columns="2" Margin="0,0,0,6">
+                        <ComboBox
+                            x:Name="NodeHAlignCombo"
+                            Margin="0,0,4,0"
+                            materialDesign:HintAssist.Hint="hAlign"
+                            materialDesign:HintAssist.IsFloating="True"
+                            materialDesign:TextFieldAssist.HasOutlinedTextField="True"
+                            SelectionChanged="NodeField_Changed">
+                            <ComboBoxItem Content="" />
+                            <ComboBoxItem Content="left" />
+                            <ComboBoxItem Content="center" />
+                            <ComboBoxItem Content="right" />
+                            <ComboBoxItem Content="stretch" />
+                        </ComboBox>
+                        <ComboBox
+                            x:Name="NodeVAlignCombo"
+                            Margin="4,0,0,0"
+                            materialDesign:HintAssist.Hint="vAlign"
+                            materialDesign:HintAssist.IsFloating="True"
+                            materialDesign:TextFieldAssist.HasOutlinedTextField="True"
+                            SelectionChanged="NodeField_Changed">
+                            <ComboBoxItem Content="" />
+                            <ComboBoxItem Content="top" />
+                            <ComboBoxItem Content="center" />
+                            <ComboBoxItem Content="bottom" />
+                            <ComboBoxItem Content="stretch" />
+                        </ComboBox>
+                    </UniformGrid>
+                    <StackPanel Margin="0,2,0,0" Orientation="Horizontal">
+                        <CheckBox x:Name="NodeBoldCheck" Margin="0,0,12,0" Content="bold" Checked="NodeField_Changed" Unchecked="NodeField_Changed" />
+                        <CheckBox x:Name="NodeItalicCheck" Margin="0,0,12,0" Content="italic" Checked="NodeField_Changed" Unchecked="NodeField_Changed" />
+                        <CheckBox x:Name="NodeWrapCheck" Content="wrap" Checked="NodeField_Changed" Unchecked="NodeField_Changed" />
+                    </StackPanel>
+                        </StackPanel>
+                    </Expander>
+                </StackPanel>
+            </ScrollViewer>
         </Grid>
     </DockPanel>
 </Window>

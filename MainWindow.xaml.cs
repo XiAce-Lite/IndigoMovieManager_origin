@@ -23,6 +23,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using IndigoMovieManager.Services.WpfSkin;
 using IndigoMovieManager.Thumbnail;
 using static IndigoMovieManager.SQLite;
 using static IndigoMovieManager.Tools;
@@ -616,6 +617,7 @@ namespace IndigoMovieManager
                 ImageConverter = new Converter.NoLockImageConverter(),
                 AspectConverter = new Converter.AspectStretchConverter(),
                 FileSizeConverter = new Converter.FileSizeConverter(),
+                PathLinkClick = OpenWpfSkinPathLink,
             };
 
             Services.WpfSkin.WpfSkinTemplateBuilder.ApplyHostContext(context);
@@ -2606,6 +2608,96 @@ namespace IndigoMovieManager
             }
         }
 
+        private static void OpenWpfSkinPathLink(MovieRecords mv, string field)
+        {
+            if (mv == null)
+            {
+                return;
+            }
+
+            string key = field?.Trim().ToLowerInvariant() ?? "path";
+            try
+            {
+                string textValue = key switch
+                {
+                    "dir" => mv.Dir,
+                    "drive" => mv.Drive,
+                    "comment1" => mv.Comment1,
+                    "comment2" => mv.Comment2,
+                    "comment3" => mv.Comment3,
+                    "path" => mv.Movie_Path,
+                    _ => mv.Movie_Path,
+                };
+
+                if (TryOpenAsUrl(textValue))
+                {
+                    return;
+                }
+
+                if (key is "dir")
+                {
+                    if (!string.IsNullOrWhiteSpace(mv.Dir) && Path.Exists(mv.Dir))
+                    {
+                        Process.Start("explorer.exe", mv.Dir);
+                    }
+
+                    return;
+                }
+
+                if (key is "drive")
+                {
+                    string drive = mv.Drive;
+                    if (string.IsNullOrWhiteSpace(drive))
+                    {
+                        return;
+                    }
+
+                    if (!drive.EndsWith('\\') && !drive.EndsWith('/'))
+                    {
+                        drive += Path.DirectorySeparatorChar;
+                    }
+
+                    if (Path.Exists(drive))
+                    {
+                        Process.Start("explorer.exe", drive);
+                    }
+
+                    return;
+                }
+
+                if (!string.IsNullOrWhiteSpace(mv.Movie_Path) && Path.Exists(mv.Movie_Path))
+                {
+                    Process.Start("explorer.exe", $"/select,{mv.Movie_Path}");
+                }
+            }
+            catch
+            {
+                // リンク失敗は無視（存在しないパス等）
+            }
+        }
+
+        private static bool TryOpenAsUrl(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            string trimmed = value.Trim();
+            if (!Uri.TryCreate(trimmed, UriKind.Absolute, out Uri uri))
+            {
+                return false;
+            }
+
+            if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
+            {
+                return false;
+            }
+
+            Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
+            return true;
+        }
+
         private void RenameFile_Click(object sender, RoutedEventArgs e)
         {
             string keyName = "";
@@ -3779,7 +3871,7 @@ namespace IndigoMovieManager
                     OpenWpfSkinMaintenance(SkinMaintenanceWindow.OpenMode.EditExisting, ResolveWpfSkinEditTarget());
                     break;
                 case NavigationMenuIds.WpfSkinNew:
-                    OpenWpfSkinMaintenance(SkinMaintenanceWindow.OpenMode.CreateNew, null);
+                    BeginWpfSkinCreateFromTemplate();
                     break;
                 case NavigationMenuIds.WpfSkinDelete:
                     BeginWpfSkinDeleteFromMenu();
@@ -3805,9 +3897,47 @@ namespace IndigoMovieManager
             return Services.WpfSkin.WpfSkinLoader.DefaultSkinName;
         }
 
-        private void OpenWpfSkinMaintenance(SkinMaintenanceWindow.OpenMode mode, string folderName)
+        private void BeginWpfSkinCreateFromTemplate()
         {
-            var window = new SkinMaintenanceWindow(this, mode, folderName);
+            var pick = new WpfSkinTemplatePickWindow(this);
+            if (pick.ShowDialog() != true)
+            {
+                return;
+            }
+
+            if (pick.SelectedStructTemplate != null)
+            {
+                // 構造テンプレから直接組み立て
+                var def = WpfSkinStorage.CreateFromStructTemplate(pick.SelectedStructTemplate);
+                OpenWpfSkinMaintenance(
+                    SkinMaintenanceWindow.OpenMode.CreateNew,
+                    folderName: null,
+                    templateFolderName: null,
+                    prebuiltDefinition: def);
+            }
+            else if (!string.IsNullOrWhiteSpace(pick.SelectedTemplateName))
+            {
+                OpenWpfSkinMaintenance(
+                    SkinMaintenanceWindow.OpenMode.CreateNew,
+                    folderName: null,
+                    templateFolderName: pick.SelectedTemplateName);
+            }
+        }
+
+        private void OpenWpfSkinMaintenance(
+            SkinMaintenanceWindow.OpenMode mode,
+            string folderName,
+            string templateFolderName = null,
+            WpfSkinDefinition prebuiltDefinition = null)
+        {
+            var window = new SkinMaintenanceWindow(
+                this,
+                mode,
+                folderName,
+                GetSelectedMovie(),
+                templateFolderName,
+                prebuiltDefinition);
+            window.LiveApplyRequested = ApplySavedWpfSkinFromMaintenance;
             window.ShowDialog();
             if (window.SkinWasSaved || window.SkinWasDeleted)
             {
@@ -3823,6 +3953,121 @@ namespace IndigoMovieManager
                 ApplyWpfSkin(string.IsNullOrWhiteSpace(skinName) ? null : skinName);
                 _ = OnSkinLayoutChangedAsync();
             }
+        }
+
+        private void ApplySavedWpfSkinFromMaintenance(string skinFolderName)
+        {
+            if (string.IsNullOrWhiteSpace(skinFolderName))
+            {
+                return;
+            }
+
+            RefreshWpfSkinListAfterMaintenance(skinFolderName, preferSelectSaved: true);
+            if (_currentSkinEngine == SkinEngine.Wpf)
+            {
+                ApplyWpfSkin(skinFolderName);
+                TryAdoptNearThumbnailLayout(skinFolderName);
+                _ = OnSkinLayoutChangedAsync();
+            }
+        }
+
+        /// <summary>
+        /// 適用スキンのサムネサイズに 1px 差の既存フォルダがあるとき、再利用するか確認する。
+        /// Yes なら skin.json の thumbnail 寸法を既存に合わせて保存し直し、再生成を避ける。
+        /// </summary>
+        private void TryAdoptNearThumbnailLayout(string skinFolderName)
+        {
+            if (_wpfSkin?.Thumbnail == null)
+            {
+                return;
+            }
+
+            ThumbnailLayoutSpec wanted = ThumbnailLayoutSpec.FromWpfSkinThumbnail(_wpfSkin.Thumbnail);
+            string thumbRoot = _thumbLayoutCache.ThumbRootPath;
+            if (string.IsNullOrWhiteSpace(thumbRoot))
+            {
+                return;
+            }
+
+            // 目標フォルダに既にファイルがあるなら何もしない
+            string wantedDir = wanted.GetOutPath(_thumbLayoutCache.DbName, _thumbLayoutCache.ThumbFolder);
+            if (Directory.Exists(wantedDir)
+                && Directory.EnumerateFiles(wantedDir, "*.jpg").Any())
+            {
+                return;
+            }
+
+            ThumbnailLayoutSpec near = ThumbnailLayoutNearMatch.FindNearExistingWithFiles(thumbRoot, wanted);
+            if (near == null)
+            {
+                return;
+            }
+
+            var confirm = new MessageBoxEx(this)
+            {
+                DlogTitle = "近いサイズのサムネイル",
+                DlogMessage =
+                    $"指定サイズ {wanted.Key} のサムネはまだありませんが、\n"
+                    + $"近いサイズ {near.Key} が既にあります（差は幅/高さ 1px 以内）。\n\n"
+                    + "既存サイズを採用して再作成を省略しますか？\n"
+                    + "（スキンの thumbnail.width / height を既存に合わせます）",
+                PackIconKind = MaterialDesignThemes.Wpf.PackIconKind.ImageArea,
+            };
+            confirm.ShowDialog();
+            if (confirm.CloseStatus() != MessageBoxResult.OK)
+            {
+                return;
+            }
+
+            _wpfSkin.Thumbnail.Width = near.Width;
+            _wpfSkin.Thumbnail.Height = near.Height;
+            SyncThumbnailNodeWidthsToGeneration(_wpfSkin, near.Width);
+
+            if (!Services.WpfSkin.WpfSkinStorage.TrySave(
+                    _wpfSkin,
+                    skinFolderName,
+                    overwriteExisting: true,
+                    out string error))
+            {
+                MessageBox.Show(
+                    this,
+                    "近いサイズの採用を保存できませんでした。\n" + error,
+                    Assembly.GetExecutingAssembly().GetName().Name,
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            ApplyWpfSkin(skinFolderName);
+        }
+
+        private static void SyncThumbnailNodeWidthsToGeneration(WpfSkinDefinition def, int width)
+        {
+            void Walk(WpfSkinNode node)
+            {
+                if (node == null)
+                {
+                    return;
+                }
+
+                if (string.Equals(node.Type, "thumbnail", StringComparison.OrdinalIgnoreCase)
+                    && node.Width.HasValue)
+                {
+                    node.Width = width;
+                }
+
+                if (node.Children == null)
+                {
+                    return;
+                }
+
+                foreach (WpfSkinNode child in node.Children)
+                {
+                    Walk(child);
+                }
+            }
+
+            Walk(def?.Card?.Layout);
         }
 
         private void BeginWpfSkinDeleteFromMenu()

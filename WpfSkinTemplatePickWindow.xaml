@@ -1,0 +1,112 @@
+<Window
+    x:Class="IndigoMovieManager.WpfSkinTemplatePickWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+    Title="新規スキンのテンプレート"
+    Width="520"
+    Height="500"
+    MinWidth="420"
+    MinHeight="380"
+    ResizeMode="CanResizeWithGrip"
+    WindowStartupLocation="CenterOwner"
+    Background="{DynamicResource MaterialDesign.Brush.Background}">
+    <materialDesign:ColorZone Padding="12,12,12,0" VerticalAlignment="Stretch">
+        <Grid Margin="0,0,0,8">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <TabControl x:Name="MainTabs" Grid.Row="0">
+                <!-- ── 既存スキンから ── -->
+                <TabItem Header="既存スキンから複製">
+                    <Grid Margin="0,8,0,0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <TextBlock
+                            Grid.Row="0"
+                            Margin="0,0,0,8"
+                            FontSize="12"
+                            Text="元にするスキンを選んでください。layout / styles / 配色をそのまま複製して編集を開始します（Default* は雛形として使えますが、上書き保存はできません）。"
+                            TextWrapping="Wrap" />
+                        <ListBox
+                            x:Name="TemplateList"
+                            Grid.Row="1"
+                            Margin="0,0,0,4"
+                            MouseDoubleClick="TemplateList_MouseDoubleClick">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="0,4">
+                                        <TextBlock FontSize="13" FontWeight="SemiBold" Text="{Binding DisplayName}" />
+                                        <TextBlock
+                                            Margin="0,2,0,0"
+                                            FontSize="11"
+                                            Foreground="{DynamicResource MaterialDesign.Brush.ForegroundLight}"
+                                            Text="{Binding Description}"
+                                            TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Grid>
+                </TabItem>
+
+                <!-- ── 構造から ── -->
+                <TabItem Header="構造テンプレから">
+                    <Grid Margin="0,8,0,0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <TextBlock
+                            Grid.Row="0"
+                            Margin="0,0,0,8"
+                            FontSize="12"
+                            Text="行列レイアウトのパターンを選んでください。空の枠組みが作成されるので、左パレットから DB フィールドを D&amp;D して配置できます。"
+                            TextWrapping="Wrap" />
+                        <ListBox
+                            x:Name="StructList"
+                            Grid.Row="1"
+                            Margin="0,0,0,4"
+                            MouseDoubleClick="StructList_MouseDoubleClick">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="0,4">
+                                        <TextBlock FontSize="13" FontWeight="SemiBold" Text="{Binding DisplayName}" />
+                                        <TextBlock
+                                            Margin="0,2,0,0"
+                                            FontSize="11"
+                                            Foreground="{DynamicResource MaterialDesign.Brush.ForegroundLight}"
+                                            Text="{Binding Description}"
+                                            TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Grid>
+                </TabItem>
+            </TabControl>
+
+            <!-- ボタン行 -->
+            <StackPanel
+                Grid.Row="1"
+                Margin="0,8,0,0"
+                HorizontalAlignment="Right"
+                Orientation="Horizontal">
+                <Button
+                    x:Name="OkButton"
+                    Margin="0,0,8,0"
+                    Click="OkButton_Click"
+                    Content="このテンプレートで作成"
+                    IsDefault="True" />
+                <Button
+                    Click="CancelButton_Click"
+                    Content="キャンセル"
+                    IsCancel="True" />
+            </StackPanel>
+        </Grid>
+    </materialDesign:ColorZone>
+</Window>

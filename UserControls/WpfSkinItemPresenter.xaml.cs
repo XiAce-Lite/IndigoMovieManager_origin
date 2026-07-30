@@ -36,6 +36,11 @@ namespace IndigoMovieManager.UserControls
             }
         }
 
+        /// <summary>
+        /// 同じ SkinDefinition 参照のまま layout だけ変わったときに再構築する。
+        /// </summary>
+        public void RebuildLayoutNow() => RebuildLayout();
+
         private void RebuildLayout()
         {
             if (SkinDefinition == null)

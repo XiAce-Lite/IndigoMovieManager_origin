@@ -54,15 +54,66 @@ namespace IndigoMovieManager.Services.WpfSkin
         }
 
         /// <summary>新規用: 既定テンプレートを複製して表示名だけ差し替える。</summary>
-        public static WpfSkinDefinition CreateFromDefaultTemplate()
+        public static WpfSkinDefinition CreateFromDefaultTemplate() =>
+            CreateFromTemplate(WpfSkinLoader.DefaultSkinName);
+
+        /// <summary>新規用: 指定スキンをテンプレートとして複製する。無い場合は既定へフォールバック。</summary>
+        public static WpfSkinDefinition CreateFromTemplate(string templateFolderName)
         {
-            WpfSkinDefinition template = WpfSkinLoader.TryLoad(WpfSkinLoader.DefaultSkinName, out WpfSkinDefinition loaded)
-                ? loaded
-                : WpfSkinLoader.LoadDefault();
+            WpfSkinDefinition template;
+            if (!string.IsNullOrWhiteSpace(templateFolderName)
+                && WpfSkinLoader.TryLoad(templateFolderName.Trim(), out WpfSkinDefinition loaded))
+            {
+                template = loaded;
+            }
+            else if (WpfSkinLoader.TryLoad(WpfSkinLoader.DefaultSkinName, out WpfSkinDefinition fallback))
+            {
+                template = fallback;
+            }
+            else
+            {
+                template = WpfSkinLoader.LoadDefault();
+            }
+
             WpfSkinDefinition clone = Clone(template);
             clone.Name = "新規スキン";
             clone.FolderName = null;
             return clone;
+        }
+
+        /// <summary>
+        /// 構造テンプレから新規スキンを生成する。
+        /// 既存スキンの複製ではなく、ノードを直接組み立てる。
+        /// </summary>
+        public static WpfSkinDefinition CreateFromStructTemplate(Design.WpfSkinStructTemplate tmpl)
+        {
+            if (tmpl == null)
+            {
+                return CreateFromDefaultTemplate();
+            }
+
+            var def = new WpfSkinDefinition
+            {
+                Name = "新規スキン",
+                FolderName = null,
+                Thumbnail = new WpfSkinThumbnail
+                {
+                    Width = tmpl.ThumbWidth,
+                    Height = tmpl.ThumbHeight,
+                    Columns = 1,
+                    Rows = 1,
+                },
+                Card = new WpfSkinCard
+                {
+                    Width = tmpl.CardWidth,
+                    Padding = 8,
+                    Stretch = tmpl.CardStretch,
+                    Layout = tmpl.BuildLayout(),
+                },
+                Surface = new WpfSkinSurface(),
+                Styles = tmpl.BuildStyles(),
+            };
+            return def;
         }
 
         public static IReadOnlyList<string> EnumerateDeletableSkins() =>
