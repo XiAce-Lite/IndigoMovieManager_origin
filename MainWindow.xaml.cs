@@ -4922,23 +4922,14 @@ namespace IndigoMovieManager
 
         private void EditSelectedTagBarItem(bool focusContents)
         {
-            if (TagBarList.SelectedItem is not TagBarItem item)
+            TagBarItem item = TagBarList.SelectedItem as TagBarItem;
+            string blockReason = TagBarService.GetEditBlockReason(item);
+            if (blockReason != null)
             {
                 MessageBox.Show(
                     this,
-                    "編集する保存済み検索条件を選択してください。",
-                    Assembly.GetExecutingAssembly().GetName().Name,
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Information);
-                return;
-            }
-
-            if (TagBarService.IsBuiltInStarRating(item))
-            {
-                MessageBox.Show(
-                    this,
-                    "★評価の保存済み検索条件は編集できません。",
-                    Assembly.GetExecutingAssembly().GetName().Name,
+                    blockReason,
+                    AppTitle,
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
                 return;
@@ -4950,19 +4941,19 @@ namespace IndigoMovieManager
             }
 
             UpdateTagBarItem(MainVM.DbInfo.DBFullPath, item.Item_Id, title, contents);
-            item.Title = title;
-            item.Contents = contents;
+            TagBarService.ApplyEditedFields(item, title, contents);
             TagBarList.Items.Refresh();
         }
 
         private void DeleteSelectedTagBarItem()
         {
-            if (TagBarList.SelectedItem is not TagBarItem item)
+            TagBarItem item = TagBarList.SelectedItem as TagBarItem;
+            if (item == null)
             {
                 MessageBox.Show(
                     this,
-                    "削除する保存済み検索条件を選択してください。",
-                    Assembly.GetExecutingAssembly().GetName().Name,
+                    TagBarService.MessageSelectToDelete,
+                    AppTitle,
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
                 return;
@@ -4973,24 +4964,24 @@ namespace IndigoMovieManager
 
         private void DeleteTagBarItemFromDb(TagBarItem item)
         {
-            if (item == null)
+            string blockReason = TagBarService.GetDeleteBlockReason(item);
+            if (blockReason != null)
             {
-                return;
-            }
+                if (item != null)
+                {
+                    MessageBox.Show(
+                        this,
+                        blockReason,
+                        AppTitle,
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                }
 
-            if (TagBarService.IsBuiltInStarRating(item))
-            {
-                MessageBox.Show(
-                    this,
-                    "★評価の保存済み検索条件は削除できません。",
-                    Assembly.GetExecutingAssembly().GetName().Name,
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Information);
                 return;
             }
 
             DeleteTagBarItem(MainVM.DbInfo.DBFullPath, item.Item_Id);
-            MainVM.TagBarRecs.Remove(item);
+            TagBarService.TryRemoveFromCollection(MainVM.TagBarRecs, item);
             TagBarList.SelectedItem = null;
             UpdateTagBarCommandButtonState();
         }
@@ -5000,12 +4991,11 @@ namespace IndigoMovieManager
 
         private void UpdateTagBarCommandButtonState()
         {
-            bool isBuiltIn = TagBarList.SelectedItem is TagBarItem item
-                && TagBarService.IsBuiltInStarRating(item);
-            bool hasSelection = TagBarList.SelectedItem is TagBarItem;
+            (bool editEnabled, bool deleteEnabled) =
+                TagBarService.GetCommandButtonState(TagBarList.SelectedItem as TagBarItem);
 
-            TagBarEditButton.IsEnabled = hasSelection && !isBuiltIn;
-            TagBarDeleteButton.IsEnabled = hasSelection && !isBuiltIn;
+            TagBarEditButton.IsEnabled = editEnabled;
+            TagBarDeleteButton.IsEnabled = deleteEnabled;
         }
 
         private void TagBarItem_ContextMenuOpening(object sender, ContextMenuEventArgs e)
@@ -5020,7 +5010,7 @@ namespace IndigoMovieManager
                 return;
             }
 
-            bool canModify = !TagBarService.IsBuiltInStarRating(item);
+            bool canModify = TagBarService.CanModify(item);
             foreach (object child in listItem.ContextMenu.Items)
             {
                 if (child is not MenuItem menuItem)
@@ -5083,15 +5073,14 @@ namespace IndigoMovieManager
             {
                 MessageBox.Show(
                     this,
-                    "タグを付けるレコードを選択してください。",
-                    Assembly.GetExecutingAssembly().GetName().Name,
+                    TagBarService.MessageSelectRecordsForTag,
+                    AppTitle,
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
                 return;
             }
 
-            string tagText = TagBarService.ExpandContentsForTagAppend(
-                TagBarService.GetEffectiveContents(item));
+            string tagText = TagBarService.ResolveAppendTagText(item);
             if (string.IsNullOrWhiteSpace(tagText))
             {
                 return;

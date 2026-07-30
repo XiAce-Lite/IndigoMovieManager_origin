@@ -141,5 +141,81 @@ namespace IndigoMovieManager.Services
 
             return string.Join(Environment.NewLine, tokens);
         }
+
+        public const string MessageSelectToEdit =
+            "編集する保存済み検索条件を選択してください。";
+
+        public const string MessageSelectToDelete =
+            "削除する保存済み検索条件を選択してください。";
+
+        public const string MessageBuiltInCannotEdit =
+            "★評価の保存済み検索条件は編集できません。";
+
+        public const string MessageBuiltInCannotDelete =
+            "★評価の保存済み検索条件は削除できません。";
+
+        public const string MessageSelectRecordsForTag =
+            "タグを付けるレコードを選択してください。";
+
+        public static bool CanModify(TagBarItem item) =>
+            item != null && !IsBuiltInStarRating(item);
+
+        public static (bool EditEnabled, bool DeleteEnabled) GetCommandButtonState(TagBarItem selected)
+        {
+            bool canModify = CanModify(selected);
+            return (canModify, canModify);
+        }
+
+        /// <summary>
+        /// 編集可能なら null。不可ならユーザー向けメッセージ。
+        /// </summary>
+        public static string GetEditBlockReason(TagBarItem item)
+        {
+            if (item == null)
+            {
+                return MessageSelectToEdit;
+            }
+
+            return IsBuiltInStarRating(item) ? MessageBuiltInCannotEdit : null;
+        }
+
+        /// <summary>
+        /// 削除可能なら null。不可ならユーザー向けメッセージ。
+        /// </summary>
+        public static string GetDeleteBlockReason(TagBarItem item)
+        {
+            if (item == null)
+            {
+                return MessageSelectToDelete;
+            }
+
+            return IsBuiltInStarRating(item) ? MessageBuiltInCannotDelete : null;
+        }
+
+        public static string ResolveAppendTagText(TagBarItem item) =>
+            ExpandContentsForTagAppend(GetEffectiveContents(item));
+
+        public static void ApplyEditedFields(TagBarItem item, string title, string contents)
+        {
+            if (item == null)
+            {
+                return;
+            }
+
+            item.Title = title ?? "";
+            item.Contents = contents ?? "";
+        }
+
+        public static bool TryRemoveFromCollection(
+            ObservableCollection<TagBarItem> items,
+            TagBarItem item)
+        {
+            if (items == null || item == null)
+            {
+                return false;
+            }
+
+            return items.Remove(item);
+        }
     }
 }

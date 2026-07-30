@@ -133,6 +133,55 @@ public class TagBarServiceTests
     }
 
     [Fact]
+    public void GetCommandButtonState_disables_when_unselected_or_builtin()
+    {
+        Assert.Equal((false, false), TagBarService.GetCommandButtonState(null));
+
+        var builtIn = new TagBarItem { Title = "★★★", Order_Id = 2, Contents = "" };
+        Assert.Equal((false, false), TagBarService.GetCommandButtonState(builtIn));
+
+        var custom = new TagBarItem { Title = "未視聴", Order_Id = 10, Contents = "{tag = ''}" };
+        Assert.Equal((true, true), TagBarService.GetCommandButtonState(custom));
+    }
+
+    [Fact]
+    public void GetEditBlockReason_and_GetDeleteBlockReason_cover_builtin_and_null()
+    {
+        Assert.Equal(TagBarService.MessageSelectToEdit, TagBarService.GetEditBlockReason(null));
+        Assert.Equal(TagBarService.MessageSelectToDelete, TagBarService.GetDeleteBlockReason(null));
+
+        var builtIn = new TagBarItem { Title = "★★★", Order_Id = 2, Contents = "" };
+        Assert.Equal(TagBarService.MessageBuiltInCannotEdit, TagBarService.GetEditBlockReason(builtIn));
+        Assert.Equal(TagBarService.MessageBuiltInCannotDelete, TagBarService.GetDeleteBlockReason(builtIn));
+
+        var custom = new TagBarItem { Title = "未視聴", Order_Id = 10, Contents = "{tag = ''}" };
+        Assert.Null(TagBarService.GetEditBlockReason(custom));
+        Assert.Null(TagBarService.GetDeleteBlockReason(custom));
+        Assert.True(TagBarService.CanModify(custom));
+    }
+
+    [Fact]
+    public void ResolveAppendTagText_expands_effective_contents()
+    {
+        var item = new TagBarItem { Title = "foo bar", Contents = "" };
+        Assert.Equal($"foo{Environment.NewLine}bar", TagBarService.ResolveAppendTagText(item));
+    }
+
+    [Fact]
+    public void ApplyEditedFields_and_TryRemoveFromCollection_update_in_memory_state()
+    {
+        var item = new TagBarItem { Title = "old", Contents = "old-c" };
+        TagBarService.ApplyEditedFields(item, "new", "new-c");
+        Assert.Equal("new", item.Title);
+        Assert.Equal("new-c", item.Contents);
+
+        var items = new System.Collections.ObjectModel.ObservableCollection<TagBarItem> { item };
+        Assert.True(TagBarService.TryRemoveFromCollection(items, item));
+        Assert.Empty(items);
+        Assert.False(TagBarService.TryRemoveFromCollection(items, item));
+    }
+
+    [Fact]
     public void CreateDatabase_includes_all_built_in_star_ratings()
     {
         string dbPath = Path.Combine(Path.GetTempPath(), $"imm-tagbar-{Guid.NewGuid():N}.wb");
