@@ -23,6 +23,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using IndigoMovieManager.Services.WpfSkin;
 using IndigoMovieManager.Thumbnail;
 using static IndigoMovieManager.SQLite;
 using static IndigoMovieManager.Tools;
@@ -616,6 +617,7 @@ namespace IndigoMovieManager
                 ImageConverter = new Converter.NoLockImageConverter(),
                 AspectConverter = new Converter.AspectStretchConverter(),
                 FileSizeConverter = new Converter.FileSizeConverter(),
+                PathLinkClick = OpenWpfSkinPathLink,
             };
 
             Services.WpfSkin.WpfSkinTemplateBuilder.ApplyHostContext(context);
@@ -1659,14 +1661,11 @@ namespace IndigoMovieManager
             }
         }
 
-        //todo : And以外の検索の実装。せめてNOT検索ぐらいまでは…
-        //todo : 検索履歴の保管条件（おそらくヒット：ゼロ件超で保管）確認＆修正
-        //todo : タグバー代替（保管済み検索条件）の実装
-        //stack : プロパティ表示ウィンドウの作成。
-        //todo : 重複チェック。本家は恐らくファイル名もチェックで使ってる模様。
-        //       こっちで登録しても再度本家に登録されるケースがあったのは、ファイル名の大文字小文字が違ってたから。
-        //       movie_name と Hash で重複チェックかなぁ。
-        //       本家のmovie_nameは小文字変換かけてる模様。合わせてみたら再登録されなかったので恐らく正解。
+        // 今後の検討メモ:
+        // - AND 以外の検索（最低限 NOT）
+        // - 検索履歴の保管条件（ヒット件数ベースか等）の見直し
+        // - プロパティ表示ウィンドウの追加
+        // - 重複チェック条件の整理（movie_name / Hash / 大文字小文字差異）
 
         private void OpenDatafile(string dbFullPath)
         {
@@ -2606,6 +2605,96 @@ namespace IndigoMovieManager
             }
         }
 
+        private static void OpenWpfSkinPathLink(MovieRecords mv, string field)
+        {
+            if (mv == null)
+            {
+                return;
+            }
+
+            string key = field?.Trim().ToLowerInvariant() ?? "path";
+            try
+            {
+                string textValue = key switch
+                {
+                    "dir" => mv.Dir,
+                    "drive" => mv.Drive,
+                    "comment1" => mv.Comment1,
+                    "comment2" => mv.Comment2,
+                    "comment3" => mv.Comment3,
+                    "path" => mv.Movie_Path,
+                    _ => mv.Movie_Path,
+                };
+
+                if (TryOpenAsUrl(textValue))
+                {
+                    return;
+                }
+
+                if (key is "dir")
+                {
+                    if (!string.IsNullOrWhiteSpace(mv.Dir) && Path.Exists(mv.Dir))
+                    {
+                        Process.Start("explorer.exe", mv.Dir);
+                    }
+
+                    return;
+                }
+
+                if (key is "drive")
+                {
+                    string drive = mv.Drive;
+                    if (string.IsNullOrWhiteSpace(drive))
+                    {
+                        return;
+                    }
+
+                    if (!drive.EndsWith('\\') && !drive.EndsWith('/'))
+                    {
+                        drive += Path.DirectorySeparatorChar;
+                    }
+
+                    if (Path.Exists(drive))
+                    {
+                        Process.Start("explorer.exe", drive);
+                    }
+
+                    return;
+                }
+
+                if (!string.IsNullOrWhiteSpace(mv.Movie_Path) && Path.Exists(mv.Movie_Path))
+                {
+                    Process.Start("explorer.exe", $"/select,{mv.Movie_Path}");
+                }
+            }
+            catch
+            {
+                // リンク失敗は無視（存在しないパス等）
+            }
+        }
+
+        private static bool TryOpenAsUrl(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            string trimmed = value.Trim();
+            if (!Uri.TryCreate(trimmed, UriKind.Absolute, out Uri uri))
+            {
+                return false;
+            }
+
+            if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
+            {
+                return false;
+            }
+
+            Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
+            return true;
+        }
+
         private void RenameFile_Click(object sender, RoutedEventArgs e)
         {
             string keyName = "";
@@ -2830,11 +2919,28 @@ namespace IndigoMovieManager
                 : NavigationMenuIds.DmmPendingCandidates;
         }
 
+        private static string AppTitle =>
+            Assembly.GetExecutingAssembly().GetName().Name;
+
+        private bool EnsureDatabaseSelected()
+        {
+            if (!string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
+            {
+                return true;
+            }
+
+            MessageBox.Show(
+                "管理ファイルが選択されていません。",
+                AppTitle,
+                MessageBoxButton.OK,
+                MessageBoxImage.Exclamation);
+            return false;
+        }
+
         private void BtnReCreateThumbnail_Click(object sender, RoutedEventArgs e)
         {
-            if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
+            if (!EnsureDatabaseSelected())
             {
-                MessageBox.Show("管理ファイルが選択されていません。", Assembly.GetExecutingAssembly().GetName().Name, MessageBoxButton.OK, MessageBoxImage.Exclamation);
                 return;
             }
 
@@ -2869,9 +2975,8 @@ namespace IndigoMovieManager
 
         private void BeginRefreshAllFileInfoFromMenu()
         {
-            if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
+            if (!EnsureDatabaseSelected())
             {
-                MessageBox.Show("管理ファイルが選択されていません。", Assembly.GetExecutingAssembly().GetName().Name, MessageBoxButton.OK, MessageBoxImage.Exclamation);
                 return;
             }
 
@@ -3657,9 +3762,8 @@ namespace IndigoMovieManager
                     CommonSettingsWindow.ShowDialog();
                     break;
                 case NavigationMenuIds.DatabaseSettings:
-                    if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
+                    if (!EnsureDatabaseSelected())
                     {
-                        MessageBox.Show("管理ファイルが選択されていません。", Assembly.GetExecutingAssembly().GetName().Name, MessageBoxButton.OK, MessageBoxImage.Exclamation);
                         return;
                     }
 
@@ -3691,9 +3795,8 @@ namespace IndigoMovieManager
 
         private void ExecuteToolNavigation(string menuId)
         {
-            if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
+            if (!EnsureDatabaseSelected())
             {
-                MessageBox.Show("管理ファイルが選択されていません。", Assembly.GetExecutingAssembly().GetName().Name, MessageBoxButton.OK, MessageBoxImage.Exclamation);
                 return;
             }
 
@@ -3779,7 +3882,7 @@ namespace IndigoMovieManager
                     OpenWpfSkinMaintenance(SkinMaintenanceWindow.OpenMode.EditExisting, ResolveWpfSkinEditTarget());
                     break;
                 case NavigationMenuIds.WpfSkinNew:
-                    OpenWpfSkinMaintenance(SkinMaintenanceWindow.OpenMode.CreateNew, null);
+                    BeginWpfSkinCreateFromTemplate();
                     break;
                 case NavigationMenuIds.WpfSkinDelete:
                     BeginWpfSkinDeleteFromMenu();
@@ -3805,9 +3908,47 @@ namespace IndigoMovieManager
             return Services.WpfSkin.WpfSkinLoader.DefaultSkinName;
         }
 
-        private void OpenWpfSkinMaintenance(SkinMaintenanceWindow.OpenMode mode, string folderName)
+        private void BeginWpfSkinCreateFromTemplate()
         {
-            var window = new SkinMaintenanceWindow(this, mode, folderName);
+            var pick = new WpfSkinTemplatePickWindow(this);
+            if (pick.ShowDialog() != true)
+            {
+                return;
+            }
+
+            if (pick.SelectedStructTemplate != null)
+            {
+                // 構造テンプレから直接組み立て
+                var def = WpfSkinStorage.CreateFromStructTemplate(pick.SelectedStructTemplate);
+                OpenWpfSkinMaintenance(
+                    SkinMaintenanceWindow.OpenMode.CreateNew,
+                    folderName: null,
+                    templateFolderName: null,
+                    prebuiltDefinition: def);
+            }
+            else if (!string.IsNullOrWhiteSpace(pick.SelectedTemplateName))
+            {
+                OpenWpfSkinMaintenance(
+                    SkinMaintenanceWindow.OpenMode.CreateNew,
+                    folderName: null,
+                    templateFolderName: pick.SelectedTemplateName);
+            }
+        }
+
+        private void OpenWpfSkinMaintenance(
+            SkinMaintenanceWindow.OpenMode mode,
+            string folderName,
+            string templateFolderName = null,
+            WpfSkinDefinition prebuiltDefinition = null)
+        {
+            var window = new SkinMaintenanceWindow(
+                this,
+                mode,
+                folderName,
+                GetSelectedMovie(),
+                templateFolderName,
+                prebuiltDefinition);
+            window.LiveApplyRequested = ApplySavedWpfSkinFromMaintenance;
             window.ShowDialog();
             if (window.SkinWasSaved || window.SkinWasDeleted)
             {
@@ -3823,6 +3964,121 @@ namespace IndigoMovieManager
                 ApplyWpfSkin(string.IsNullOrWhiteSpace(skinName) ? null : skinName);
                 _ = OnSkinLayoutChangedAsync();
             }
+        }
+
+        private void ApplySavedWpfSkinFromMaintenance(string skinFolderName)
+        {
+            if (string.IsNullOrWhiteSpace(skinFolderName))
+            {
+                return;
+            }
+
+            RefreshWpfSkinListAfterMaintenance(skinFolderName, preferSelectSaved: true);
+            if (_currentSkinEngine == SkinEngine.Wpf)
+            {
+                ApplyWpfSkin(skinFolderName);
+                TryAdoptNearThumbnailLayout(skinFolderName);
+                _ = OnSkinLayoutChangedAsync();
+            }
+        }
+
+        /// <summary>
+        /// 適用スキンのサムネサイズに 1px 差の既存フォルダがあるとき、再利用するか確認する。
+        /// Yes なら skin.json の thumbnail 寸法を既存に合わせて保存し直し、再生成を避ける。
+        /// </summary>
+        private void TryAdoptNearThumbnailLayout(string skinFolderName)
+        {
+            if (_wpfSkin?.Thumbnail == null)
+            {
+                return;
+            }
+
+            ThumbnailLayoutSpec wanted = ThumbnailLayoutSpec.FromWpfSkinThumbnail(_wpfSkin.Thumbnail);
+            string thumbRoot = _thumbLayoutCache.ThumbRootPath;
+            if (string.IsNullOrWhiteSpace(thumbRoot))
+            {
+                return;
+            }
+
+            // 目標フォルダに既にファイルがあるなら何もしない
+            string wantedDir = wanted.GetOutPath(_thumbLayoutCache.DbName, _thumbLayoutCache.ThumbFolder);
+            if (Directory.Exists(wantedDir)
+                && Directory.EnumerateFiles(wantedDir, "*.jpg").Any())
+            {
+                return;
+            }
+
+            ThumbnailLayoutSpec near = ThumbnailLayoutNearMatch.FindNearExistingWithFiles(thumbRoot, wanted);
+            if (near == null)
+            {
+                return;
+            }
+
+            var confirm = new MessageBoxEx(this)
+            {
+                DlogTitle = "近いサイズのサムネイル",
+                DlogMessage =
+                    $"指定サイズ {wanted.Key} のサムネはまだありませんが、\n"
+                    + $"近いサイズ {near.Key} が既にあります（差は幅/高さ 1px 以内）。\n\n"
+                    + "既存サイズを採用して再作成を省略しますか？\n"
+                    + "（スキンの thumbnail.width / height を既存に合わせます）",
+                PackIconKind = MaterialDesignThemes.Wpf.PackIconKind.ImageArea,
+            };
+            confirm.ShowDialog();
+            if (confirm.CloseStatus() != MessageBoxResult.OK)
+            {
+                return;
+            }
+
+            _wpfSkin.Thumbnail.Width = near.Width;
+            _wpfSkin.Thumbnail.Height = near.Height;
+            SyncThumbnailNodeWidthsToGeneration(_wpfSkin, near.Width);
+
+            if (!Services.WpfSkin.WpfSkinStorage.TrySave(
+                    _wpfSkin,
+                    skinFolderName,
+                    overwriteExisting: true,
+                    out string error))
+            {
+                MessageBox.Show(
+                    this,
+                    "近いサイズの採用を保存できませんでした。\n" + error,
+                    Assembly.GetExecutingAssembly().GetName().Name,
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            ApplyWpfSkin(skinFolderName);
+        }
+
+        private static void SyncThumbnailNodeWidthsToGeneration(WpfSkinDefinition def, int width)
+        {
+            void Walk(WpfSkinNode node)
+            {
+                if (node == null)
+                {
+                    return;
+                }
+
+                if (string.Equals(node.Type, "thumbnail", StringComparison.OrdinalIgnoreCase)
+                    && node.Width.HasValue)
+                {
+                    node.Width = width;
+                }
+
+                if (node.Children == null)
+                {
+                    return;
+                }
+
+                foreach (WpfSkinNode child in node.Children)
+                {
+                    Walk(child);
+                }
+            }
+
+            Walk(def?.Card?.Layout);
         }
 
         private void BeginWpfSkinDeleteFromMenu()
@@ -4603,13 +4859,8 @@ namespace IndigoMovieManager
 
         private void BeginAddTagBarItem(string initialContents)
         {
-            if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
+            if (!EnsureDatabaseSelected())
             {
-                MessageBox.Show(
-                    "管理ファイルが選択されていません。",
-                    Assembly.GetExecutingAssembly().GetName().Name,
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Exclamation);
                 return;
             }
 
@@ -4671,23 +4922,14 @@ namespace IndigoMovieManager
 
         private void EditSelectedTagBarItem(bool focusContents)
         {
-            if (TagBarList.SelectedItem is not TagBarItem item)
+            TagBarItem item = TagBarList.SelectedItem as TagBarItem;
+            string blockReason = TagBarService.GetEditBlockReason(item);
+            if (blockReason != null)
             {
                 MessageBox.Show(
                     this,
-                    "編集する保存済み検索条件を選択してください。",
-                    Assembly.GetExecutingAssembly().GetName().Name,
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Information);
-                return;
-            }
-
-            if (TagBarService.IsBuiltInStarRating(item))
-            {
-                MessageBox.Show(
-                    this,
-                    "★評価の保存済み検索条件は編集できません。",
-                    Assembly.GetExecutingAssembly().GetName().Name,
+                    blockReason,
+                    AppTitle,
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
                 return;
@@ -4699,19 +4941,19 @@ namespace IndigoMovieManager
             }
 
             UpdateTagBarItem(MainVM.DbInfo.DBFullPath, item.Item_Id, title, contents);
-            item.Title = title;
-            item.Contents = contents;
+            TagBarService.ApplyEditedFields(item, title, contents);
             TagBarList.Items.Refresh();
         }
 
         private void DeleteSelectedTagBarItem()
         {
-            if (TagBarList.SelectedItem is not TagBarItem item)
+            TagBarItem item = TagBarList.SelectedItem as TagBarItem;
+            if (item == null)
             {
                 MessageBox.Show(
                     this,
-                    "削除する保存済み検索条件を選択してください。",
-                    Assembly.GetExecutingAssembly().GetName().Name,
+                    TagBarService.MessageSelectToDelete,
+                    AppTitle,
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
                 return;
@@ -4722,24 +4964,24 @@ namespace IndigoMovieManager
 
         private void DeleteTagBarItemFromDb(TagBarItem item)
         {
-            if (item == null)
+            string blockReason = TagBarService.GetDeleteBlockReason(item);
+            if (blockReason != null)
             {
-                return;
-            }
+                if (item != null)
+                {
+                    MessageBox.Show(
+                        this,
+                        blockReason,
+                        AppTitle,
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                }
 
-            if (TagBarService.IsBuiltInStarRating(item))
-            {
-                MessageBox.Show(
-                    this,
-                    "★評価の保存済み検索条件は削除できません。",
-                    Assembly.GetExecutingAssembly().GetName().Name,
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Information);
                 return;
             }
 
             DeleteTagBarItem(MainVM.DbInfo.DBFullPath, item.Item_Id);
-            MainVM.TagBarRecs.Remove(item);
+            TagBarService.TryRemoveFromCollection(MainVM.TagBarRecs, item);
             TagBarList.SelectedItem = null;
             UpdateTagBarCommandButtonState();
         }
@@ -4749,12 +4991,11 @@ namespace IndigoMovieManager
 
         private void UpdateTagBarCommandButtonState()
         {
-            bool isBuiltIn = TagBarList.SelectedItem is TagBarItem item
-                && TagBarService.IsBuiltInStarRating(item);
-            bool hasSelection = TagBarList.SelectedItem is TagBarItem;
+            (bool editEnabled, bool deleteEnabled) =
+                TagBarService.GetCommandButtonState(TagBarList.SelectedItem as TagBarItem);
 
-            TagBarEditButton.IsEnabled = hasSelection && !isBuiltIn;
-            TagBarDeleteButton.IsEnabled = hasSelection && !isBuiltIn;
+            TagBarEditButton.IsEnabled = editEnabled;
+            TagBarDeleteButton.IsEnabled = deleteEnabled;
         }
 
         private void TagBarItem_ContextMenuOpening(object sender, ContextMenuEventArgs e)
@@ -4769,7 +5010,7 @@ namespace IndigoMovieManager
                 return;
             }
 
-            bool canModify = !TagBarService.IsBuiltInStarRating(item);
+            bool canModify = TagBarService.CanModify(item);
             foreach (object child in listItem.ContextMenu.Items)
             {
                 if (child is not MenuItem menuItem)
@@ -4832,15 +5073,14 @@ namespace IndigoMovieManager
             {
                 MessageBox.Show(
                     this,
-                    "タグを付けるレコードを選択してください。",
-                    Assembly.GetExecutingAssembly().GetName().Name,
+                    TagBarService.MessageSelectRecordsForTag,
+                    AppTitle,
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
                 return;
             }
 
-            string tagText = TagBarService.ExpandContentsForTagAppend(
-                TagBarService.GetEffectiveContents(item));
+            string tagText = TagBarService.ResolveAppendTagText(item);
             if (string.IsNullOrWhiteSpace(tagText))
             {
                 return;
@@ -5480,134 +5720,45 @@ namespace IndigoMovieManager
                 return;
             }
 
-            bool FolderCheckflg = false;
-            bool foundUnregistered = false;
-            List<QueueObj> addFiles = [];
-            int totalFolders = foldersToCheck.Count;
             FolderCheckProgressSession folderCheckProgress =
-                await BeginFolderCheckProgressAsync(totalFolders).ConfigureAwait(true);
+                await BeginFolderCheckProgressAsync(foldersToCheck.Count).ConfigureAwait(true);
 
             MoviePathRegistrationIndex pathIndex = await Task.Run(() =>
                 MoviePathRegistrationIndex.Load(dbFullPath)).ConfigureAwait(false);
 
+            FolderCheckScanResult scanResult;
             try
             {
-                for (int folderIndex = 0; folderIndex < foldersToCheck.Count; folderIndex++)
-                {
-                    if (!folderCheckStillActive())
+                scanResult = await FolderCheckService.ScanAndRegisterAsync(
+                    dbFullPath,
+                    foldersToCheck,
+                    excludeExt,
+                    pathIndex,
+                    new FolderCheckScanCallbacks
                     {
-                        return;
-                    }
-
-                    (string checkFolder, bool sub) = foldersToCheck[folderIndex];
-                    await ReportFolderCheckProgressAsync(
-                        folderCheckProgress,
-                        folderIndex,
-                        $"{checkFolder} 監視実施中…").ConfigureAwait(true);
-
-                    List<string> unregisteredFiles;
-                    try
-                    {
-                        unregisteredFiles = await Task.Run(() =>
-                            MoviePathRegistrationIndex.FindUnregisteredFiles(pathIndex, checkFolder, sub, excludeExt))
-                            .ConfigureAwait(false);
-                    }
-                    catch (Exception e)
-                    {
-                        if (e is IOException)
-                        {
-                            await Task.Delay(1000).ConfigureAwait(false);
-                        }
-
-                        unregisteredFiles = [];
-                    }
-
-                    if (!folderCheckStillActive())
-                    {
-                        return;
-                    }
-
-                    if (unregisteredFiles.Count > 0)
-                    {
-                        foundUnregistered = true;
-                        await ReportFolderCheckProgressAsync(
-                            folderCheckProgress,
-                            folderIndex,
-                            $"{checkFolder} に更新あり。").ConfigureAwait(true);
-                    }
-
-                    foreach (string fileFullPath in unregisteredFiles)
-                    {
-                        if (!folderCheckStillActive())
-                        {
-                            return;
-                        }
-
-                        try
-                        {
-                            string normalizedPath = MediaPathNormalizer.Normalize(fileFullPath);
-                            if (string.IsNullOrWhiteSpace(normalizedPath)
-                                || !_discoveredFileRegistrationGate.TryEnter(normalizedPath))
-                            {
-                                continue;
-                            }
-
-                            try
-                            {
-                                MovieInfo mvi = await MovieRegistrationHelper
-                                    .TryRegisterDiscoveredFileAsync(dbFullPath, fileFullPath)
-                                    .ConfigureAwait(false);
-                                if (mvi == null)
-                                {
-                                    continue;
-                                }
-
-                                pathIndex.Register(mvi.MoviePath);
-                                FolderCheckflg = true;
-
-                                CancelThumbnailWorkForMovie(mvi.MovieId);
-                                addFiles.Add(new QueueObj
-                                {
-                                    MovieId = mvi.MovieId,
-                                    MovieFullPath = mvi.MoviePath,
-                                    DbFullPath = dbFullPath,
-                                });
-                            }
-                            finally
-                            {
-                                _discoveredFileRegistrationGate.Exit(normalizedPath);
-                            }
-                        }
-                        catch (Exception)
-                        {
-#if DEBUG
-                            Debug.WriteLine(
-                                $"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : [folder-check] skip {fileFullPath}");
-#endif
-                        }
-                    }
-
-                    if (!folderCheckStillActive())
-                    {
-                        return;
-                    }
-
-                    await ReportFolderCheckProgressAsync(
-                        folderCheckProgress,
-                        folderIndex + 1,
-                        $"{checkFolder} 監視完了").ConfigureAwait(true);
-                    await Task.Delay(100).ConfigureAwait(false);
-                }
+                        IsStillActive = folderCheckStillActive,
+                        TryEnterRegistrationGate = path => _discoveredFileRegistrationGate.TryEnter(path),
+                        ExitRegistrationGate = path => _discoveredFileRegistrationGate.Exit(path),
+                        OnMovieRegistered = CancelThumbnailWorkForMovie,
+                        ReportProgressAsync = (done, detail) =>
+                            ReportFolderCheckProgressAsync(folderCheckProgress, done, detail),
+                    }).ConfigureAwait(false);
             }
             finally
             {
                 await EndFolderCheckProgressAsync(folderCheckProgress).ConfigureAwait(true);
             }
 
-            if (!folderCheckStillActive() || (!FolderCheckflg && !foundUnregistered))
+            if (!folderCheckStillActive()
+                || !FolderCheckService.ShouldApplyResults(
+                    scanResult.RegisteredAny,
+                    scanResult.FoundUnregistered))
             {
                 return;
             }
+
+            List<QueueObj> addFiles = scanResult.AddedThumbnailWork;
+            bool registeredAny = scanResult.RegisteredAny;
 
             await Dispatcher.InvokeAsync(async () =>
             {
@@ -5624,7 +5775,7 @@ namespace IndigoMovieManager
                     return;
                 }
 
-                if (FolderCheckflg && addFiles.Count > 0)
+                if (registeredAny && addFiles.Count > 0)
                 {
                     foreach (QueueObj item in addFiles)
                     {
@@ -5984,14 +6135,11 @@ namespace IndigoMovieManager
                 uxPreviewImage.Pause();
             }
 
-            QueueObj queueObj = new()
-            {
-                MovieId = mv.Movie_Id,
-                MovieFullPath = mv.Movie_Path,
-                ThumbPanelPos = manualPos,
-                ThumbTimePos = _manualPreview.PositionSeconds,
-                IsManual = true
-            };
+            QueueObj queueObj = ManualThumbnailCaptureFactory.Create(
+                mv.Movie_Id,
+                mv.Movie_Path,
+                manualPos,
+                _manualPreview.PositionSeconds);
             PopulateActiveListQueueLayout(queueObj);
 
             CloseManualThumbnailPreview();
@@ -6001,20 +6149,20 @@ namespace IndigoMovieManager
 
         private async Task EnqueueManualThumbnailWorkAsync(QueueObj queueObj)
         {
-            for (int i = 0; i < 120; i++)
+            for (int i = 0; i < ManualThumbnailCaptureFactory.EnqueueRetryCount; i++)
             {
                 if (TryEnqueueManualThumbnailWork(queueObj))
                 {
                     return;
                 }
 
-                await Task.Delay(500).ConfigureAwait(true);
+                await Task.Delay(ManualThumbnailCaptureFactory.EnqueueRetryDelayMs).ConfigureAwait(true);
             }
 
             MessageBox.Show(
                 this,
-                "サムネイル作成が混み合っています。しばらくしてから再度お試しください。",
-                Assembly.GetExecutingAssembly().GetName().Name,
+                ManualThumbnailCaptureFactory.BusyMessage,
+                AppTitle,
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
         }
@@ -6056,14 +6204,15 @@ namespace IndigoMovieManager
             MovieInfo mvi = new(mv.Movie_Path, true);        //Hashの取得が重いのでオプション付けた。ブックマークには不要。
 
             int pos = _manualPreview.PositionSeconds;
-            var targetFrame = pos * (int)mvi.FPS;
-            var timestamp = string.Format($"{DateTime.Now:HH-mm-ss}");
-            var thumbBody = $"{mv.Movie_Body}[({targetFrame}){timestamp}]";
-            var thumbFileName = $"{thumbBody}.jpg";
-            var thumbFolder = MainVM.DbInfo.BookmarkFolder;
-            var defaultThumbFolder = Path.Combine(Directory.GetCurrentDirectory(), "bookmark", MainVM.DbInfo.DBName);
-            thumbFolder = thumbFolder == "" ? defaultThumbFolder : thumbFolder;
-            thumbFileName = Path.Combine(thumbFolder, thumbFileName);
+            string thumbBody = BookmarkCaptureNaming.BuildThumbBody(
+                mv.Movie_Body,
+                pos,
+                mvi.FPS,
+                DateTime.Now);
+            string thumbFolder = BookmarkCaptureNaming.ResolveFolderOrDefault(
+                MainVM.DbInfo.BookmarkFolder,
+                MainVM.DbInfo.DBName);
+            string thumbFileName = BookmarkCaptureNaming.BuildThumbFilePath(thumbFolder, thumbBody);
             if (!Path.Exists(thumbFolder))
             {
                 Directory.CreateDirectory(thumbFolder);
@@ -6077,7 +6226,7 @@ namespace IndigoMovieManager
 
             //Bookmarkテーブルへのレコード書き込み処理追加
             mvi.MovieName = thumbBody;
-            mvi.MoviePath = $"{thumbBody}.jpg";
+            mvi.MoviePath = BookmarkCaptureNaming.BuildThumbFileName(thumbBody);
             InsertBookmarkTable(MainVM.DbInfo.DBFullPath, mvi, mv.Movie_Path, mv.Hash);
             GetBookmarkTable();
             BookmarkList.Items.Refresh();
@@ -6165,14 +6314,20 @@ namespace IndigoMovieManager
 
         private void FR_Click(object sender, RoutedEventArgs e)
         {
-            var tempSlider = (int)uxTimeSlider.Value - 100;
-            if (tempSlider < 0) { tempSlider = 0; }
+            int tempSlider = PreviewPlaybackTiming.ClampSeekMs(
+                (int)uxTimeSlider.Value,
+                -100,
+                0,
+                (int)uxTimeSlider.Maximum);
             FF_FR(tempSlider);
         }
         private void FF_Click(object sender, RoutedEventArgs e)
         {
-            var tempSlider = (int)uxTimeSlider.Value + 100;
-            if (tempSlider > uxTimeSlider.Maximum) { tempSlider = (int)uxTimeSlider.Maximum; }
+            int tempSlider = PreviewPlaybackTiming.ClampSeekMs(
+                (int)uxTimeSlider.Value,
+                100,
+                0,
+                (int)uxTimeSlider.Maximum);
             FF_FR(tempSlider);
         }
         private void FF_FR(int tempSlider)

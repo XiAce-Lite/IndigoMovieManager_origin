@@ -36,6 +36,58 @@ namespace IndigoMovieManager.UserControls
             }
         }
 
+        /// <summary>
+        /// 同じ SkinDefinition 参照のまま layout だけ変わったときに再構築する。
+        /// </summary>
+        public void RebuildLayoutNow() => RebuildLayout();
+
+        /// <summary>デザイン時カード幅グリップ用。現在の見た目のカード幅。</summary>
+        public double GetPreviewCardWidth()
+        {
+            if (!double.IsNaN(CardBorder.Width) && CardBorder.Width > 0)
+            {
+                return CardBorder.Width;
+            }
+
+            return ActualWidth > 0 ? ActualWidth : 0;
+        }
+
+        /// <summary>デザイン時カード幅グリップ用。レイアウト再構築なしで幅だけ変える。</summary>
+        public void SetPreviewCardWidth(double width)
+        {
+            if (SkinDefinition?.Card?.Stretch == true)
+            {
+                return;
+            }
+
+            CardBorder.Width = Math.Max(80, width);
+            CardBorder.HorizontalAlignment = HorizontalAlignment.Left;
+            HorizontalAlignment = HorizontalAlignment.Left;
+        }
+
+        /// <summary>デザイン時カード高さグリップ用。</summary>
+        public double GetPreviewCardHeight()
+        {
+            if (!double.IsNaN(CardBorder.Height) && CardBorder.Height > 0)
+            {
+                return CardBorder.Height;
+            }
+
+            return CardBorder.ActualHeight > 0 ? CardBorder.ActualHeight : ActualHeight;
+        }
+
+        /// <summary>デザイン時カード高さグリップ用。0 で自動に戻す。</summary>
+        public void SetPreviewCardHeight(double height)
+        {
+            if (height <= 0)
+            {
+                CardBorder.ClearValue(FrameworkElement.HeightProperty);
+                return;
+            }
+
+            CardBorder.Height = Math.Max(40, height);
+        }
+
         private void RebuildLayout()
         {
             if (SkinDefinition == null)
@@ -77,13 +129,21 @@ namespace IndigoMovieManager.UserControls
             if (card.Height > 0)
             {
                 CardBorder.Height = card.Height;
+                VerticalContentAlignment = VerticalAlignment.Stretch;
+                VerticalAlignment = VerticalAlignment.Top;
             }
             else
             {
                 CardBorder.ClearValue(FrameworkElement.HeightProperty);
+                VerticalContentAlignment = VerticalAlignment.Top;
             }
 
             LayoutHost.Content = WpfSkinLayoutBuilder.Build(card.Layout ?? new WpfSkinNode(), SkinDefinition);
+            if (LayoutHost.Content is FrameworkElement root && card.Height > 0)
+            {
+                root.VerticalAlignment = VerticalAlignment.Stretch;
+                root.HorizontalAlignment = HorizontalAlignment.Stretch;
+            }
         }
     }
 }

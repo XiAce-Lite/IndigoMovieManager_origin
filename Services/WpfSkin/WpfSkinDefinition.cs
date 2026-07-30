@@ -5,7 +5,7 @@ namespace IndigoMovieManager.Services.WpfSkin
 {
     public sealed class WpfSkinDefinition
     {
-        public string Name { get; set; } = "CardLarge";
+        public string Name { get; set; } = "";
 
         /// <summary>
         /// 読み込み元フォルダ名（Skins/Wpf/&lt;FolderName&gt;）。JSON には出さない。
@@ -117,6 +117,11 @@ namespace IndigoMovieManager.Services.WpfSkin
         public bool Italic { get; set; }
         public string Foreground { get; set; } = "";
         public bool Wrap { get; set; }
+
+        /// <summary>
+        /// path/dir/drive 等をリンク表示するか。null のときは Path 種別 field なら true。
+        /// </summary>
+        public bool? Link { get; set; }
 
         /// <summary>styles 辞書のキー。</summary>
         public string Style { get; set; } = "";

@@ -5,9 +5,9 @@
     xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
     Title="DMM 候補検索"
     Width="1000"
-    Height="560"
+    Height="760"
     MinWidth="860"
-    MinHeight="460"
+    MinHeight="640"
     ResizeMode="CanResizeWithGrip"
     WindowStartupLocation="CenterOwner">
     <materialDesign:ColorZone
@@ -19,7 +19,8 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
-                <RowDefinition Height="*" />
+                <RowDefinition Height="*" MinHeight="300" />
+                <RowDefinition Height="180" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
@@ -90,23 +91,26 @@
                 AutoGenerateColumns="False"
                 CanUserAddRows="False"
                 CanUserDeleteRows="False"
+                CanUserResizeColumns="True"
+                ColumnWidth="*"
                 HeadersVisibility="Column"
                 IsReadOnly="True"
                 PreviewMouseLeftButtonUp="CandidatesGrid_PreviewMouseLeftButtonUp"
-                ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                SelectionChanged="CandidatesGrid_SelectionChanged"
                 SelectionMode="Single"
                 SelectionUnit="FullRow">
                 <DataGrid.Columns>
                     <DataGridTextColumn
-                        Width="64"
-                        MinWidth="64"
+                        Width="56"
+                        MinWidth="48"
                         Binding="{Binding JacketLabel}"
                         Header="ジャケ"
                         IsReadOnly="True" />
                     <DataGridTextColumn
-                        Width="320"
-                        MinWidth="200"
+                        Width="2.4*"
+                        MinWidth="140"
                         Binding="{Binding Title}"
                         Header="タイトル">
                         <DataGridTextColumn.ElementStyle>
@@ -117,8 +121,8 @@
                         </DataGridTextColumn.ElementStyle>
                     </DataGridTextColumn>
                     <DataGridTextColumn
-                        Width="168"
-                        MinWidth="120"
+                        Width="140"
+                        MinWidth="100"
                         Binding="{Binding ContentId}"
                         Header="品番">
                         <DataGridTextColumn.ElementStyle>
@@ -129,8 +133,8 @@
                         </DataGridTextColumn.ElementStyle>
                     </DataGridTextColumn>
                     <DataGridTextColumn
-                        Width="280"
-                        MinWidth="180"
+                        Width="2*"
+                        MinWidth="120"
                         Binding="{Binding MakerLabelSeries}"
                         Header="メーカー / レーベル / シリーズ">
                         <DataGridTextColumn.ElementStyle>
@@ -141,14 +145,36 @@
                         </DataGridTextColumn.ElementStyle>
                     </DataGridTextColumn>
                     <DataGridTextColumn
-                        Width="100"
-                        MinWidth="80"
+                        Width="80"
+                        MinWidth="64"
                         Binding="{Binding FloorLabel}"
                         Header="floor" />
                 </DataGrid.Columns>
             </DataGrid>
 
-            <Grid Grid.Row="5" Margin="0,8,0,0">
+            <Border
+                Grid.Row="5"
+                Margin="0,8,0,0"
+                Background="#FF121212"
+                BorderBrush="{DynamicResource MaterialDesign.Brush.ForegroundLight}"
+                BorderThickness="1"
+                CornerRadius="2">
+                <Grid>
+                    <TextBlock
+                        x:Name="JacketPreviewHint"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        FontSize="12"
+                        Foreground="#FF888888"
+                        Text="選択行のジャケット（pl）を表示します" />
+                    <Image
+                        x:Name="JacketPreviewImage"
+                        Margin="4"
+                        Stretch="Uniform" />
+                </Grid>
+            </Border>
+
+            <Grid Grid.Row="6" Margin="0,8,0,0">
                 <TextBlock
                     VerticalAlignment="Center"
                     FontSize="11"
@@ -158,6 +184,13 @@
                 <StackPanel
                     HorizontalAlignment="Right"
                     Orientation="Horizontal">
+                    <Button
+                        x:Name="NextPageButton"
+                        MinWidth="108"
+                        Margin="0,0,8,0"
+                        Click="NextPageButton_Click"
+                        Content="次の30件(_N)"
+                        IsEnabled="False" />
                     <Button
                         x:Name="ApplyButton"
                         MinWidth="88"

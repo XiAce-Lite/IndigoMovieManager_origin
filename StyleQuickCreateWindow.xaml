@@ -1,0 +1,54 @@
+<Window
+    x:Class="IndigoMovieManager.StyleQuickCreateWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+    Title="style を追加"
+    Width="420"
+    Height="280"
+    ResizeMode="NoResize"
+    WindowStartupLocation="CenterOwner"
+    Background="{DynamicResource MaterialDesign.Brush.Background}">
+    <materialDesign:ColorZone Padding="14">
+        <StackPanel>
+            <TextBlock
+                Margin="0,0,0,10"
+                FontSize="13"
+                Text="キー名と初期プリセットを選んで style を作成します。"
+                TextWrapping="Wrap" />
+            <TextBox
+                x:Name="KeyBox"
+                Margin="0,0,0,10"
+                materialDesign:HintAssist.Hint="style キー（例: title / meta / path）"
+                materialDesign:HintAssist.IsFloating="True"
+                materialDesign:TextFieldAssist.HasOutlinedTextField="True" />
+            <ComboBox
+                x:Name="PresetCombo"
+                Margin="0,0,0,10"
+                materialDesign:HintAssist.Hint="初期プリセット"
+                materialDesign:HintAssist.IsFloating="True"
+                materialDesign:TextFieldAssist.HasOutlinedTextField="True"
+                SelectedIndex="0">
+                <ComboBoxItem Content="空（あとで編集）" Tag="empty" />
+                <ComboBoxItem Content="title（14・太字）" Tag="title" />
+                <ComboBoxItem Content="meta（12・グレー）" Tag="meta" />
+                <ComboBoxItem Content="path（11・折り返し）" Tag="path" />
+            </ComboBox>
+            <CheckBox
+                x:Name="ApplyToSelectedCheck"
+                Margin="0,0,0,16"
+                Content="いま選択中のノードへ適用する" />
+            <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
+                <Button
+                    Margin="0,0,8,0"
+                    Click="OkButton_Click"
+                    Content="作成"
+                    IsDefault="True" />
+                <Button
+                    Click="CancelButton_Click"
+                    Content="キャンセル"
+                    IsCancel="True" />
+            </StackPanel>
+        </StackPanel>
+    </materialDesign:ColorZone>
+</Window>

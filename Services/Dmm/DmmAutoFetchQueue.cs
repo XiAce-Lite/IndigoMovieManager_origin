@@ -292,20 +292,15 @@ namespace IndigoMovieManager.Services.Dmm
                         break;
                     }
                     case DmmResolveOutcome.NoProductCode:
+                        PersistPendingIfNeeded(job, resolveName, resolved);
                         Interlocked.Increment(ref _batchNoCode);
                         break;
                     case DmmResolveOutcome.NotFound:
+                        PersistPendingIfNeeded(job, resolveName, resolved);
                         Interlocked.Increment(ref _batchNotFound);
                         break;
                     case DmmResolveOutcome.Ambiguous:
-                        DmmPendingCandidateStore.Save(
-                            job.DbPath,
-                            job.MovieId,
-                            resolveName,
-                            resolved.InitialKeyword ?? DmmInitialKeyword.FromMovieName(resolveName),
-                            resolved.Candidates,
-                            string.IsNullOrWhiteSpace(job.Source) ? "auto" : job.Source);
-                        _host.NotifyPendingCandidatesChanged();
+                        PersistPendingIfNeeded(job, resolveName, resolved);
                         Interlocked.Increment(ref _batchAmbiguous);
                         break;
                     default:
@@ -343,6 +338,31 @@ namespace IndigoMovieManager.Services.Dmm
             }
 
             await _host.RunOnUiAsync(() => session.Report(done, detail)).ConfigureAwait(false);
+        }
+
+        private void PersistPendingIfNeeded(
+            DmmAutoFetchJob job,
+            string resolveName,
+            DmmResolveResult resolved)
+        {
+            if (resolved == null || !DmmPendingOutcomePolicy.ShouldPersistPending(resolved.Outcome))
+            {
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(job.DbPath))
+            {
+                return;
+            }
+
+            DmmPendingCandidateStore.Save(
+                job.DbPath,
+                job.MovieId,
+                resolveName,
+                resolved.InitialKeyword ?? DmmInitialKeyword.FromMovieName(resolveName),
+                resolved.Candidates,
+                string.IsNullOrWhiteSpace(job.Source) ? "auto" : job.Source);
+            _host.NotifyPendingCandidatesChanged();
         }
 
         private static string ResolveMovieName(DmmAutoFetchJob job, MovieRecords rec)
@@ -409,16 +429,26 @@ namespace IndigoMovieManager.Services.Dmm
             await EndSessionAsync().ConfigureAwait(false);
 
             string label = includesBulk ? "DMM一括取得" : "DMM自動取得";
-            string summary = cancelled
-                ? $"{label}: キャンセルしました（成功{applied} スキップ{skipped} 品番なし{noCode} 未ヒット{notFound} 未確定保留{ambiguous} エラー{errors}）"
-                : $"{label}: 成功{applied} スキップ{skipped} 品番なし{noCode} 未ヒット{notFound} 未確定保留{ambiguous} エラー{errors}";
+            string statusSummary = cancelled
+                ? $"{label}: キャンセルしました（成功{applied} スキップ{skipped} 品番なし{noCode} 未ヒット{notFound} 複数候補{ambiguous} エラー{errors}）"
+                : $"{label}: 成功{applied} スキップ{skipped} 品番なし{noCode} 未ヒット{notFound} 複数候補{ambiguous} エラー{errors}";
 
-            _host.ShowCompletionMessage(summary);
+            _host.ShowCompletionMessage(statusSummary);
             if (includesBulk)
             {
+                // 手動「DMM情報取得」完了ダイアログと同じ「文言 : 数字」＋改行形式。
+                string dialogSummary =
+                    (cancelled ? "キャンセルしました。\n" : string.Empty) +
+                    $"成功 : {applied}\n" +
+                    $"スキップ : {skipped}\n" +
+                    $"品番なし : {noCode}\n" +
+                    $"未ヒット : {notFound}\n" +
+                    $"複数候補 : {ambiguous}\n" +
+                    $"エラー : {errors}\n\n" +
+                    "Powered by FANZA Webサービス";
                 _host.ShowCompletionDialog(
                     "DMM 情報を一括取得",
-                    summary + "\n\nPowered by FANZA Webサービス");
+                    dialogSummary);
             }
         }
 

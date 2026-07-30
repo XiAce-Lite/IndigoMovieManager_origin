@@ -6,7 +6,10 @@ namespace IndigoMovieManager.Services
     {
         private static readonly IDataErrorReporter Reporter = new MessageBoxErrorReporter();
 
-        public static void ShowError(string message, string title) =>
+        public static void ShowError(string message, string title)
+        {
+            AppFileLogger.LogError(title, message);
             Reporter.Report(message, title);
+        }
     }
 }

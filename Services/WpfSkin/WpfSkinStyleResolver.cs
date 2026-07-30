@@ -5,7 +5,7 @@ namespace IndigoMovieManager.Services.WpfSkin
     internal sealed class ResolvedTextStyle
     {
         public double FontSize { get; set; } = 12;
-        public string FontFamily { get; set; } = "Yu Gothic UI";
+        public string FontFamily { get; set; } = WpfSkinFontResolver.DefaultFontFamily;
         public bool Bold { get; set; }
         public bool Italic { get; set; }
         // 既定は既存 Small タブ準拠（黒文字）。
@@ -35,7 +35,7 @@ namespace IndigoMovieManager.Services.WpfSkin
 
             if (!string.IsNullOrEmpty(node.FontFamily))
             {
-                resolved.FontFamily = node.FontFamily;
+                resolved.FontFamily = WpfSkinFontResolver.ResolveFamilyName(node.FontFamily);
             }
 
             if (node.Bold)
@@ -80,7 +80,7 @@ namespace IndigoMovieManager.Services.WpfSkin
 
             if (!string.IsNullOrEmpty(style.FontFamily))
             {
-                target.FontFamily = style.FontFamily;
+                target.FontFamily = WpfSkinFontResolver.ResolveFamilyName(style.FontFamily);
             }
 
             if (style.Bold)

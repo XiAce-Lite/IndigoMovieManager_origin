@@ -27,7 +27,7 @@ public class JacketInfoSkinLoadTests
         Assert.True(def.Thumbnail.PreferJacket);
         Assert.Equal("360x203x1x1", ThumbnailLayoutSpec.FromWpfSkinThumbnail(def.Thumbnail).Key);
         Assert.True(def.Card.Layout.IsGrid);
-        Assert.Equal(600, def.Card.Width);
+        Assert.Equal(645, def.Card.Width);
     }
 
     [Fact]

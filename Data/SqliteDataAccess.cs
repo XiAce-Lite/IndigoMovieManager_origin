@@ -55,6 +55,7 @@ namespace IndigoMovieManager.Data
     internal static void ReportError(Exception e, [CallerMemberName] string caller = "")
     {
       string title = $"{Assembly.GetExecutingAssembly().GetName().Name} - {caller}";
+      AppFileLogger.LogError(e, caller, e.Message);
       ErrorReporter.Report(e.Message, title);
     }
   }

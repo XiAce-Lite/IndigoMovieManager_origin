@@ -1,88 +1,239 @@
 {
   "$schema": "../skin.schema.json",
   "name": "CenterThumb",
+  "colorProfile": "",
   "type": "card",
-
-  "surface": {
-    "background": "#FFFFFF"
-  },
-
-  "styles": {
-    "title": { "fontSize": 12, "foreground": "#000000", "bold": true, "align": "center" },
-    "side":  { "fontSize": 10, "foreground": "#555555", "align": "center" },
-    "foot":  { "fontSize": 10, "foreground": "#888888", "align": "center" }
-  },
-
   "thumbnail": {
     "width": 320,
     "height": 180,
     "columns": 1,
-    "rows": 1
+    "rows": 1,
+    "preferJacket": false,
+    "targetAspect": 1.7777777777777777
   },
-
   "card": {
     "width": 600,
+    "height": 0,
     "padding": 4,
-    "stretch": true,
+    "stretch": false,
     "background": "",
-
     "layout": {
       "panel": "grid",
-      "columns": ["1*", "2*", "1*"],
-      "rows": ["auto", "2*", "auto", "auto"],
+      "stack": "vertical",
       "children": [
         {
+          "panel": "",
+          "stack": "vertical",
           "type": "text",
           "field": "title",
-          "col": 0,
+          "label": "",
+          "header": "",
+          "format": "",
+          "align": "",
+          "fontSize": 0,
+          "fontFamily": "",
+          "bold": false,
+          "italic": false,
+          "foreground": "",
+          "wrap": false,
+          "style": "title",
           "row": 0,
+          "col": 0,
+          "rowSpan": 1,
           "colSpan": 3,
-          "style": "title"
+          "vAlign": "",
+          "hAlign": "",
+          "background": ""
         },
         {
+          "panel": "",
+          "stack": "vertical",
           "type": "text",
           "field": "length",
           "label": "尺\n",
-          "col": 0,
-          "row": 1,
+          "header": "",
+          "format": "",
+          "align": "",
+          "fontSize": 0,
+          "fontFamily": "",
+          "bold": false,
+          "italic": false,
+          "foreground": "",
+          "wrap": false,
           "style": "side",
-          "valign": "center",
-          "halign": "center"
-        },
-        {
-          "type": "thumbnail",
-          "col": 1,
           "row": 1,
-          "valign": "stretch",
-          "halign": "stretch"
+          "col": 0,
+          "rowSpan": 1,
+          "colSpan": 1,
+          "vAlign": "center",
+          "hAlign": "center",
+          "background": ""
         },
         {
+          "panel": "",
+          "stack": "vertical",
+          "type": "thumbnail",
+          "field": "",
+          "label": "",
+          "header": "",
+          "format": "",
+          "align": "",
+          "fontSize": 0,
+          "fontFamily": "",
+          "bold": false,
+          "italic": false,
+          "foreground": "",
+          "wrap": false,
+          "style": "",
+          "row": 1,
+          "col": 1,
+          "rowSpan": 1,
+          "colSpan": 1,
+          "vAlign": "stretch",
+          "hAlign": "stretch",
+          "background": ""
+        },
+        {
+          "panel": "",
+          "stack": "vertical",
           "type": "text",
           "field": "size",
+          "label": "",
+          "header": "",
           "format": "filesize",
-          "col": 2,
-          "row": 1,
+          "align": "",
+          "fontSize": 0,
+          "fontFamily": "",
+          "bold": false,
+          "italic": false,
+          "foreground": "",
+          "wrap": false,
           "style": "side",
-          "valign": "center",
-          "halign": "center"
+          "row": 1,
+          "col": 2,
+          "rowSpan": 1,
+          "colSpan": 1,
+          "vAlign": "center",
+          "hAlign": "center",
+          "background": ""
         },
         {
+          "panel": "",
+          "stack": "vertical",
           "type": "tags",
-          "col": 0,
+          "field": "",
+          "label": "",
+          "header": "",
+          "format": "",
+          "align": "",
+          "fontSize": 0,
+          "fontFamily": "",
+          "bold": false,
+          "italic": false,
+          "foreground": "",
+          "wrap": false,
+          "style": "",
           "row": 2,
-          "colSpan": 3
+          "col": 0,
+          "rowSpan": 1,
+          "colSpan": 3,
+          "vAlign": "",
+          "hAlign": "",
+          "background": ""
         },
         {
+          "panel": "",
+          "stack": "vertical",
           "type": "text",
           "field": "ext",
           "label": "種類: ",
-          "col": 0,
-          "row": 3,
-          "colSpan": 3,
+          "header": "",
+          "format": "",
+          "align": "",
+          "fontSize": 0,
+          "fontFamily": "",
+          "bold": false,
+          "italic": false,
+          "foreground": "",
+          "wrap": false,
           "style": "foot",
-          "margin": 4
+          "row": 3,
+          "col": 0,
+          "rowSpan": 1,
+          "colSpan": 3,
+          "margin": 4,
+          "vAlign": "",
+          "hAlign": "",
+          "background": ""
         }
-      ]
+      ],
+      "rows": [
+        "auto",
+        "2*",
+        "auto",
+        "auto"
+      ],
+      "columns": [
+        "1*",
+        "2*",
+        "1*"
+      ],
+      "type": "text",
+      "field": "",
+      "label": "",
+      "header": "",
+      "format": "",
+      "align": "",
+      "fontSize": 0,
+      "fontFamily": "",
+      "bold": false,
+      "italic": false,
+      "foreground": "",
+      "wrap": false,
+      "style": "",
+      "row": 0,
+      "col": 0,
+      "rowSpan": 1,
+      "colSpan": 1,
+      "margin": null,
+      "padding": null,
+      "vAlign": "",
+      "hAlign": "",
+      "background": ""
+    }
+  },
+  "surface": {
+    "background": "#FFFFFF"
+  },
+  "styles": {
+    "title": {
+      "fontSize": 12,
+      "fontFamily": "",
+      "bold": true,
+      "italic": false,
+      "foreground": "#000000",
+      "background": "",
+      "align": "center",
+      "wrap": false
+    },
+    "side": {
+      "fontSize": 10,
+      "fontFamily": "",
+      "bold": false,
+      "italic": false,
+      "foreground": "#555555",
+      "background": "",
+      "align": "center",
+      "wrap": false
+    },
+    "foot": {
+      "fontSize": 10,
+      "bold": false,
+      "italic": false,
+      "foreground": "#888888",
+      "background": "",
+      "align": "center",
+      "wrap": false
     }
   }
 }

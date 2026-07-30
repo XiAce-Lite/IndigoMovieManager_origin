@@ -26,16 +26,20 @@ namespace IndigoMovieManager.Services.WpfSkin
             Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Skins", RootFolderName);
 
         /// <summary>利用可能なスキンフォルダ名を列挙する。</summary>
-        public static IReadOnlyList<string> EnumerateSkins()
+        public static IReadOnlyList<string> EnumerateSkins() =>
+            EnumerateSkinsFrom(SkinsRoot);
+
+        /// <summary>指定ルート配下のスキンフォルダ名を列挙する（テスト・一時フォルダ用）。</summary>
+        public static IReadOnlyList<string> EnumerateSkinsFrom(string skinsRoot)
         {
             try
             {
-                if (!Directory.Exists(SkinsRoot))
+                if (string.IsNullOrWhiteSpace(skinsRoot) || !Directory.Exists(skinsRoot))
                 {
                     return Array.Empty<string>();
                 }
 
-                IEnumerable<string> names = Directory.GetDirectories(SkinsRoot)
+                IEnumerable<string> names = Directory.GetDirectories(skinsRoot)
                     .Where(dir => File.Exists(Path.Combine(dir, DefinitionFileName)))
                     .Select(Path.GetFileName);
                 return SkinNameSortHelper.OrderDefaultFirst(names);
@@ -47,16 +51,20 @@ namespace IndigoMovieManager.Services.WpfSkin
         }
 
         /// <summary>既定スキンを読み込む。存在しなければ列挙先頭、なければ組み込み既定。</summary>
-        public static WpfSkinDefinition LoadDefault()
+        public static WpfSkinDefinition LoadDefault() =>
+            LoadDefaultFrom(SkinsRoot);
+
+        /// <summary>指定ルートで既定スキンを解決する（テスト・一時フォルダ用）。</summary>
+        public static WpfSkinDefinition LoadDefaultFrom(string skinsRoot)
         {
-            if (TryLoad(DefaultSkinName, out WpfSkinDefinition def))
+            if (TryLoadFrom(skinsRoot, DefaultSkinName, out WpfSkinDefinition def))
             {
                 return def;
             }
 
-            foreach (string name in EnumerateSkins())
+            foreach (string name in EnumerateSkinsFrom(skinsRoot))
             {
-                if (TryLoad(name, out def))
+                if (TryLoadFrom(skinsRoot, name, out def))
                 {
                     return def;
                 }
@@ -65,17 +73,21 @@ namespace IndigoMovieManager.Services.WpfSkin
             return CreateBuiltInDefault();
         }
 
-        public static bool TryLoad(string skinName, out WpfSkinDefinition definition)
+        public static bool TryLoad(string skinName, out WpfSkinDefinition definition) =>
+            TryLoadFrom(SkinsRoot, skinName, out definition);
+
+        /// <summary>指定ルート下の &lt;skinName&gt;/skin.json を読み込む（テスト・一時フォルダ用）。</summary>
+        public static bool TryLoadFrom(string skinsRoot, string skinName, out WpfSkinDefinition definition)
         {
             definition = null;
-            if (string.IsNullOrWhiteSpace(skinName))
+            if (string.IsNullOrWhiteSpace(skinsRoot) || string.IsNullOrWhiteSpace(skinName))
             {
                 return false;
             }
 
             try
             {
-                string path = Path.Combine(SkinsRoot, skinName, DefinitionFileName);
+                string path = Path.Combine(skinsRoot, skinName, DefinitionFileName);
                 if (!File.Exists(path))
                 {
                     return false;

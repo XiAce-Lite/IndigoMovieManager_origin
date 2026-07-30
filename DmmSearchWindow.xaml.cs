@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using IndigoMovieManager.Services;
 using IndigoMovieManager.Services.Dmm;
 
@@ -19,6 +20,9 @@ namespace IndigoMovieManager
     /// </summary>
     public partial class DmmSearchWindow : Window
     {
+        /// <summary>手動検索の1ページ件数（0620c02 以降の候補30件方針に合わせる）。</summary>
+        private const int PageHits = 30;
+
         private readonly MovieRecords _record;
         private readonly string _dbPath;
         private readonly long? _pendingId;
@@ -28,6 +32,10 @@ namespace IndigoMovieManager
         private bool _isSearching;
         /// <summary>親画面のダブルクリック MouseUp がセルクリックに化けるのを抑止する。</summary>
         private DateTime _suppressCellClickUntilUtc;
+        private int _nextOffset = 1;
+        private bool _mayHaveMore;
+        private string _lastSearchKeyword = string.Empty;
+        private int _previewGeneration;
 
         public bool AppliedSuccessfully { get; private set; }
 
@@ -59,6 +67,11 @@ namespace IndigoMovieManager
                 StatusText.Text = $"{_candidates.Count} 件の候補を表示しています。";
                 // 未確定一覧からのダブルクリック直後に開く場合の誤クリック吸収
                 _suppressCellClickUntilUtc = DateTime.UtcNow.AddMilliseconds(400);
+                _lastSearchKeyword = (initialKeyword ?? string.Empty).Trim();
+                // 既存候補のあとの「次の30件」は offset=1 から取得し、重複は追記側で除外する。
+                _nextOffset = 1;
+                _mayHaveMore = !string.IsNullOrWhiteSpace(_lastSearchKeyword);
+                UpdateNextPageEnabled();
             }
 
             Loaded += DmmSearchWindow_Loaded;
@@ -96,7 +109,7 @@ namespace IndigoMovieManager
             if (sender is Button button && button.Tag is string variant)
             {
                 KeywordBox.Text = variant;
-                await RunSearchAsync(variant).ConfigureAwait(true);
+                await RunSearchAsync(variant, append: false).ConfigureAwait(true);
             }
         }
 
@@ -105,10 +118,11 @@ namespace IndigoMovieManager
             if (_candidates.Count > 0)
             {
                 SelectPreferredCandidate();
+                await UpdateJacketPreviewAsync(GetSelectedCandidateRow()).ConfigureAwait(true);
                 return;
             }
 
-            await RunSearchAsync(KeywordBox.Text).ConfigureAwait(true);
+            await RunSearchAsync(KeywordBox.Text, append: false).ConfigureAwait(true);
         }
 
         private void SetCandidates(IReadOnlyList<DmmCandidateEntry> entries)
@@ -122,6 +136,39 @@ namespace IndigoMovieManager
 
             SelectPreferredCandidate(productCode);
         }
+
+        private int AppendCandidates(IReadOnlyList<DmmCandidateEntry> entries)
+        {
+            if (entries == null || entries.Count == 0)
+            {
+                return 0;
+            }
+
+            string productCode = ResolveProductCodeForSort();
+            var existingKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (DmmCandidateRow row in _candidates)
+            {
+                existingKeys.Add(CandidateKey(row.ContentId, row.FloorLabel));
+            }
+
+            int added = 0;
+            foreach (DmmCandidateRow row in DmmCandidateRow.FromEntries(entries, productCode))
+            {
+                string key = CandidateKey(row.ContentId, row.FloorLabel);
+                if (!existingKeys.Add(key))
+                {
+                    continue;
+                }
+
+                _candidates.Add(row);
+                added++;
+            }
+
+            return added;
+        }
+
+        private static string CandidateKey(string contentId, string floorLabel) =>
+            $"{contentId ?? string.Empty}\u001f{floorLabel ?? string.Empty}";
 
         private void SelectPreferredCandidate(string productCode = null)
         {
@@ -139,7 +186,7 @@ namespace IndigoMovieManager
 
         private string ResolveProductCodeForSort()
         {
-            DmmCidNormalizer.ExtractResult fromKeyword = DmmCidNormalizer.ExtractFromFileName(KeywordBox.Text);
+            DmmCidNormalizer.ExtractResult fromKeyword = DmmCidNormalizer.ExtractFromSearchInput(KeywordBox.Text);
             if (fromKeyword.HasProductCode)
             {
                 return fromKeyword.ProductCode;
@@ -158,7 +205,15 @@ namespace IndigoMovieManager
 
         private async void SearchButton_Click(object sender, RoutedEventArgs e)
         {
-            await RunSearchAsync(KeywordBox.Text).ConfigureAwait(true);
+            await RunSearchAsync(KeywordBox.Text, append: false).ConfigureAwait(true);
+        }
+
+        private async void NextPageButton_Click(object sender, RoutedEventArgs e)
+        {
+            string keyword = string.IsNullOrWhiteSpace(KeywordBox.Text)
+                ? _lastSearchKeyword
+                : KeywordBox.Text;
+            await RunSearchAsync(keyword, append: true).ConfigureAwait(true);
         }
 
         private void CandidatesGrid_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
@@ -180,9 +235,11 @@ namespace IndigoMovieManager
                 return;
             }
 
-            // ジャケ列は検索語に載せない。
+            // ジャケ列は検索語に載せない。○ ならプレビューへフォーカス。
             if (ReferenceEquals(cell.Column, CandidatesGrid.Columns[0]))
             {
+                CandidatesGrid.SelectedItem = row;
+                JacketPreviewImage.Focus();
                 return;
             }
 
@@ -195,6 +252,11 @@ namespace IndigoMovieManager
             KeywordBox.Text = value.Trim();
             KeywordBox.Focus();
             KeywordBox.CaretIndex = KeywordBox.Text.Length;
+        }
+
+        private async void CandidatesGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            await UpdateJacketPreviewAsync(GetSelectedCandidateRow()).ConfigureAwait(true);
         }
 
         private static string GetCellDisplayText(DmmCandidateRow row, DataGridColumn column)
@@ -232,7 +294,7 @@ namespace IndigoMovieManager
             return null;
         }
 
-        private async Task RunSearchAsync(string keyword)
+        private async Task RunSearchAsync(string keyword, bool append)
         {
             if (_isSearching)
             {
@@ -252,38 +314,80 @@ namespace IndigoMovieManager
                 return;
             }
 
+            string trimmed = keyword.Trim();
+            int offset = append ? _nextOffset : 1;
+            if (append && !_mayHaveMore)
+            {
+                StatusText.Text = "これ以上の候補はありません。";
+                UpdateNextPageEnabled();
+                return;
+            }
+
             _isSearching = true;
             SetSearchEnabled(false);
-            StatusText.Text = "検索中...";
+            StatusText.Text = append ? "追加検索中..." : "検索中...";
 
             try
             {
                 DmmKeywordSearchResult result = await GetResolver()
-                    .SearchManualAsync(keyword.Trim())
+                    .SearchPageAsync(trimmed, offset, PageHits)
                     .ConfigureAwait(true);
 
                 if (!result.IsConfigured)
                 {
                     StatusText.Text = "DMM API が未設定です。";
+                    _mayHaveMore = false;
+                    UpdateNextPageEnabled();
                     return;
                 }
 
                 if (!string.IsNullOrWhiteSpace(result.ErrorMessage))
                 {
                     StatusText.Text = $"検索エラー: {result.ErrorMessage}";
-                    _candidates.Clear();
+                    if (!append)
+                    {
+                        _candidates.Clear();
+                        ClearJacketPreview();
+                    }
+
+                    _mayHaveMore = false;
+                    UpdateNextPageEnabled();
                     return;
                 }
 
-                SetCandidates(result.Candidates);
-                StatusText.Text = _candidates.Count == 0
-                    ? "候補が見つかりませんでした。品番表記（ハイフン有無・ゼロ埋め等）を変えて再検索してください。"
-                    : $"{_candidates.Count} 件の候補が見つかりました。";
+                _lastSearchKeyword = trimmed;
+                _mayHaveMore = result.MayHaveMore;
+                _nextOffset = offset + PageHits;
+
+                if (append)
+                {
+                    int added = AppendCandidates(result.Candidates);
+                    StatusText.Text = added == 0
+                        ? $"{_candidates.Count} 件表示中（追加なし）。"
+                        : $"{_candidates.Count} 件表示中（+{added}）。";
+                }
+                else
+                {
+                    SetCandidates(result.Candidates);
+                    StatusText.Text = _candidates.Count == 0
+                        ? "候補が見つかりませんでした。品番表記（ハイフン有無・ゼロ埋め等）を変えて再検索してください。"
+                        : $"{_candidates.Count} 件の候補が見つかりました。";
+                    await UpdateJacketPreviewAsync(GetSelectedCandidateRow()).ConfigureAwait(true);
+                }
+
+                UpdateNextPageEnabled();
             }
             catch (Exception ex)
             {
                 StatusText.Text = $"検索エラー: {ex.Message}";
-                _candidates.Clear();
+                if (!append)
+                {
+                    _candidates.Clear();
+                    ClearJacketPreview();
+                }
+
+                _mayHaveMore = false;
+                UpdateNextPageEnabled();
             }
             finally
             {
@@ -292,11 +396,17 @@ namespace IndigoMovieManager
             }
         }
 
+        private void UpdateNextPageEnabled()
+        {
+            NextPageButton.IsEnabled = !_isSearching && _mayHaveMore && !string.IsNullOrWhiteSpace(_lastSearchKeyword);
+        }
+
         private void SetSearchEnabled(bool enabled)
         {
             SearchButton.IsEnabled = enabled;
             ApplyButton.IsEnabled = enabled;
             KeywordBox.IsEnabled = enabled;
+            UpdateNextPageEnabled();
             foreach (object child in VariantChipsPanel.Children)
             {
                 if (child is Button chip)
@@ -304,6 +414,55 @@ namespace IndigoMovieManager
                     chip.IsEnabled = enabled;
                 }
             }
+        }
+
+        private void ClearJacketPreview()
+        {
+            _previewGeneration++;
+            JacketPreviewImage.Source = null;
+            JacketPreviewHint.Visibility = Visibility.Visible;
+            JacketPreviewHint.Text = "選択行のジャケット（pl）を表示します";
+        }
+
+        private async Task UpdateJacketPreviewAsync(DmmCandidateRow row)
+        {
+            int generation = ++_previewGeneration;
+            string url = row?.Item?.ImageUrl?.Large?.Trim();
+            if (!DmmJacketUrls.IsHttpUrl(url)
+                || (Uri.TryCreate(url, UriKind.Absolute, out Uri uri)
+                    && DmmJacketUrls.IsPlaceholderJacketUri(uri)))
+            {
+                if (generation == _previewGeneration)
+                {
+                    JacketPreviewImage.Source = null;
+                    JacketPreviewHint.Visibility = Visibility.Visible;
+                    JacketPreviewHint.Text = row == null
+                        ? "選択行のジャケット（pl）を表示します"
+                        : "この候補に表示可能なジャケットがありません";
+                }
+
+                return;
+            }
+
+            JacketPreviewHint.Text = "読み込み中...";
+            JacketPreviewHint.Visibility = Visibility.Visible;
+
+            BitmapSource image = await DmmRemoteImageLoader.LoadAsync(url, Dispatcher).ConfigureAwait(true);
+            if (generation != _previewGeneration)
+            {
+                return;
+            }
+
+            if (image == null)
+            {
+                JacketPreviewImage.Source = null;
+                JacketPreviewHint.Text = "ジャケットの読み込みに失敗しました";
+                JacketPreviewHint.Visibility = Visibility.Visible;
+                return;
+            }
+
+            JacketPreviewImage.Source = image;
+            JacketPreviewHint.Visibility = Visibility.Collapsed;
         }
 
         private async void PlayButton_Click(object sender, RoutedEventArgs e)
