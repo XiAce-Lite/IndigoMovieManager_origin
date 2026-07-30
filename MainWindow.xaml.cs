@@ -5720,134 +5720,45 @@ namespace IndigoMovieManager
                 return;
             }
 
-            bool FolderCheckflg = false;
-            bool foundUnregistered = false;
-            List<QueueObj> addFiles = [];
-            int totalFolders = foldersToCheck.Count;
             FolderCheckProgressSession folderCheckProgress =
-                await BeginFolderCheckProgressAsync(totalFolders).ConfigureAwait(true);
+                await BeginFolderCheckProgressAsync(foldersToCheck.Count).ConfigureAwait(true);
 
             MoviePathRegistrationIndex pathIndex = await Task.Run(() =>
                 MoviePathRegistrationIndex.Load(dbFullPath)).ConfigureAwait(false);
 
+            FolderCheckScanResult scanResult;
             try
             {
-                for (int folderIndex = 0; folderIndex < foldersToCheck.Count; folderIndex++)
-                {
-                    if (!folderCheckStillActive())
+                scanResult = await FolderCheckService.ScanAndRegisterAsync(
+                    dbFullPath,
+                    foldersToCheck,
+                    excludeExt,
+                    pathIndex,
+                    new FolderCheckScanCallbacks
                     {
-                        return;
-                    }
-
-                    (string checkFolder, bool sub) = foldersToCheck[folderIndex];
-                    await ReportFolderCheckProgressAsync(
-                        folderCheckProgress,
-                        folderIndex,
-                        $"{checkFolder} 監視実施中…").ConfigureAwait(true);
-
-                    List<string> unregisteredFiles;
-                    try
-                    {
-                        unregisteredFiles = await Task.Run(() =>
-                            MoviePathRegistrationIndex.FindUnregisteredFiles(pathIndex, checkFolder, sub, excludeExt))
-                            .ConfigureAwait(false);
-                    }
-                    catch (Exception e)
-                    {
-                        if (e is IOException)
-                        {
-                            await Task.Delay(1000).ConfigureAwait(false);
-                        }
-
-                        unregisteredFiles = [];
-                    }
-
-                    if (!folderCheckStillActive())
-                    {
-                        return;
-                    }
-
-                    if (unregisteredFiles.Count > 0)
-                    {
-                        foundUnregistered = true;
-                        await ReportFolderCheckProgressAsync(
-                            folderCheckProgress,
-                            folderIndex,
-                            $"{checkFolder} に更新あり。").ConfigureAwait(true);
-                    }
-
-                    foreach (string fileFullPath in unregisteredFiles)
-                    {
-                        if (!folderCheckStillActive())
-                        {
-                            return;
-                        }
-
-                        try
-                        {
-                            string normalizedPath = MediaPathNormalizer.Normalize(fileFullPath);
-                            if (string.IsNullOrWhiteSpace(normalizedPath)
-                                || !_discoveredFileRegistrationGate.TryEnter(normalizedPath))
-                            {
-                                continue;
-                            }
-
-                            try
-                            {
-                                MovieInfo mvi = await MovieRegistrationHelper
-                                    .TryRegisterDiscoveredFileAsync(dbFullPath, fileFullPath)
-                                    .ConfigureAwait(false);
-                                if (mvi == null)
-                                {
-                                    continue;
-                                }
-
-                                pathIndex.Register(mvi.MoviePath);
-                                FolderCheckflg = true;
-
-                                CancelThumbnailWorkForMovie(mvi.MovieId);
-                                addFiles.Add(new QueueObj
-                                {
-                                    MovieId = mvi.MovieId,
-                                    MovieFullPath = mvi.MoviePath,
-                                    DbFullPath = dbFullPath,
-                                });
-                            }
-                            finally
-                            {
-                                _discoveredFileRegistrationGate.Exit(normalizedPath);
-                            }
-                        }
-                        catch (Exception)
-                        {
-#if DEBUG
-                            Debug.WriteLine(
-                                $"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : [folder-check] skip {fileFullPath}");
-#endif
-                        }
-                    }
-
-                    if (!folderCheckStillActive())
-                    {
-                        return;
-                    }
-
-                    await ReportFolderCheckProgressAsync(
-                        folderCheckProgress,
-                        folderIndex + 1,
-                        $"{checkFolder} 監視完了").ConfigureAwait(true);
-                    await Task.Delay(100).ConfigureAwait(false);
-                }
+                        IsStillActive = folderCheckStillActive,
+                        TryEnterRegistrationGate = path => _discoveredFileRegistrationGate.TryEnter(path),
+                        ExitRegistrationGate = path => _discoveredFileRegistrationGate.Exit(path),
+                        OnMovieRegistered = CancelThumbnailWorkForMovie,
+                        ReportProgressAsync = (done, detail) =>
+                            ReportFolderCheckProgressAsync(folderCheckProgress, done, detail),
+                    }).ConfigureAwait(false);
             }
             finally
             {
                 await EndFolderCheckProgressAsync(folderCheckProgress).ConfigureAwait(true);
             }
 
-            if (!folderCheckStillActive() || (!FolderCheckflg && !foundUnregistered))
+            if (!folderCheckStillActive()
+                || !FolderCheckService.ShouldApplyResults(
+                    scanResult.RegisteredAny,
+                    scanResult.FoundUnregistered))
             {
                 return;
             }
+
+            List<QueueObj> addFiles = scanResult.AddedThumbnailWork;
+            bool registeredAny = scanResult.RegisteredAny;
 
             await Dispatcher.InvokeAsync(async () =>
             {
@@ -5864,7 +5775,7 @@ namespace IndigoMovieManager
                     return;
                 }
 
-                if (FolderCheckflg && addFiles.Count > 0)
+                if (registeredAny && addFiles.Count > 0)
                 {
                     foreach (QueueObj item in addFiles)
                     {
