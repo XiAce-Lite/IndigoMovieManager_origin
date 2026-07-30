@@ -6,6 +6,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using IndigoMovieManager.Services.Dmm;
+using IndigoMovieManager.Services.WpfSkin.Design;
 
 namespace IndigoMovieManager.Services.WpfSkin
 {
@@ -254,6 +255,12 @@ namespace IndigoMovieManager.Services.WpfSkin
             }
 
             ApplyLocal(image, localConverter, localPath, localExists);
+
+            if (WpfSkinDesignSession.Active && WpfSkinDesignSession.ForceLocalThumbnail)
+            {
+                SetLoading(image, false);
+                return;
+            }
 
             if (!DmmJacketUrls.IsHttpUrl(jacketUrl))
             {

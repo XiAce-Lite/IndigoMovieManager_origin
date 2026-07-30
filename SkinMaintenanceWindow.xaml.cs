@@ -46,11 +46,21 @@ namespace IndigoMovieManager
         /// <summary>JSON 未指定・空文字用。実在フォント名と衝突しない表示ラベル。</summary>
         private const string FontFamilyUnspecifiedDisplay = "(未指定)";
 
+        private sealed class FieldPaletteItem
+        {
+            public WpfSkinFieldDescriptor Field { get; init; }
+            public bool IsPlaced { get; init; }
+            public string DisplayName => Field?.DisplayName ?? "";
+            public string Id => Field?.Id ?? "";
+        }
+
         private readonly PreviewThumbConverter _previewThumbConverter = new(new Converter.NoLockImageConverter());
         private readonly Converter.AspectStretchConverter _previewAspectConverter = new();
         private readonly Converter.FileSizeConverter _previewFileSizeConverter = new();
-        private readonly MovieRecords _previewRecord;
-        private readonly bool _previewFromSelection;
+        private MovieRecords _previewRecord;
+        private bool _previewFromSelection;
+        private readonly MovieRecords _selectionPreviewRecord;
+        private MovieRecords _samplePreviewRecord;
 
         private WpfSkinDefinition _working;
         private string _folderName;
@@ -69,13 +79,17 @@ namespace IndigoMovieManager
         private Point _treeDragStart;
         private Point _fieldPaletteDragStart;
         private WpfSkinLayoutTreeNode _treeDragSource;
-        private WpfSkinFieldDescriptor _fieldPaletteDragSource;
+        private FieldPaletteItem _fieldPaletteDragSource;
         private bool _dropApplying;
         private IDisposable _designSessionScope;
         private readonly Stack<WpfSkinDefinition> _undoStack = new();
         private readonly Stack<WpfSkinDefinition> _redoStack = new();
         private bool _suppressUndo;
         private bool _propertyUndoArmed = true;
+        private bool _cardWidthDragging;
+        private bool _cardHeightDragging;
+        private int _columnConstraintIndex = -1;
+        private WpfSkinNode _columnConstraintGrid;
 
         public string ResultSkinFolderName { get; private set; }
         public Action<string> LiveApplyRequested { get; set; }
@@ -96,10 +110,16 @@ namespace IndigoMovieManager
             InitializeComponent();
             Owner = owner;
             InitStaticSelectors();
+            _selectionPreviewRecord = previewRecord;
             _previewFromSelection = previewRecord != null;
-            _previewRecord = previewRecord ?? CreateSampleRecord("サンプル動画 A.mp4", "プレビュー用タイトル A");
+            _previewRecord = previewRecord ?? EnsureSamplePreviewRecord();
             PreviewPresenter.DataContext = _previewRecord;
+            InitPreviewSourceRadios();
             UpdatePreviewSourceCaption();
+            if (PreviewScroll != null)
+            {
+                PreviewScroll.SizeChanged += (_, _) => ApplyPreviewStretchSlot();
+            }
 
             if (mode == OpenMode.CreateNew)
             {
@@ -181,6 +201,7 @@ namespace IndigoMovieManager
             SurfaceBackgroundBox.Text = _working.Surface?.Background ?? "";
             CardPaddingSpin.Value = (int)Math.Round(_working.Card?.Padding ?? 0);
             CardWidthSpin.Value = Math.Max(0, (int)Math.Round(_working.Card?.Width ?? 0));
+            CardHeightSpin.Value = Math.Max(0, (int)Math.Round(_working.Card?.Height ?? 0));
             CardBackgroundBox.Text = _working.Card?.Background ?? "";
             CardStretchCheck.IsChecked = _working.Card?.Stretch == true;
 
@@ -207,7 +228,14 @@ namespace IndigoMovieManager
         private void RefreshFieldPalette()
         {
             WpfSkinNode layout = _working?.Card?.Layout;
-            FieldPaletteList.ItemsSource = WpfSkinFieldCatalog.UnusedFields(layout).ToList();
+            HashSet<string> used = WpfSkinFieldCatalog.CollectUsedFieldIds(layout);
+            FieldPaletteList.ItemsSource = WpfSkinFieldCatalog.All
+                .Select(f => new FieldPaletteItem
+                {
+                    Field = f,
+                    IsPlaced = used.Contains(f.Id),
+                })
+                .ToList();
         }
 
         private void EnsureAutomaticStyleForNode(WpfSkinNode node)
@@ -382,6 +410,11 @@ namespace IndigoMovieManager
                 SaveCurrentSkin(saveAs: true);
                 e.Handled = true;
             }
+            else if (mods == ModifierKeys.Control && e.Key == Key.D)
+            {
+                DuplicateSelectedNode();
+                e.Handled = true;
+            }
             else if (mods == ModifierKeys.None && e.Key == Key.Delete)
             {
                 DeleteNodeButton_Click(null, null);
@@ -459,6 +492,7 @@ namespace IndigoMovieManager
             _working.Card ??= new WpfSkinCard();
             _working.Card.Padding = CardPaddingSpin.Value;
             _working.Card.Width = CardWidthSpin.Value;
+            _working.Card.Height = CardHeightSpin.Value;
             _working.Card.Background = CardBackgroundBox.Text?.Trim() ?? "";
             _working.Card.Stretch = CardStretchCheck.IsChecked == true;
             _working.Card.Layout ??= new WpfSkinNode();
@@ -522,6 +556,214 @@ namespace IndigoMovieManager
                 ? WpfSkinLayoutBuilder.BuildListHeader(_working)
                 : null;
             RefreshFieldPalette();
+            ApplyPreviewStretchSlot();
+            UpdateCardWidthGripState();
+            UpdateSelectionQuickBar();
+            UpdateColumnConstraintPanel();
+        }
+
+        private void ApplyPreviewStretchSlot()
+        {
+            if (PreviewCardHost == null || PreviewPresenter == null || PreviewScroll == null)
+            {
+                return;
+            }
+
+            bool stretch = CardStretchCheck?.IsChecked == true;
+            if (stretch)
+            {
+                double viewport = PreviewScroll.ViewportWidth;
+                if (viewport < 40)
+                {
+                    viewport = Math.Max(80, PreviewScroll.ActualWidth - 24);
+                }
+
+                // 一覧のスロット幅相当として、スクロール領域幅までカードを伸ばす
+                PreviewCardHost.HorizontalAlignment = HorizontalAlignment.Stretch;
+                PreviewCardHost.Width = Math.Max(80, viewport);
+                PreviewPresenter.HorizontalAlignment = HorizontalAlignment.Stretch;
+                PreviewPresenter.Width = double.NaN;
+            }
+            else
+            {
+                PreviewCardHost.ClearValue(FrameworkElement.WidthProperty);
+                PreviewCardHost.HorizontalAlignment = HorizontalAlignment.Left;
+                PreviewPresenter.ClearValue(FrameworkElement.WidthProperty);
+                PreviewPresenter.HorizontalAlignment = HorizontalAlignment.Left;
+            }
+        }
+
+        private void UpdateCardWidthGripState()
+        {
+            if (CardWidthGrip == null)
+            {
+                return;
+            }
+
+            bool chrome = ShowDesignGuidesCheck?.IsChecked != false;
+            bool stretch = CardStretchCheck?.IsChecked == true;
+
+            CardWidthGrip.Visibility = chrome ? Visibility.Visible : Visibility.Collapsed;
+            CardHeightGrip.Visibility = chrome ? Visibility.Visible : Visibility.Collapsed;
+
+            CardWidthGrip.IsEnabled = chrome && !stretch;
+            CardWidthGrip.Opacity = stretch ? 0.35 : 0.95;
+            CardWidthGrip.Cursor = stretch ? Cursors.Arrow : Cursors.SizeWE;
+            CardWidthGrip.ToolTip = stretch
+                ? "一覧の列幅に合わせているため、カード幅グリップは無効です"
+                : "右下をドラッグしてカード幅を変更";
+
+            if (CardHeightGrip != null)
+            {
+                CardHeightGrip.IsEnabled = chrome;
+                CardHeightGrip.Opacity = 0.85;
+            }
+        }
+
+        private void CardWidthGrip_DragStarted(object sender, DragStartedEventArgs e)
+        {
+            if (CardStretchCheck?.IsChecked == true || _working == null)
+            {
+                _cardWidthDragging = false;
+                return;
+            }
+
+            CaptureUndoSnapshot();
+            _cardWidthDragging = true;
+        }
+
+        private void CardWidthGrip_DragDelta(object sender, DragDeltaEventArgs e)
+        {
+            if (!_cardWidthDragging || CardStretchCheck?.IsChecked == true)
+            {
+                return;
+            }
+
+            double current = PreviewPresenter.GetPreviewCardWidth();
+            if (current < 1)
+            {
+                current = Math.Max(80, CardWidthSpin.Value);
+            }
+
+            double newWidth = Math.Clamp(current + e.HorizontalChange, 80, 4000);
+            PreviewPresenter.SetPreviewCardWidth(newWidth);
+        }
+
+        private void CardWidthGrip_DragCompleted(object sender, DragCompletedEventArgs e)
+        {
+            if (!_cardWidthDragging)
+            {
+                return;
+            }
+
+            _cardWidthDragging = false;
+            if (CardStretchCheck?.IsChecked == true)
+            {
+                return;
+            }
+
+            double width = PreviewPresenter.GetPreviewCardWidth();
+            if (width < 1)
+            {
+                return;
+            }
+
+            int rounded = (int)Math.Round(width);
+            _suppressUi = true;
+            CardWidthSpin.Value = rounded;
+            _suppressUi = false;
+            _working.Card ??= new WpfSkinCard();
+            _working.Card.Width = rounded;
+            MarkDirty();
+        }
+
+        private void CardHeightGrip_DragStarted(object sender, DragStartedEventArgs e)
+        {
+            if (_working == null)
+            {
+                _cardHeightDragging = false;
+                return;
+            }
+
+            CaptureUndoSnapshot();
+            _cardHeightDragging = true;
+        }
+
+        private void CardHeightGrip_DragDelta(object sender, DragDeltaEventArgs e)
+        {
+            if (!_cardHeightDragging)
+            {
+                return;
+            }
+
+            double current = PreviewPresenter.GetPreviewCardHeight();
+            if (current < 1)
+            {
+                current = Math.Max(40, CardHeightSpin.Value > 0 ? CardHeightSpin.Value : 120);
+            }
+
+            double newHeight = Math.Clamp(current + e.VerticalChange, 40, 4000);
+            PreviewPresenter.SetPreviewCardHeight(newHeight);
+        }
+
+        private void CardHeightGrip_DragCompleted(object sender, DragCompletedEventArgs e)
+        {
+            if (!_cardHeightDragging)
+            {
+                return;
+            }
+
+            _cardHeightDragging = false;
+            double height = PreviewPresenter.GetPreviewCardHeight();
+            if (height < 1)
+            {
+                return;
+            }
+
+            int rounded = (int)Math.Round(height);
+            _suppressUi = true;
+            CardHeightSpin.Value = rounded;
+            _suppressUi = false;
+            _working.Card ??= new WpfSkinCard();
+            _working.Card.Height = rounded;
+            MarkDirty();
+            RefreshPreview();
+        }
+
+        private void UpdateSelectionQuickBar()
+        {
+            if (SelectionQuickBar == null)
+            {
+                return;
+            }
+
+            WpfSkinLayoutTreeNode node = _selectedLayoutNode;
+            if (node?.Model == null)
+            {
+                SelectionQuickBar.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            SelectionQuickBar.Visibility = Visibility.Visible;
+            QuickBarNodeName.Text = node.DisplayName ?? "（無題）";
+            QuickBarDeleteButton.IsEnabled = !node.IsRoot;
+            QuickBarPropsButton.IsEnabled = true;
+        }
+
+        private void QuickBarPropsButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_selectedLayoutNode?.Model != null)
+            {
+                EditSelectedNodeProperties(_selectedLayoutNode.Model);
+            }
+        }
+
+        private void QuickBarDeleteButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_selectedLayoutNode != null && !_selectedLayoutNode.IsRoot)
+            {
+                RemoveLayoutTreeNode(_selectedLayoutNode);
+            }
         }
 
         private void EditSelectedNodeProperties(WpfSkinNode node)
@@ -581,7 +823,10 @@ namespace IndigoMovieManager
         /// </summary>
         private void OnGridColumnResized(WpfSkinNode node)
         {
-            if (ReferenceEquals(_selectedLayoutNode?.Model, node))
+            WpfSkinNode selected = _selectedLayoutNode?.Model;
+            // 格子自体、または列幅同期で Width が変わる子孫（サムネ等）を選択中なら右ペインを追従
+            if (selected != null
+                && (ReferenceEquals(selected, node) || IsDescendantOf(node, selected)))
             {
                 LoadNodeEditors();
             }
@@ -589,6 +834,24 @@ namespace IndigoMovieManager
             // CaptureUndoSnapshot は呼ばない（ApplyFormToWorking が古い Rows/Columns で巻き戻すため）。
             // Undo 用スナップショットは DragStarted 側で積んである。
             MarkDirty();
+        }
+
+        private static bool IsDescendantOf(WpfSkinNode ancestor, WpfSkinNode candidate)
+        {
+            if (ancestor?.Children == null || candidate == null)
+            {
+                return false;
+            }
+
+            foreach (WpfSkinNode child in ancestor.Children)
+            {
+                if (ReferenceEquals(child, candidate) || IsDescendantOf(child, candidate))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private void SelectNodeFromPreview(WpfSkinNode node)
@@ -619,7 +882,7 @@ namespace IndigoMovieManager
                 return;
             }
 
-            if (_previewFromSelection)
+            if (_previewFromSelection && _previewRecord != null)
             {
                 string label = !string.IsNullOrWhiteSpace(_previewRecord.Title)
                     ? _previewRecord.Title
@@ -632,8 +895,65 @@ namespace IndigoMovieManager
                 return;
             }
 
-            PreviewSourceCaption.Text = "プレビュー元: サンプルデータ（一覧で作品を選んでから開くと実データで表示）";
+            PreviewSourceCaption.Text = "プレビュー元: サンプルデータ";
         }
+
+        private void InitPreviewSourceRadios()
+        {
+            if (PreviewFromSelectionRadio == null || PreviewSampleRadio == null)
+            {
+                return;
+            }
+
+            bool hasSelection = _selectionPreviewRecord != null;
+            PreviewFromSelectionRadio.IsEnabled = hasSelection;
+            bool prev = _suppressUi;
+            _suppressUi = true;
+            if (_previewFromSelection && hasSelection)
+            {
+                PreviewFromSelectionRadio.IsChecked = true;
+            }
+            else
+            {
+                PreviewSampleRadio.IsChecked = true;
+            }
+
+            _suppressUi = prev;
+        }
+
+        private void PreviewSource_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressUi || PreviewPresenter == null)
+            {
+                return;
+            }
+
+            bool useSelection = PreviewFromSelectionRadio?.IsChecked == true;
+            if (useSelection)
+            {
+                if (_selectionPreviewRecord == null)
+                {
+                    _suppressUi = true;
+                    PreviewSampleRadio.IsChecked = true;
+                    _suppressUi = false;
+                    return;
+                }
+
+                _previewFromSelection = true;
+                _previewRecord = _selectionPreviewRecord;
+            }
+            else
+            {
+                _previewFromSelection = false;
+                _previewRecord = EnsureSamplePreviewRecord();
+            }
+
+            PreviewPresenter.DataContext = _previewRecord;
+            UpdatePreviewSourceCaption();
+        }
+
+        private MovieRecords EnsureSamplePreviewRecord() =>
+            _samplePreviewRecord ??= CreateSampleRecord("サンプル動画 A.mp4", "プレビュー用タイトル A");
 
         private static MovieRecords CreateSampleRecord(string fileName, string title) =>
             new()
@@ -668,6 +988,8 @@ namespace IndigoMovieManager
             {
                 _selectedLayoutNode = null;
                 LoadNodeEditors();
+                UpdateSelectionQuickBar();
+                UpdateColumnConstraintPanel();
                 return;
             }
 
@@ -695,6 +1017,8 @@ namespace IndigoMovieManager
             }
 
             LoadNodeEditors();
+            UpdateSelectionQuickBar();
+            UpdateColumnConstraintPanel();
         }
 
         private static void ExpandTo(WpfSkinLayoutTreeNode node)
@@ -703,6 +1027,168 @@ namespace IndigoMovieManager
             {
                 // Expand is applied when TreeViewItem is materialized in FindTreeViewItem.
             }
+        }
+
+        private void PreviewZoomCombo_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (PreviewCardHost == null || PreviewZoomCombo?.SelectedItem is not ComboBoxItem item)
+            {
+                return;
+            }
+
+            double zoom = 1;
+            if (item.Tag is string tag && double.TryParse(tag, System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out double parsed))
+            {
+                zoom = parsed;
+            }
+
+            PreviewCardHost.LayoutTransform = Math.Abs(zoom - 1) < 0.001
+                ? Transform.Identity
+                : new ScaleTransform(zoom, zoom);
+        }
+
+        private void DesignChromeOption_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressUi || _working == null)
+            {
+                return;
+            }
+
+            WpfSkinDesignSession.ShowDesignChrome = ShowDesignGuidesCheck?.IsChecked != false;
+            WpfSkinDesignSession.ForceLocalThumbnail = ForceLocalThumbCheck?.IsChecked == true;
+            RefreshPreview();
+        }
+
+        private void UpdateColumnConstraintPanel()
+        {
+            if (ColumnConstraintPanel == null)
+            {
+                return;
+            }
+
+            _columnConstraintGrid = null;
+            _columnConstraintIndex = -1;
+            WpfSkinNode selected = _selectedLayoutNode?.Model;
+            if (selected == null)
+            {
+                ColumnConstraintPanel.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            WpfSkinNode gridNode = null;
+            int colIndex = 0;
+            if (selected.IsGrid && selected.Columns != null && selected.Columns.Count > 0)
+            {
+                gridNode = selected;
+                colIndex = 0;
+            }
+            else if (_selectedLayoutNode?.Parent?.Model is { IsGrid: true } parentGrid
+                     && parentGrid.Columns != null
+                     && parentGrid.Columns.Count > 0)
+            {
+                gridNode = parentGrid;
+                colIndex = Math.Clamp(selected.Col, 0, parentGrid.Columns.Count - 1);
+            }
+
+            if (gridNode == null)
+            {
+                ColumnConstraintPanel.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            _columnConstraintGrid = gridNode;
+            _columnConstraintIndex = colIndex;
+            ColumnConstraintPanel.Visibility = Visibility.Visible;
+            ColumnConstraintTargetText.Text = $"列 {colIndex + 1}/{gridNode.Columns.Count}";
+            string current = gridNode.Columns[colIndex]?.Trim() ?? "*";
+            bool isFill = current.EndsWith('*') || string.Equals(current, "*", StringComparison.Ordinal);
+            _suppressUi = true;
+            ColumnConstraintFillRadio.IsChecked = isFill;
+            ColumnConstraintFixedRadio.IsChecked = !isFill;
+            _suppressUi = false;
+        }
+
+        private void ColumnConstraint_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressUi
+                || _columnConstraintGrid?.Columns == null
+                || _columnConstraintIndex < 0
+                || _columnConstraintIndex >= _columnConstraintGrid.Columns.Count)
+            {
+                return;
+            }
+
+            CaptureUndoSnapshot();
+            if (ColumnConstraintFillRadio?.IsChecked == true)
+            {
+                _columnConstraintGrid.Columns[_columnConstraintIndex] = "*";
+            }
+            else
+            {
+                string current = _columnConstraintGrid.Columns[_columnConstraintIndex]?.Trim() ?? "";
+                if (!int.TryParse(current, out int px) || px <= 0)
+                {
+                    px = Math.Max(80, CardWidthSpin.Value > 0 ? CardWidthSpin.Value / 2 : 200);
+                }
+
+                _columnConstraintGrid.Columns[_columnConstraintIndex] = px.ToString();
+            }
+
+            // 右ペインの CSV も追従
+            if (ReferenceEquals(_selectedLayoutNode?.Model, _columnConstraintGrid)
+                || (_selectedLayoutNode?.Parent?.Model != null
+                    && ReferenceEquals(_selectedLayoutNode.Parent.Model, _columnConstraintGrid)))
+            {
+                _suppressUi = true;
+                if (ReferenceEquals(_selectedLayoutNode?.Model, _columnConstraintGrid))
+                {
+                    NodeColumnsBox.Text = string.Join(",", _columnConstraintGrid.Columns);
+                }
+
+                _suppressUi = false;
+            }
+
+            MarkDirty();
+            RefreshPreview();
+        }
+
+        private void DuplicateSelectedNode()
+        {
+            WpfSkinLayoutTreeNode treeNode = _selectedLayoutNode;
+            if (treeNode?.Model == null || treeNode.IsRoot || treeNode.Parent?.Model == null)
+            {
+                return;
+            }
+
+            // フィールド一意制約: 同じ field を複製できない場合は弾く
+            string uniqueKey = WpfSkinFieldCatalog.ResolveUniqueKey(treeNode.Model);
+            if (!string.IsNullOrEmpty(uniqueKey))
+            {
+                HashSet<string> used = WpfSkinFieldCatalog.CollectUsedFieldIds(_working?.Card?.Layout);
+                if (used.Contains(uniqueKey))
+                {
+                    MessageBox.Show(
+                        this,
+                        "この項目は既に配置済みのため複製できません（同じ DB 項目は1つまで）。",
+                        "複製",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                    return;
+                }
+            }
+
+            WpfSkinLayoutTreeNode parent = treeNode.Parent;
+            int index = parent.Children.IndexOf(treeNode);
+            CaptureUndoSnapshot();
+            WpfSkinNode clone = WpfSkinLayoutEditor.InsertClonedChild(
+                parent.Model,
+                treeNode.Model,
+                index < 0 ? parent.Children.Count : index + 1);
+            MarkDirty();
+            RebuildLayoutTree(clone);
+            RefreshPreview();
+            RefreshFieldPalette();
         }
 
         private static TreeViewItem FindTreeViewItem(ItemsControl container, object item)
@@ -760,6 +1246,7 @@ namespace IndigoMovieManager
             if (!hasSelection)
             {
                 ClearNodeEditors();
+                UpdateSelectedNodeLayoutHint(null);
                 _suppressUi = false;
                 return;
             }
@@ -782,6 +1269,9 @@ namespace IndigoMovieManager
             NodeColSpin.Value = Math.Max(0, node.Col);
             NodeRowSpanSpin.Value = Math.Max(1, node.RowSpan);
             NodeColSpanSpin.Value = Math.Max(1, node.ColSpan);
+            NodeWidthSpin.Value = node.Width.HasValue && node.Width.Value > 0
+                ? (int)Math.Round(node.Width.Value)
+                : 0;
             NodeFontSizeSpin.Value = node.FontSize > 0 ? (int)Math.Round(node.FontSize) : 0;
             SelectFontFamily(NodeFontFamilyCombo, node.FontFamily);
             NodeMarginBox.Text = WpfSkinLayoutEditor.FormatSpacing(node.Margin);
@@ -795,6 +1285,7 @@ namespace IndigoMovieManager
             NodeWrapCheck.IsChecked = node.Wrap;
 
             bool isContainer = node.IsContainer;
+            bool isThumbnail = string.Equals(node.Type, "thumbnail", StringComparison.OrdinalIgnoreCase);
             NodePanelCombo.IsEnabled = isContainer;
             NodeStackCombo.IsEnabled = isContainer && !node.IsGrid;
             NodeRowsBox.IsEnabled = isContainer && node.IsGrid;
@@ -805,7 +1296,7 @@ namespace IndigoMovieManager
             NodeHeaderBox.IsEnabled = !isContainer;
             NodeFormatBox.IsEnabled = !isContainer;
             bool styleApplicable = !isContainer
-                && !string.Equals(node.Type, "thumbnail", StringComparison.OrdinalIgnoreCase)
+                && !isThumbnail
                 && !string.Equals(node.Type, "tags", StringComparison.OrdinalIgnoreCase);
             NodeStyleCombo.IsEnabled = styleApplicable;
             NodeAlignCombo.IsEnabled = !isContainer;
@@ -816,8 +1307,70 @@ namespace IndigoMovieManager
             NodeBoldCheck.IsEnabled = !isContainer;
             NodeItalicCheck.IsEnabled = !isContainer;
             NodeWrapCheck.IsEnabled = !isContainer;
+            // サムネは表示幅が親列追従のため、width は参照表示（編集可だが Tip で説明）
+            NodeWidthSpin.IsEnabled = hasSelection;
+            NodeWidthHintText.Text = isThumbnail
+                ? "サムネ: 表示は親列に追従。0=自動。生成サイズは左の「サムネ生成」"
+                : "0 で親に追従（固定したいときだけ px）";
+
+            UpdateSelectedNodeLayoutHint(node);
 
             _suppressUi = false;
+        }
+
+        private void UpdateSelectedNodeLayoutHint(WpfSkinNode node)
+        {
+            if (SelectedNodeLayoutHint == null)
+            {
+                return;
+            }
+
+            if (node == null)
+            {
+                SelectedNodeLayoutHint.Visibility = Visibility.Collapsed;
+                SelectedNodeLayoutHint.Text = "";
+                return;
+            }
+
+            if (string.Equals(node.Type, "thumbnail", StringComparison.OrdinalIgnoreCase))
+            {
+                SelectedNodeLayoutHint.Text =
+                    "選択: サムネ — 表示枠は親列幅に追従／生成ピクセルは左ペイン「サムネ生成」";
+                SelectedNodeLayoutHint.Visibility = Visibility.Visible;
+                return;
+            }
+
+            if (node.IsGrid && node.Columns != null && node.Columns.Count > 0)
+            {
+                string cols = string.Join(" | ", node.Columns.Select(FormatColumnConstraintLabel));
+                SelectedNodeLayoutHint.Text = $"選択: grid 列 = {cols}";
+                SelectedNodeLayoutHint.Visibility = Visibility.Visible;
+                return;
+            }
+
+            SelectedNodeLayoutHint.Visibility = Visibility.Collapsed;
+            SelectedNodeLayoutHint.Text = "";
+        }
+
+        private static string FormatColumnConstraintLabel(string col)
+        {
+            if (string.IsNullOrWhiteSpace(col))
+            {
+                return "自動";
+            }
+
+            string t = col.Trim();
+            if (t.EndsWith('*'))
+            {
+                return "残り(*)";
+            }
+
+            if (string.Equals(t, "auto", StringComparison.OrdinalIgnoreCase))
+            {
+                return "自動";
+            }
+
+            return $"固定({t})";
         }
 
         private void SetNodeEditorsEnabled(bool enabled)
@@ -834,7 +1387,7 @@ namespace IndigoMovieManager
 
             foreach (IntegerSpinBox spin in new[]
             {
-                NodeRowSpin, NodeColSpin, NodeRowSpanSpin, NodeColSpanSpin, NodeFontSizeSpin
+                NodeRowSpin, NodeColSpin, NodeRowSpanSpin, NodeColSpanSpin, NodeWidthSpin, NodeFontSizeSpin
             })
             {
                 spin.IsEnabled = enabled;
@@ -864,6 +1417,12 @@ namespace IndigoMovieManager
             NodeColSpin.Value = 0;
             NodeRowSpanSpin.Value = 1;
             NodeColSpanSpin.Value = 1;
+            NodeWidthSpin.Value = 0;
+            if (NodeWidthHintText != null)
+            {
+                NodeWidthHintText.Text = "0 で親に追従";
+            }
+
             NodeFontSizeSpin.Value = 0;
             SelectFontFamily(NodeFontFamilyCombo, null);
             NodeMarginBox.Text = "";
@@ -916,6 +1475,8 @@ namespace IndigoMovieManager
             node.Col = NodeColSpin.Value;
             node.RowSpan = Math.Max(1, NodeRowSpanSpin.Value);
             node.ColSpan = Math.Max(1, NodeColSpanSpin.Value);
+            int widthPx = NodeWidthSpin.Value;
+            node.Width = widthPx > 0 ? widthPx : null;
             node.Margin = WpfSkinSpacing.Parse(NodeMarginBox.Text);
             node.Padding = WpfSkinSpacing.Parse(NodePaddingBox.Text);
             node.Background = NodeBackgroundBox.Text?.Trim() ?? "";
@@ -1277,18 +1838,20 @@ namespace IndigoMovieManager
             _fieldPaletteDragStart = e.GetPosition(this);
             if (ItemsControl.ContainerFromElement(FieldPaletteList, e.OriginalSource as DependencyObject) is ListBoxItem item)
             {
-                _fieldPaletteDragSource = item.DataContext as WpfSkinFieldDescriptor;
+                _fieldPaletteDragSource = item.DataContext as FieldPaletteItem;
                 item.IsSelected = true;
             }
             else
             {
-                _fieldPaletteDragSource = FieldPaletteList.SelectedItem as WpfSkinFieldDescriptor;
+                _fieldPaletteDragSource = FieldPaletteList.SelectedItem as FieldPaletteItem;
             }
         }
 
         private void FieldPalette_PreviewMouseMove(object sender, MouseEventArgs e)
         {
-            if (e.LeftButton != MouseButtonState.Pressed || _fieldPaletteDragSource == null)
+            if (e.LeftButton != MouseButtonState.Pressed
+                || _fieldPaletteDragSource == null
+                || _fieldPaletteDragSource.IsPlaced)
             {
                 return;
             }
@@ -1308,7 +1871,7 @@ namespace IndigoMovieManager
 
         private void FieldPalette_MouseDoubleClick(object sender, MouseButtonEventArgs e)
         {
-            if (FieldPaletteList.SelectedItem is not WpfSkinFieldDescriptor desc)
+            if (FieldPaletteList.SelectedItem is not FieldPaletteItem item || item.IsPlaced)
             {
                 return;
             }
@@ -1319,7 +1882,7 @@ namespace IndigoMovieManager
                 return;
             }
 
-            AddFieldToParent(parent, desc.Id, parent.Children.Count);
+            AddFieldToParent(parent, item.Id, parent.Children.Count);
         }
 
         /// <summary>

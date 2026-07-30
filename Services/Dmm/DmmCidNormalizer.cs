@@ -17,6 +17,11 @@ namespace IndigoMovieManager.Services.Dmm
         [GeneratedRegex(@"([-_]?(cd|part|disc)\d+|[-_][a-z])$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
         private static partial Regex TrailingBranchRegex();
 
+        [GeneratedRegex(
+            @"^1?(?<maker>[A-Za-z]{2,10})(?<num>\d{2,6})(?<branch>[A-Za-z])?$",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+        private static partial Regex DirectContentIdRegex();
+
         public sealed class ExtractResult
         {
             public string ProductCode { get; init; }
@@ -69,6 +74,44 @@ namespace IndigoMovieManager.Services.Dmm
             };
         }
 
+        public static ExtractResult ExtractFromSearchInput(string searchInput)
+        {
+            ExtractResult extracted = ExtractFromFileName(searchInput);
+            if (extracted.HasProductCode)
+            {
+                return extracted;
+            }
+
+            string body = NormalizeBody(searchInput);
+            if (string.IsNullOrEmpty(body))
+            {
+                return extracted;
+            }
+
+            Match match = DirectContentIdRegex().Match(body);
+            if (!match.Success)
+            {
+                return extracted;
+            }
+
+            string maker = match.Groups["maker"].Value.ToLowerInvariant();
+            string num = match.Groups["num"].Value;
+            string branch = match.Groups["branch"].Success
+                ? match.Groups["branch"].Value.ToLowerInvariant()
+                : null;
+            string productNumber = NormalizeProductNumber(num);
+            string hyphenForm = $"{maker}-{productNumber}";
+            string spaceForm = $"{maker} {productNumber}";
+
+            return new ExtractResult
+            {
+                ProductCode = hyphenForm,
+                SpaceForm = spaceForm,
+                BranchLetter = branch,
+                CidCandidates = BuildCidCandidates(maker, num),
+            };
+        }
+
         public static IReadOnlyList<string> BuildCidCandidates(string makerLower, string numberDigits)
         {
             string maker = (makerLower ?? "").Trim().ToLowerInvariant();
@@ -79,6 +122,7 @@ namespace IndigoMovieManager.Services.Dmm
             }
 
             string padded5 = num.PadLeft(5, '0');
+            string padded6 = num.PadLeft(6, '0');
             string padded3 = num.Length >= 3 ? num : num.PadLeft(3, '0');
 
             var candidates = new List<string>();
@@ -98,12 +142,26 @@ namespace IndigoMovieManager.Services.Dmm
             // 実測ベースの優先順（例: maker=abcd / num=123）
             Add("1" + maker + padded5);          // 1abcd00123
             Add(maker + padded5);                // abcd00123
+            Add("1" + maker + padded6);          // 1abcd000123
+            Add(maker + padded6);                // abcd000123
             Add(maker + num);                    // abcd123 / efgh456
             Add(maker + padded3);                // abcd123 (短めパディング)
             Add(maker + "-" + num);              // abcd-123
             Add(maker + "-" + padded5);          // abcd-00123
+            Add(maker + "-" + padded6);          // abcd-000123
 
             return candidates;
+        }
+
+        private static string NormalizeProductNumber(string digits)
+        {
+            string normalized = (digits ?? string.Empty).Trim().TrimStart('0');
+            if (normalized.Length == 0)
+            {
+                normalized = "0";
+            }
+
+            return normalized.Length >= 3 ? normalized : normalized.PadLeft(3, '0');
         }
 
         private static string NormalizeBody(string movieName)

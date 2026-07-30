@@ -20,6 +20,13 @@ namespace IndigoMovieManager.Services.WpfSkin.Design
         private const string InsertGuideKey = "WpfSkinDesignInsertGuide";
 
         public static bool Active { get; private set; }
+
+        /// <summary>編集プレビューで選択枠・格子ガイド・挿入線を出すか。</summary>
+        public static bool ShowDesignChrome { get; set; } = true;
+
+        /// <summary>preferJacket でも編集中はローカルサムネだけ見せる。</summary>
+        public static bool ForceLocalThumbnail { get; set; }
+
         public static WpfSkinNode SelectedNode { get; private set; }
         public static Action<WpfSkinNode> OnSelect { get; private set; }
         public static Action<WpfSkinNode, DragEventArgs> OnDragOver { get; private set; }
@@ -73,22 +80,26 @@ namespace IndigoMovieManager.Services.WpfSkin.Design
             }
 
             WpfSkinDesignGridGuide guide = null;
-            var insertGuide = new WpfSkinDesignInsertGuide();
-            if (WpfSkinDesignGridGeometry.IsGridPanel(node))
+            WpfSkinDesignInsertGuide insertGuide = null;
+            if (ShowDesignChrome)
             {
-                guide = new WpfSkinDesignGridGuide(node);
-                var layer = new Grid();
-                layer.Children.Add(element);
-                layer.Children.Add(guide.Overlay);
-                layer.Children.Add(insertGuide.Overlay);
-                element = layer;
-            }
-            else
-            {
-                var layer = new Grid();
-                layer.Children.Add(element);
-                layer.Children.Add(insertGuide.Overlay);
-                element = layer;
+                insertGuide = new WpfSkinDesignInsertGuide();
+                if (WpfSkinDesignGridGeometry.IsGridPanel(node))
+                {
+                    guide = new WpfSkinDesignGridGuide(node);
+                    var layer = new Grid();
+                    layer.Children.Add(element);
+                    layer.Children.Add(guide.Overlay);
+                    layer.Children.Add(insertGuide.Overlay);
+                    element = layer;
+                }
+                else
+                {
+                    var layer = new Grid();
+                    layer.Children.Add(element);
+                    layer.Children.Add(insertGuide.Overlay);
+                    element = layer;
+                }
             }
 
             bool selected = ReferenceEquals(node, SelectedNode);
@@ -99,30 +110,39 @@ namespace IndigoMovieManager.Services.WpfSkin.Design
             Action<WpfSkinNode> onEditProperties = OnEditProperties;
             Action<WpfSkinNode> onDeleteNode = OnDeleteNode;
 
+            bool chrome = ShowDesignChrome;
             var border = new Border
             {
                 Child = element,
-                BorderBrush = selected
-                    ? new SolidColorBrush(Color.FromRgb(0x1E, 0x88, 0xE5))
-                    : new SolidColorBrush(Color.FromArgb(0x55, 0x90, 0x90, 0x90)),
-                BorderThickness = new Thickness(selected ? 2 : 1),
-                Background = selected
-                    ? new SolidColorBrush(Color.FromArgb(0x22, 0x1E, 0x88, 0xE5))
-                    : Brushes.Transparent,
-                Margin = new Thickness(1),
+                BorderBrush = !chrome
+                    ? Brushes.Transparent
+                    : (selected
+                        ? new SolidColorBrush(Color.FromRgb(0x1E, 0x88, 0xE5))
+                        : new SolidColorBrush(Color.FromArgb(0x55, 0x90, 0x90, 0x90))),
+                BorderThickness = !chrome ? new Thickness(0) : new Thickness(selected ? 2 : 1),
+                Background = !chrome
+                    ? Brushes.Transparent
+                    : (selected
+                        ? new SolidColorBrush(Color.FromArgb(0x22, 0x1E, 0x88, 0xE5))
+                        : Brushes.Transparent),
+                Margin = new Thickness(chrome ? 1 : 0),
                 Cursor = Cursors.Hand,
                 SnapsToDevicePixels = true,
                 Tag = node,
                 AllowDrop = true,
                 // * 列がカード／親セル幅まで伸びるよう、デザイン枠も横に追従させる
                 HorizontalAlignment = HorizontalAlignment.Stretch,
+                VerticalAlignment = VerticalAlignment.Stretch,
             };
             if (guide != null)
             {
                 border.Resources[GuideKey] = guide;
             }
 
-            border.Resources[InsertGuideKey] = insertGuide;
+            if (insertGuide != null)
+            {
+                border.Resources[InsertGuideKey] = insertGuide;
+            }
 
             Point dragStart = default;
             bool dragPending = false;
@@ -248,18 +268,18 @@ namespace IndigoMovieManager.Services.WpfSkin.Design
                 if (can && guide != null && TryHitGridCell(border, e, node, out int row, out int col))
                 {
                     guide.HighlightCell(row, col);
-                    insertGuide.Clear();
+                    insertGuide?.Clear();
                 }
                 else
                 {
                     guide?.ClearHighlight();
                     if (can && InsertAfterHint.HasValue && e.Effects == DragDropEffects.Move)
                     {
-                        insertGuide.Show(InsertAfterHint.Value, InsertHorizontalHint);
+                        insertGuide?.Show(InsertAfterHint.Value, InsertHorizontalHint);
                     }
                     else
                     {
-                        insertGuide.Clear();
+                        insertGuide?.Clear();
                     }
                 }
 
@@ -270,14 +290,14 @@ namespace IndigoMovieManager.Services.WpfSkin.Design
             {
                 UpdateDropChrome(border, false);
                 guide?.ClearHighlight();
-                insertGuide.Clear();
+                insertGuide?.Clear();
             };
 
             border.Drop += (_, e) =>
             {
                 UpdateDropChrome(border, false);
                 guide?.ClearHighlight();
-                insertGuide.Clear();
+                insertGuide?.Clear();
                 InsertAfterHint = null;
                 onDrop?.Invoke(node, e);
                 e.Handled = true;
@@ -398,6 +418,14 @@ namespace IndigoMovieManager.Services.WpfSkin.Design
 
         private static void UpdateDropChrome(Border border, bool active)
         {
+            if (!ShowDesignChrome)
+            {
+                border.BorderBrush = Brushes.Transparent;
+                border.BorderThickness = new Thickness(0);
+                border.Background = Brushes.Transparent;
+                return;
+            }
+
             if (active)
             {
                 border.BorderBrush = new SolidColorBrush(Color.FromRgb(0x43, 0xA0, 0x47));

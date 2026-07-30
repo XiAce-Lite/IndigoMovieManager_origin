@@ -186,7 +186,7 @@ namespace IndigoMovieManager
 
         private string ResolveProductCodeForSort()
         {
-            DmmCidNormalizer.ExtractResult fromKeyword = DmmCidNormalizer.ExtractFromFileName(KeywordBox.Text);
+            DmmCidNormalizer.ExtractResult fromKeyword = DmmCidNormalizer.ExtractFromSearchInput(KeywordBox.Text);
             if (fromKeyword.HasProductCode)
             {
                 return fromKeyword.ProductCode;

@@ -60,4 +60,29 @@ public class DmmCidNormalizerTests
         Assert.Contains("abcd00123", candidates);
         Assert.Contains("abcd-123", candidates);
     }
+
+    [Fact]
+    public void BuildCidCandidates_includes_six_digit_padded_forms()
+    {
+        IReadOnlyList<string> candidates = DmmCidNormalizer.BuildCidCandidates("abcd", "030");
+
+        Assert.Contains("1abcd000030", candidates);
+        Assert.Contains("abcd000030", candidates);
+        Assert.Contains("abcd-000030", candidates);
+    }
+
+    [Theory]
+    [InlineData("1abcd000030", "abcd-030", "1abcd000030")]
+    [InlineData("abcd000030", "abcd-000030", "1abcd000030")]
+    public void ExtractFromSearchInput_accepts_direct_content_id(
+        string searchInput,
+        string expectedProductCode,
+        string expectedCid)
+    {
+        DmmCidNormalizer.ExtractResult result = DmmCidNormalizer.ExtractFromSearchInput(searchInput);
+
+        Assert.True(result.HasProductCode);
+        Assert.Equal(expectedProductCode, result.ProductCode);
+        Assert.Contains(expectedCid, result.CidCandidates);
+    }
 }

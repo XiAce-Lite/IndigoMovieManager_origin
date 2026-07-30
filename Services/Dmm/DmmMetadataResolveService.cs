@@ -69,7 +69,7 @@ namespace IndigoMovieManager.Services.Dmm
             int pageOffset = Math.Max(1, offset);
             var merged = new List<DmmCandidateEntry>();
             bool mayHaveMore = false;
-            DmmCidNormalizer.ExtractResult extracted = DmmCidNormalizer.ExtractFromFileName(trimmed);
+            DmmCidNormalizer.ExtractResult extracted = DmmCidNormalizer.ExtractFromSearchInput(trimmed);
 
             if (extracted.HasProductCode && extracted.CidCandidates is { Count: > 0 })
             {
@@ -152,7 +152,7 @@ namespace IndigoMovieManager.Services.Dmm
 
             string trimmed = keyword.Trim();
             var merged = new List<DmmCandidateEntry>();
-            DmmCidNormalizer.ExtractResult extracted = DmmCidNormalizer.ExtractFromFileName(trimmed);
+            DmmCidNormalizer.ExtractResult extracted = DmmCidNormalizer.ExtractFromSearchInput(trimmed);
 
             DmmKeywordSearchResult phase1 = await RunManualFirstPhaseAsync(
                     trimmed,

@@ -110,11 +110,16 @@ namespace IndigoMovieManager.Services.WpfSkin
             }
 
             bool horizontal = string.Equals(node.Stack, "horizontal", StringComparison.OrdinalIgnoreCase);
+            bool designChrome = Design.WpfSkinDesignSession.Active && Design.WpfSkinDesignSession.ShowDesignChrome;
+            bool fillCardHeight = def?.Card?.Height > 0;
 
-            // デザインモード: StackPanel の代わりに Grid を使い、子要素間にスプリッターを挿入する。
-            if (Design.WpfSkinDesignSession.Active && node.Children != null && node.Children.Count > 1)
+            // デザイン用スプリッター付き、またはカード高さ固定時の縦積み追従
+            if (Design.WpfSkinDesignSession.Active
+                && node.Children != null
+                && node.Children.Count > 0
+                && (designChrome && node.Children.Count > 1 || (!horizontal && fillCardHeight)))
             {
-                return BuildStackAsGrid(node, def, horizontal);
+                return BuildStackAsGrid(node, def, horizontal, withSplitters: designChrome && node.Children.Count > 1);
             }
 
             var panel = new StackPanel
@@ -123,6 +128,10 @@ namespace IndigoMovieManager.Services.WpfSkin
             };
 
             ApplyBox(panel, node, skipSize: false, def);
+            if (fillCardHeight)
+            {
+                panel.VerticalAlignment = VerticalAlignment.Stretch;
+            }
 
             foreach (WpfSkinNode child in node.Children)
             {
@@ -138,15 +147,16 @@ namespace IndigoMovieManager.Services.WpfSkin
 
         /// <summary>
         /// デザインモード専用。vertical/horizontal Stack を Grid に変換し、
-        /// 子要素間にスプリッターを挿入する。
+        /// 子要素間にスプリッターを挿入する（withSplitters）。
         /// Stack は親が固定サイズではないため、スプリッターは「直前の子の幅/高さ」だけを
         /// 変更する（隣接から奪い合う Grid 方式だと内容の最小サイズでほぼ動かない）。
         /// </summary>
-        private static UIElement BuildStackAsGrid(WpfSkinNode node, WpfSkinDefinition def, bool horizontal)
+        private static UIElement BuildStackAsGrid(WpfSkinNode node, WpfSkinDefinition def, bool horizontal, bool withSplitters)
         {
             const double splitterSize = 8;
             var grid = new Grid();
             ApplyBox(grid, node, skipSize: false, def);
+            bool fillCardHeight = def?.Card?.Height > 0;
 
             int childCount = node.Children.Count;
 
@@ -154,6 +164,11 @@ namespace IndigoMovieManager.Services.WpfSkin
             {
                 // カード全幅に追従させる（Auto だと内容幅で縮み、余りが埋らない）
                 grid.HorizontalAlignment = HorizontalAlignment.Stretch;
+                if (fillCardHeight)
+                {
+                    grid.VerticalAlignment = VerticalAlignment.Stretch;
+                }
+
                 for (int i = 0; i < childCount; i++)
                 {
                     bool hasFixedWidth = node.Children[i].Width.HasValue && node.Children[i].Width.Value > 0;
@@ -166,7 +181,7 @@ namespace IndigoMovieManager.Services.WpfSkin
                             : new GridLength(1, GridUnitType.Star),
                         MinWidth = 8,
                     });
-                    if (i < childCount - 1)
+                    if (withSplitters && i < childCount - 1)
                     {
                         grid.ColumnDefinitions.Add(new ColumnDefinition
                         {
@@ -176,7 +191,12 @@ namespace IndigoMovieManager.Services.WpfSkin
                     }
                 }
 
-                grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+                grid.RowDefinitions.Add(new RowDefinition
+                {
+                    Height = fillCardHeight
+                        ? new GridLength(1, GridUnitType.Star)
+                        : GridLength.Auto,
+                });
 
                 for (int i = 0; i < childCount; i++)
                 {
@@ -189,17 +209,27 @@ namespace IndigoMovieManager.Services.WpfSkin
                             ClipToBounds = true,
                             Background = Brushes.Transparent,
                             HorizontalAlignment = HorizontalAlignment.Stretch,
+                            VerticalAlignment = fillCardHeight
+                                ? VerticalAlignment.Stretch
+                                : VerticalAlignment.Top,
                         };
-                        Grid.SetColumn(host, i * 2);
+                        Grid.SetColumn(host, withSplitters ? i * 2 : i);
                         grid.Children.Add(host);
                     }
 
-                    if (i < childCount - 1)
+                    if (withSplitters && i < childCount - 1)
                     {
                         int splitterCol = i * 2 + 1;
+                        bool leftFixed = node.Children[i].Width.HasValue && node.Children[i].Width.Value > 0;
+                        bool rightIsLast = i + 1 == childCount - 1;
+                        bool rightFixed = !rightIsLast
+                            && node.Children[i + 1].Width.HasValue
+                            && node.Children[i + 1].Width.Value > 0;
+                        string leftLabel = leftFixed ? "固定" : "残り";
+                        string rightLabel = rightIsLast || !rightFixed ? "残り" : "固定";
                         var splitter = MakeSplitter(
                             isHorizontalResize: true,
-                            tooltip: $"要素 {i + 1}/{i + 2} の幅境界（カード全幅内で配分）");
+                            tooltip: $"要素 {i + 1}（{leftLabel}）／{i + 2}（{rightLabel}）の幅境界");
                         Panel.SetZIndex(splitter, 200);
                         splitter.DragStarted += (_, _) =>
                         {
@@ -216,16 +246,28 @@ namespace IndigoMovieManager.Services.WpfSkin
             }
             else
             {
+                if (fillCardHeight)
+                {
+                    grid.VerticalAlignment = VerticalAlignment.Stretch;
+                    grid.HorizontalAlignment = HorizontalAlignment.Stretch;
+                }
+
                 for (int i = 0; i < childCount; i++)
                 {
+                    bool isLast = i == childCount - 1;
+                    bool hasFixedHeight = node.Children[i].Height.HasValue && node.Children[i].Height.Value > 0;
+                    // カード高さ固定時は最終行が余りを吸収して中身が縦に伸びる
+                    GridLength rowHeight = isLast && fillCardHeight
+                        ? new GridLength(1, GridUnitType.Star)
+                        : (hasFixedHeight
+                            ? new GridLength(node.Children[i].Height.Value, GridUnitType.Pixel)
+                            : GridLength.Auto);
                     grid.RowDefinitions.Add(new RowDefinition
                     {
-                        Height = node.Children[i].Height.HasValue && node.Children[i].Height.Value > 0
-                            ? new GridLength(node.Children[i].Height.Value, GridUnitType.Pixel)
-                            : GridLength.Auto,
+                        Height = rowHeight,
                         MinHeight = 8,
                     });
-                    if (i < childCount - 1)
+                    if (withSplitters && i < childCount - 1)
                     {
                         grid.RowDefinitions.Add(new RowDefinition
                         {
@@ -247,12 +289,16 @@ namespace IndigoMovieManager.Services.WpfSkin
                             Child = childElement,
                             ClipToBounds = true,
                             Background = Brushes.Transparent,
+                            HorizontalAlignment = HorizontalAlignment.Stretch,
+                            VerticalAlignment = fillCardHeight && i == childCount - 1
+                                ? VerticalAlignment.Stretch
+                                : VerticalAlignment.Top,
                         };
-                        Grid.SetRow(host, i * 2);
+                        Grid.SetRow(host, withSplitters ? i * 2 : i);
                         grid.Children.Add(host);
                     }
 
-                    if (i < childCount - 1)
+                    if (withSplitters && i < childCount - 1)
                     {
                         int splitterRow = i * 2 + 1;
                         var splitter = MakeSplitter(
@@ -281,8 +327,14 @@ namespace IndigoMovieManager.Services.WpfSkin
             var grid = new Grid();
             ApplyBox(grid, node, skipSize: false, def);
 
-            bool designMode = Design.WpfSkinDesignSession.Active;
+            bool designMode = Design.WpfSkinDesignSession.Active && Design.WpfSkinDesignSession.ShowDesignChrome;
+            bool fillCardHeight = def?.Card?.Height > 0;
             const double splitterSize = 6;
+
+            if (fillCardHeight)
+            {
+                grid.VerticalAlignment = VerticalAlignment.Stretch;
+            }
 
             // カード／親セルの全幅を使う（* 列が効くようにする）
             if (node.Columns != null && node.Columns.Count > 0)
@@ -332,12 +384,42 @@ namespace IndigoMovieManager.Services.WpfSkin
 
             if (grid.RowDefinitions.Count == 0 && node.Children != null)
             {
-                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                grid.RowDefinitions.Add(new RowDefinition
+                {
+                    Height = fillCardHeight
+                        ? new GridLength(1, GridUnitType.Star)
+                        : GridLength.Auto,
+                });
             }
 
             if (grid.ColumnDefinitions.Count == 0 && node.Children != null)
             {
                 grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            }
+
+            // カード高さ固定で * 行が無いとき、最終データ行を * にして余りを吸収（JSON の rows は触らない）
+            if (fillCardHeight && grid.RowDefinitions.Count > 0)
+            {
+                bool hasStar = false;
+                for (int i = 0; i < grid.RowDefinitions.Count; i++)
+                {
+                    if (grid.RowDefinitions[i].Height.IsStar)
+                    {
+                        hasStar = true;
+                        break;
+                    }
+                }
+
+                if (!hasStar)
+                {
+                    int lastDataIdx = designMode && node.Rows != null && node.Rows.Count > 1
+                        ? (node.Rows.Count - 1) * 2
+                        : grid.RowDefinitions.Count - 1;
+                    if (lastDataIdx >= 0 && lastDataIdx < grid.RowDefinitions.Count)
+                    {
+                        grid.RowDefinitions[lastDataIdx].Height = new GridLength(1, GridUnitType.Star);
+                    }
+                }
             }
 
             // ── 子要素（デザインモードは行/列インデックスを 2 倍オフセット）──
@@ -377,14 +459,22 @@ namespace IndigoMovieManager.Services.WpfSkin
                 int totalRows = grid.RowDefinitions.Count;
                 int totalCols = grid.ColumnDefinitions.Count;
 
-                // 列スプリッター（列境界ごと）
+                // 列スプリッター（列境界ごと）＋ Fixed/Fill バッジ
                 if (node.Columns != null && node.Columns.Count > 1)
                 {
+                    for (int ci = 0; ci < node.Columns.Count; ci++)
+                    {
+                        AddColumnConstraintBadge(grid, node, ci, totalRows);
+                    }
+
                     for (int ci = 0; ci < node.Columns.Count - 1; ci++)
                     {
                         int splitterCol = ci * 2 + 1;
+                        string left = FormatConstraintShort(node.Columns[ci]);
+                        string right = FormatConstraintShort(node.Columns[ci + 1]);
                         var splitter = MakeSplitter(isHorizontalResize: true,
-                            tooltip: $"列 {ci + 1}/{ci + 2} の境界をドラッグして幅を調整");
+                            tooltip: $"列 {ci + 1}（{left}）／列 {ci + 2}（{right}）の境界をドラッグ");
+                        splitter.Tag = ConstraintSplitterTag(ci);
                         splitter.DragStarted += (_, _) =>
                         {
                             Design.WpfSkinDesignSession.OnColumnResizeStarted?.Invoke(node);
@@ -404,8 +494,10 @@ namespace IndigoMovieManager.Services.WpfSkin
                     for (int ri = 0; ri < node.Rows.Count - 1; ri++)
                     {
                         int splitterRow = ri * 2 + 1;
+                        string top = FormatConstraintShort(node.Rows[ri]);
+                        string bottom = FormatConstraintShort(node.Rows[ri + 1]);
                         var splitter = MakeSplitter(isHorizontalResize: false,
-                            tooltip: $"行 {ri + 1}/{ri + 2} の境界をドラッグして高さを調整");
+                            tooltip: $"行 {ri + 1}（{top}）／行 {ri + 2}（{bottom}）の境界をドラッグ");
                         splitter.DragStarted += (_, _) =>
                         {
                             Design.WpfSkinDesignSession.OnColumnResizeStarted?.Invoke(node);
@@ -421,6 +513,102 @@ namespace IndigoMovieManager.Services.WpfSkin
             }
 
             return grid;
+        }
+
+        private const string ConstraintBadgeTagPrefix = "ConstraintBadge:";
+        private const string ConstraintSplitterTagPrefix = "ConstraintSplitter:";
+
+        private static string ConstraintBadgeTag(int dataColIndex) => ConstraintBadgeTagPrefix + dataColIndex;
+
+        private static string ConstraintSplitterTag(int boundaryIndex) => ConstraintSplitterTagPrefix + boundaryIndex;
+
+        private static string FormatConstraintShort(string constraint)
+        {
+            if (string.IsNullOrWhiteSpace(constraint))
+            {
+                return "自動";
+            }
+
+            string t = constraint.Trim();
+            if (t.EndsWith('*') || string.Equals(t, "*", StringComparison.Ordinal))
+            {
+                return "残り";
+            }
+
+            if (string.Equals(t, "auto", StringComparison.OrdinalIgnoreCase))
+            {
+                return "自動";
+            }
+
+            return "固定";
+        }
+
+        private static void AddColumnConstraintBadge(Grid grid, WpfSkinNode node, int dataColIndex, int totalRows)
+        {
+            string label = FormatConstraintShort(node.Columns[dataColIndex]);
+            // 残りは *、固定は数値。見た目で区別しやすい短いバッジ
+            var badge = new TextBlock
+            {
+                Text = label,
+                FontSize = 10,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = new SolidColorBrush(Color.FromArgb(0xE0, 0x15, 0x65, 0xC0)),
+                Background = new SolidColorBrush(Color.FromArgb(0xA0, 0xE3, 0xF2, 0xFD)),
+                Padding = new Thickness(4, 1, 4, 1),
+                Margin = new Thickness(2, 2, 2, 0),
+                HorizontalAlignment = HorizontalAlignment.Left,
+                VerticalAlignment = VerticalAlignment.Top,
+                IsHitTestVisible = false,
+                Tag = ConstraintBadgeTag(dataColIndex),
+                ToolTip = dataColIndex == node.Columns.Count - 1
+                    ? "残り（*）: カード幅の余りを吸収"
+                    : $"{label}: スプリッターで幅を変えられます",
+            };
+            Panel.SetZIndex(badge, 150);
+            Grid.SetColumn(badge, dataColIndex * 2);
+            if (totalRows > 0)
+            {
+                Grid.SetRow(badge, 0);
+            }
+
+            grid.Children.Add(badge);
+        }
+
+        private static void RefreshColumnConstraintChrome(Grid grid, WpfSkinNode node)
+        {
+            if (node.Columns == null || node.Columns.Count == 0)
+            {
+                return;
+            }
+
+            foreach (UIElement child in grid.Children)
+            {
+                if (child is TextBlock badge
+                    && badge.Tag is string tag
+                    && tag.StartsWith(ConstraintBadgeTagPrefix, StringComparison.Ordinal)
+                    && int.TryParse(tag.AsSpan(ConstraintBadgeTagPrefix.Length), out int colIdx)
+                    && colIdx >= 0
+                    && colIdx < node.Columns.Count)
+                {
+                    string label = FormatConstraintShort(node.Columns[colIdx]);
+                    badge.Text = label;
+                    badge.ToolTip = colIdx == node.Columns.Count - 1
+                        ? "残り（*）: カード幅の余りを吸収"
+                        : $"{label}: スプリッターで幅を変えられます";
+                }
+
+                if (child is Thumb splitter
+                    && splitter.Tag is string sTag
+                    && sTag.StartsWith(ConstraintSplitterTagPrefix, StringComparison.Ordinal)
+                    && int.TryParse(sTag.AsSpan(ConstraintSplitterTagPrefix.Length), out int boundary)
+                    && boundary >= 0
+                    && boundary < node.Columns.Count - 1)
+                {
+                    string left = FormatConstraintShort(node.Columns[boundary]);
+                    string right = FormatConstraintShort(node.Columns[boundary + 1]);
+                    splitter.ToolTip = $"列 {boundary + 1}（{left}）／列 {boundary + 2}（{right}）の境界をドラッグ";
+                }
+            }
         }
 
         private static Thumb MakeSplitter(bool isHorizontalResize, string tooltip)
@@ -486,13 +674,22 @@ namespace IndigoMovieManager.Services.WpfSkin
             }
 
             const double minSize = 24;
+            const double snap = 8;
             double total = previousWidth + nextWidth;
             double newPrevious = Math.Max(minSize, previousWidth + delta);
             double newNext = Math.Max(minSize, total - newPrevious);
             newPrevious = total - newNext;
+            newPrevious = SnapSize(newPrevious, snap, minSize, total - minSize);
+            newNext = total - newPrevious;
 
             previous.Width = new GridLength(newPrevious, GridUnitType.Pixel);
             next.Width = new GridLength(newNext, GridUnitType.Pixel);
+        }
+
+        private static double SnapSize(double value, double snap, double min, double max)
+        {
+            double snapped = Math.Round(value / snap) * snap;
+            return Math.Clamp(snapped, min, max);
         }
 
         private static void PrepareAdjacentRowsForResize(Grid grid, int splitterRow)
@@ -552,7 +749,7 @@ namespace IndigoMovieManager.Services.WpfSkin
                 return;
             }
 
-            previous.Height = new GridLength(Math.Max(8, height + delta), GridUnitType.Pixel);
+            previous.Height = new GridLength(SnapSize(Math.Max(8, height + delta), 8, 8, 4000), GridUnitType.Pixel);
         }
 
         private static void ApplyRowResizeDelta(Grid grid, int splitterRow, double delta)
@@ -572,10 +769,13 @@ namespace IndigoMovieManager.Services.WpfSkin
             }
 
             const double minSize = 24;
+            const double snap = 8;
             double total = previousHeight + nextHeight;
             double newPrevious = Math.Max(minSize, previousHeight + delta);
             double newNext = Math.Max(minSize, total - newPrevious);
             newPrevious = total - newNext;
+            newPrevious = SnapSize(newPrevious, snap, minSize, total - minSize);
+            newNext = total - newPrevious;
 
             previous.Height = new GridLength(newPrevious, GridUnitType.Pixel);
             next.Height = new GridLength(newNext, GridUnitType.Pixel);
@@ -716,8 +916,9 @@ namespace IndigoMovieManager.Services.WpfSkin
                         continue;
                     }
 
-                    string newVal = ((int)Math.Round(w)).ToString();
-                    grid.ColumnDefinitions[defIdx].Width = new GridLength(Math.Round(w), GridUnitType.Pixel);
+                    double snapped = SnapSize(Math.Round(w), 8, 24, 4000);
+                    string newVal = ((int)snapped).ToString();
+                    grid.ColumnDefinitions[defIdx].Width = new GridLength(snapped, GridUnitType.Pixel);
                     if (node.Columns[i] != newVal)
                     {
                         node.Columns[i] = newVal;
@@ -741,6 +942,8 @@ namespace IndigoMovieManager.Services.WpfSkin
                 {
                     changed = true;
                 }
+
+                RefreshColumnConstraintChrome(grid, node);
             }
 
             // 行高の同期

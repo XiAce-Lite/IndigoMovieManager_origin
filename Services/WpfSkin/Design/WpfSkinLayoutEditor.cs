@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Text.Json;
 
 namespace IndigoMovieManager.Services.WpfSkin.Design
 {
@@ -210,6 +211,36 @@ namespace IndigoMovieManager.Services.WpfSkin.Design
 
             EnsureContainer(parent);
             WpfSkinNode child = CreateNode(kind);
+            int safeIndex = Math.Clamp(index, 0, parent.Children.Count);
+            parent.Children.Insert(safeIndex, child);
+            return child;
+        }
+
+        public static WpfSkinNode CloneNode(WpfSkinNode source)
+        {
+            if (source == null)
+            {
+                throw new ArgumentNullException(nameof(source));
+            }
+
+            var options = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+            };
+            string json = JsonSerializer.Serialize(source, options);
+            return JsonSerializer.Deserialize<WpfSkinNode>(json, options)
+                ?? throw new InvalidOperationException("Failed to clone WpfSkinNode.");
+        }
+
+        public static WpfSkinNode InsertClonedChild(WpfSkinNode parent, WpfSkinNode source, int index)
+        {
+            if (parent == null)
+            {
+                throw new ArgumentNullException(nameof(parent));
+            }
+
+            EnsureContainer(parent);
+            WpfSkinNode child = CloneNode(source);
             int safeIndex = Math.Clamp(index, 0, parent.Children.Count);
             parent.Children.Insert(safeIndex, child);
             return child;

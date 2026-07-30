@@ -18,7 +18,7 @@ namespace IndigoMovieManager.Services.WpfSkin.Design
 
         // カード全体
         public double CardWidth   { get; init; } = 0;
-        public bool   CardStretch { get; init; } = true;
+        public bool   CardStretch { get; init; } = false;
 
         /// <summary>ルートノードを組み立てる。</summary>
         public Func<WpfSkinNode> BuildLayout { get; init; }
@@ -78,7 +78,7 @@ namespace IndigoMovieManager.Services.WpfSkin.Design
                 DisplayName = "縦並び（シンプル）",
                 Description = "1 列・縦方向に要素を積む最もシンプルな構造。",
                 ThumbWidth = 0, ThumbHeight = 0,
-                CardWidth = 0, CardStretch = true,
+                CardWidth = 0, CardStretch = false,
                 BuildLayout = () => new WpfSkinNode
                 {
                     Panel = "stack", Stack = "vertical",
@@ -94,7 +94,7 @@ namespace IndigoMovieManager.Services.WpfSkin.Design
                 DisplayName = "左サムネ ＋ 右テキスト",
                 Description = "左にサムネイル、右に縦並びテキスト情報を置く定番レイアウト。",
                 ThumbWidth = 320, ThumbHeight = 180,
-                CardWidth = 0, CardStretch = true,
+                CardWidth = 0, CardStretch = false,
                 BuildLayout = () => new WpfSkinNode
                 {
                     Panel = "grid",
@@ -127,7 +127,7 @@ namespace IndigoMovieManager.Services.WpfSkin.Design
                 DisplayName = "左テキスト ＋ 右サムネ",
                 Description = "左に縦並びテキスト情報、右にサムネイルを置くレイアウト。",
                 ThumbWidth = 320, ThumbHeight = 180,
-                CardWidth = 0, CardStretch = true,
+                CardWidth = 0, CardStretch = false,
                 BuildLayout = () => new WpfSkinNode
                 {
                     Panel = "grid",
@@ -160,7 +160,7 @@ namespace IndigoMovieManager.Services.WpfSkin.Design
                 DisplayName = "上サムネ ＋ 下テキスト",
                 Description = "上部にサムネイル、下部にテキスト情報を縦に置くカード型。",
                 ThumbWidth = 320, ThumbHeight = 180,
-                CardWidth = 0, CardStretch = true,
+                CardWidth = 0, CardStretch = false,
                 BuildLayout = () => new WpfSkinNode
                 {
                     Panel = "grid",
@@ -193,7 +193,7 @@ namespace IndigoMovieManager.Services.WpfSkin.Design
                 DisplayName = "左サムネ ＋ 右 2 段",
                 Description = "左にサムネ、右を「タイトル行」と「メタ情報行」の 2 段に分けたレイアウト。",
                 ThumbWidth = 320, ThumbHeight = 180,
-                CardWidth = 0, CardStretch = true,
+                CardWidth = 0, CardStretch = false,
                 BuildLayout = () => new WpfSkinNode
                 {
                     Panel = "grid",
@@ -244,7 +244,7 @@ namespace IndigoMovieManager.Services.WpfSkin.Design
                 DisplayName = "横 3 列（均等）",
                 Description = "等幅の 3 列 grid。各列に自由に要素を配置できる。",
                 ThumbWidth = 0, ThumbHeight = 0,
-                CardWidth = 0, CardStretch = true,
+                CardWidth = 0, CardStretch = false,
                 BuildLayout = () => new WpfSkinNode
                 {
                     Panel = "grid",
@@ -267,7 +267,7 @@ namespace IndigoMovieManager.Services.WpfSkin.Design
                 DisplayName = "リスト行（list 型）",
                 Description = "list 型スキン用。ヘッダーなしの横並び 1 行テンプレート。",
                 ThumbWidth = 0, ThumbHeight = 0,
-                CardWidth = 0, CardStretch = true,
+                CardWidth = 0, CardStretch = false,
                 BuildLayout = () => new WpfSkinNode
                 {
                     Panel = "stack", Stack = "horizontal",

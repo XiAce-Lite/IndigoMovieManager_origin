@@ -1,36 +1,114 @@
 {
   "$schema": "../skin.schema.json",
   "name": "LargeSample",
+  "colorProfile": "",
   "type": "card",
-
-  "surface": {
-    "background": "#FFFFFF"
-  },
-
-  "styles": {
-    "title": { "fontFamily": "Yu Gothic UI", "fontSize": 13, "foreground": "#000000", "bold": true }
-  },
-
   "thumbnail": {
     "width": 320,
     "height": 180,
     "columns": 2,
-    "rows": 2
+    "rows": 2,
+    "preferJacket": false,
+    "targetAspect": 1.7777777777777777
   },
-
   "card": {
-    "width": 680,
+    "width": 645,
+    "height": 0,
     "padding": 8,
-    "margin": 0,
-    "stretch": true,
+    "stretch": false,
     "background": "",
-
     "layout": {
+      "panel": "stack",
       "stack": "vertical",
       "children": [
-        { "type": "thumbnail", "width": 640, "height": 360 },
-        { "type": "text", "field": "title", "style": "title" }
-      ]
+        {
+          "panel": "",
+          "stack": "vertical",
+          "type": "thumbnail",
+          "field": "",
+          "label": "",
+          "header": "",
+          "format": "",
+          "align": "",
+          "fontSize": 0,
+          "fontFamily": "",
+          "bold": false,
+          "italic": false,
+          "foreground": "",
+          "wrap": false,
+          "style": "",
+          "row": 0,
+          "col": 0,
+          "rowSpan": 1,
+          "colSpan": 1,
+          "width": 640,
+          "height": 360,
+          "vAlign": "",
+          "hAlign": "",
+          "background": ""
+        },
+        {
+          "panel": "",
+          "stack": "vertical",
+          "type": "text",
+          "field": "title",
+          "label": "",
+          "header": "",
+          "format": "",
+          "align": "",
+          "fontSize": 0,
+          "fontFamily": "",
+          "bold": false,
+          "italic": false,
+          "foreground": "",
+          "wrap": false,
+          "style": "title",
+          "row": 0,
+          "col": 0,
+          "rowSpan": 1,
+          "colSpan": 1,
+          "vAlign": "",
+          "hAlign": "",
+          "background": ""
+        }
+      ],
+      "type": "text",
+      "field": "",
+      "label": "",
+      "header": "",
+      "format": "",
+      "align": "",
+      "fontSize": 0,
+      "fontFamily": "",
+      "bold": false,
+      "italic": false,
+      "foreground": "",
+      "wrap": false,
+      "style": "",
+      "row": 0,
+      "col": 0,
+      "rowSpan": 1,
+      "colSpan": 1,
+      "margin": null,
+      "padding": null,
+      "vAlign": "",
+      "hAlign": "",
+      "background": ""
+    }
+  },
+  "surface": {
+    "background": "#FFFFFF"
+  },
+  "styles": {
+    "title": {
+      "fontSize": 13,
+      "fontFamily": "Yu Gothic UI",
+      "bold": true,
+      "italic": false,
+      "foreground": "#000000",
+      "background": "",
+      "align": "left",
+      "wrap": false
     }
   }
 }

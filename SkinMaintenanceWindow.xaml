@@ -139,7 +139,7 @@
                         Margin="0,0,0,6"
                         FontSize="13"
                         FontWeight="SemiBold"
-                        Text="サーフェス / カード" />
+                        Text="カード枠（見た目の外枠）" />
                     <DockPanel Margin="0,0,0,6">
                         <Button
                             Style="{StaticResource ColorPickButton}"
@@ -159,7 +159,7 @@
                         FontSize="11"
                         Opacity="0.75"
                         TextWrapping="Wrap"
-                        Text="カード幅はプレビューの横幅目安です。stretch ON のときは一覧でスロット幅に追従します。" />
+                        Text="カード幅はプレビューの横幅目安です。下のチェック ON のときは一覧の列スロット幅に合わせ、OFF のときは上のカード幅（px）を使います。" />
                     <UniformGrid Columns="2" Margin="0,0,0,6">
                         <controls:IntegerSpinBox
                             x:Name="CardWidthSpin"
@@ -169,12 +169,22 @@
                             Maximum="4000"
                             ValueChanged="Spin_Changed" />
                         <controls:IntegerSpinBox
-                            x:Name="CardPaddingSpin"
+                            x:Name="CardHeightSpin"
                             Margin="4,0,0,0"
+                            Hint="card.height (0=自動)"
+                            Minimum="0"
+                            Maximum="4000"
+                            ValueChanged="Spin_Changed" />
+                    </UniformGrid>
+                    <UniformGrid Columns="2" Margin="0,0,0,6">
+                        <controls:IntegerSpinBox
+                            x:Name="CardPaddingSpin"
+                            Margin="0,0,4,0"
                             Hint="card.padding"
                             Minimum="0"
                             Maximum="200"
                             ValueChanged="Spin_Changed" />
+                        <Border />
                     </UniformGrid>
                     <DockPanel Margin="0,0,0,6">
                         <Button
@@ -193,77 +203,84 @@
                     <CheckBox
                         x:Name="CardStretchCheck"
                         Margin="0,0,0,10"
-                        Content="card.stretch（幅追従）"
+                        Content="一覧の列幅に合わせて広げる"
                         Checked="Field_Changed"
                         Unchecked="Field_Changed" />
+
+                    <Expander
+                        Header="サムネ生成（アセット）"
+                        IsExpanded="True"
+                        Margin="0,0,0,8">
+                        <StackPanel Margin="0,8,0,0">
+                            <TextBlock
+                                Margin="0,0,0,6"
+                                FontSize="11"
+                                Foreground="{DynamicResource MaterialDesign.Brush.ForegroundLight}"
+                                Text="ここは再生成用のピクセルサイズです。プレビュー上のサムネ枠の幅は、カード内の列スプリッター側で変わります（生成サイズとは別）。"
+                                TextWrapping="Wrap" />
+                            <ComboBox
+                                x:Name="ThumbAspectCombo"
+                                Margin="0,0,0,6"
+                                materialDesign:HintAssist.Hint="縦横比"
+                                materialDesign:HintAssist.IsFloating="True"
+                                materialDesign:TextFieldAssist.HasOutlinedTextField="True"
+                                SelectionChanged="ThumbAspect_Changed" />
+                            <UniformGrid Columns="2" Margin="0,0,0,6">
+                                <controls:IntegerSpinBox
+                                    x:Name="ThumbWidthSpin"
+                                    Margin="0,0,4,0"
+                                    Hint="生成 幅 (px)"
+                                    Minimum="1"
+                                    Maximum="4000"
+                                    ValueChanged="ThumbSpin_Changed" />
+                                <controls:IntegerSpinBox
+                                    x:Name="ThumbHeightSpin"
+                                    Margin="4,0,0,0"
+                                    Hint="生成 高さ (px)"
+                                    Minimum="1"
+                                    Maximum="4000"
+                                    ValueChanged="ThumbSpin_Changed" />
+                            </UniformGrid>
+                            <UniformGrid Columns="2" Margin="0,0,0,10">
+                                <ComboBox
+                                    x:Name="ThumbColumnsCombo"
+                                    Margin="0,0,4,0"
+                                    materialDesign:HintAssist.Hint="生成格子 columns"
+                                    materialDesign:HintAssist.IsFloating="True"
+                                    materialDesign:TextFieldAssist.HasOutlinedTextField="True"
+                                    SelectionChanged="Field_Changed" />
+                                <ComboBox
+                                    x:Name="ThumbRowsCombo"
+                                    Margin="4,0,0,0"
+                                    materialDesign:HintAssist.Hint="生成格子 rows"
+                                    materialDesign:HintAssist.IsFloating="True"
+                                    materialDesign:TextFieldAssist.HasOutlinedTextField="True"
+                                    SelectionChanged="Field_Changed" />
+                            </UniformGrid>
+                            <CheckBox
+                                x:Name="ThumbPreferJacketCheck"
+                                Margin="0,0,0,4"
+                                Content="preferJacket（Comment1 のジャケ写を優先）"
+                                Checked="Field_Changed"
+                                Unchecked="Field_Changed" />
+                        </StackPanel>
+                    </Expander>
 
                     <TextBlock
                         Margin="0,0,0,6"
                         FontSize="13"
                         FontWeight="SemiBold"
-                        Text="サムネイル" />
-                    <ComboBox
-                        x:Name="ThumbAspectCombo"
-                        Margin="0,0,0,6"
-                        materialDesign:HintAssist.Hint="縦横比"
-                        materialDesign:HintAssist.IsFloating="True"
-                        materialDesign:TextFieldAssist.HasOutlinedTextField="True"
-                        SelectionChanged="ThumbAspect_Changed" />
-                    <UniformGrid Columns="2" Margin="0,0,0,6">
-                        <controls:IntegerSpinBox
-                            x:Name="ThumbWidthSpin"
-                            Margin="0,0,4,0"
-                            Hint="幅 (px)"
-                            Minimum="1"
-                            Maximum="4000"
-                            ValueChanged="ThumbSpin_Changed" />
-                        <controls:IntegerSpinBox
-                            x:Name="ThumbHeightSpin"
-                            Margin="4,0,0,0"
-                            Hint="高さ (px)"
-                            Minimum="1"
-                            Maximum="4000"
-                            ValueChanged="ThumbSpin_Changed" />
-                    </UniformGrid>
-                    <UniformGrid Columns="2" Margin="0,0,0,10">
-                        <ComboBox
-                            x:Name="ThumbColumnsCombo"
-                            Margin="0,0,4,0"
-                            materialDesign:HintAssist.Hint="columns"
-                            materialDesign:HintAssist.IsFloating="True"
-                            materialDesign:TextFieldAssist.HasOutlinedTextField="True"
-                            SelectionChanged="Field_Changed" />
-                        <ComboBox
-                            x:Name="ThumbRowsCombo"
-                            Margin="4,0,0,0"
-                            materialDesign:HintAssist.Hint="rows"
-                            materialDesign:HintAssist.IsFloating="True"
-                            materialDesign:TextFieldAssist.HasOutlinedTextField="True"
-                            SelectionChanged="Field_Changed" />
-                    </UniformGrid>
-                    <CheckBox
-                        x:Name="ThumbPreferJacketCheck"
-                        Margin="0,0,0,10"
-                        Content="preferJacket（Comment1 のジャケ写を優先）"
-                        Checked="Field_Changed"
-                        Unchecked="Field_Changed" />
-
-                    <TextBlock
-                        Margin="0,0,0,6"
-                        FontSize="13"
-                        FontWeight="SemiBold"
-                        Text="配置できる項目" />
+                        Text="配置パレット（DB項目）" />
                     <TextBlock
                         Margin="0,0,0,4"
                         FontSize="11"
                         Foreground="{DynamicResource MaterialDesign.Brush.ForegroundLight}"
-                        Text="未配置の DB 項目です。中央プレビュー／右ツリーへドラッグ、またはダブルクリックで配置（選択中の stack/grid があればその中へ）。プレビューからここへ戻すと解除。同じ項目は1つまでです。"
+                        Text="全 DB 項目です。配置済みはグレー表示（ドラッグ不可）。中央／右ツリーへドラッグ、またはダブルクリックで配置。プレビューからここへ戻すと解除。同じ項目は1つまでです。"
                         TextWrapping="Wrap" />
                     <ListBox
                         x:Name="FieldPaletteList"
                         Height="180"
                         Margin="0,0,0,10"
-                        DisplayMemberPath="DisplayName"
                         AllowDrop="True"
                         Background="{DynamicResource MaterialDesign.Brush.Background}"
                         PreviewMouseLeftButtonDown="FieldPalette_PreviewMouseLeftButtonDown"
@@ -271,7 +288,41 @@
                         MouseDoubleClick="FieldPalette_MouseDoubleClick"
                         PreviewDragOver="FieldPalette_DragOver"
                         DragOver="FieldPalette_DragOver"
-                        Drop="FieldPalette_Drop" />
+                        Drop="FieldPalette_Drop">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsPlaced}" Value="True">
+                                        <Setter Property="Opacity" Value="0.45" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <DockPanel>
+                                    <TextBlock
+                                        DockPanel.Dock="Right"
+                                        Margin="8,0,0,0"
+                                        FontSize="10"
+                                        Opacity="0.8"
+                                        VerticalAlignment="Center">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Text" Value="" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsPlaced}" Value="True">
+                                                        <Setter Property="Text" Value="配置済み" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <TextBlock Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
+                                </DockPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
 
                     <Expander
                         Header="共通 styles（上級者向け）"
@@ -411,6 +462,50 @@
                         FontSize="13"
                         FontWeight="SemiBold"
                         Text="プレビュー" />
+                    <StackPanel Margin="0,4,0,0" Orientation="Horizontal">
+                        <RadioButton
+                            x:Name="PreviewFromSelectionRadio"
+                            Margin="0,0,12,0"
+                            VerticalContentAlignment="Center"
+                            Content="一覧の選択作品"
+                            GroupName="PreviewSource"
+                            Checked="PreviewSource_Changed" />
+                        <RadioButton
+                            x:Name="PreviewSampleRadio"
+                            Margin="0,0,16,0"
+                            VerticalContentAlignment="Center"
+                            Content="サンプル"
+                            GroupName="PreviewSource"
+                            Checked="PreviewSource_Changed" />
+                        <TextBlock
+                            Margin="0,0,6,0"
+                            VerticalAlignment="Center"
+                            FontSize="11"
+                            Text="拡大" />
+                        <ComboBox
+                            x:Name="PreviewZoomCombo"
+                            Width="72"
+                            SelectionChanged="PreviewZoomCombo_Changed">
+                            <ComboBoxItem Content="75%" Tag="0.75" />
+                            <ComboBoxItem Content="100%" Tag="1" IsSelected="True" />
+                            <ComboBoxItem Content="125%" Tag="1.25" />
+                            <ComboBoxItem Content="150%" Tag="1.5" />
+                        </ComboBox>
+                    </StackPanel>
+                    <StackPanel Margin="0,4,0,0" Orientation="Horizontal">
+                        <CheckBox
+                            x:Name="ShowDesignGuidesCheck"
+                            Margin="0,0,12,0"
+                            Content="ガイド表示"
+                            IsChecked="True"
+                            Checked="DesignChromeOption_Changed"
+                            Unchecked="DesignChromeOption_Changed" />
+                        <CheckBox
+                            x:Name="ForceLocalThumbCheck"
+                            Content="ジャケ優先でもローカルサムネでプレビュー"
+                            Checked="DesignChromeOption_Changed"
+                            Unchecked="DesignChromeOption_Changed" />
+                    </StackPanel>
                     <TextBlock
                         x:Name="PreviewSourceCaption"
                         Margin="0,4,0,0"
@@ -421,8 +516,52 @@
                         Margin="0,4,0,0"
                         FontSize="11"
                         Foreground="{DynamicResource MaterialDesign.Brush.ForegroundLight}"
-                        Text="左の項目をここへドロップして配置。配置済みはドラッグで並べ替え／移動、左パレットへ戻すと解除。右クリックでプロパティ。Ctrl+Z / Ctrl+Y 対応。"
+                        Text="項目は左から D&amp;D／並べ替え・移動は中央でドラッグ／列の青い境界で幅調整（固定↔残り）。カード右下＝幅・下辺＝高さ。Ctrl+D 複製。Ctrl+Z / Y、Ctrl+S 保存。"
                         TextWrapping="Wrap" />
+                    <TextBlock
+                        x:Name="SelectedNodeLayoutHint"
+                        Margin="0,6,0,0"
+                        FontSize="11"
+                        FontWeight="SemiBold"
+                        Foreground="{DynamicResource MaterialDesign.Brush.Primary}"
+                        TextWrapping="Wrap"
+                        Visibility="Collapsed" />
+                    <Border
+                        x:Name="SelectionQuickBar"
+                        Margin="0,8,0,0"
+                        Padding="8,4"
+                        Background="{DynamicResource MaterialDesign.Brush.Background}"
+                        BorderBrush="{DynamicResource MaterialDesign.Brush.ForegroundLight}"
+                        BorderThickness="1"
+                        CornerRadius="4"
+                        Visibility="Collapsed">
+                        <DockPanel>
+                            <StackPanel
+                                DockPanel.Dock="Right"
+                                Orientation="Horizontal"
+                                VerticalAlignment="Center">
+                                <Button
+                                    x:Name="QuickBarPropsButton"
+                                    Margin="0,0,4,0"
+                                    Padding="8,2"
+                                    Click="QuickBarPropsButton_Click"
+                                    Content="プロパティ"
+                                    FontSize="11" />
+                                <Button
+                                    x:Name="QuickBarDeleteButton"
+                                    Padding="8,2"
+                                    Click="QuickBarDeleteButton_Click"
+                                    Content="削除"
+                                    FontSize="11" />
+                            </StackPanel>
+                            <TextBlock
+                                x:Name="QuickBarNodeName"
+                                VerticalAlignment="Center"
+                                FontSize="12"
+                                TextTrimming="CharacterEllipsis"
+                                TextWrapping="NoWrap" />
+                        </DockPanel>
+                    </Border>
                 </StackPanel>
                 <Border
                     x:Name="PreviewSurface"
@@ -449,10 +588,41 @@
                                 x:Name="PreviewListHeaderHost"
                                 Margin="0,0,0,4"
                                 HorizontalAlignment="Left" />
-                            <userControls:WpfSkinItemPresenter
-                                x:Name="PreviewPresenter"
+                            <Grid
+                                x:Name="PreviewCardHost"
                                 HorizontalAlignment="Left"
-                                VerticalAlignment="Top" />
+                                VerticalAlignment="Top">
+                                <userControls:WpfSkinItemPresenter
+                                    x:Name="PreviewPresenter"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Top" />
+                                <Thumb
+                                    x:Name="CardWidthGrip"
+                                    Width="14"
+                                    Height="14"
+                                    Margin="0,0,-1,-1"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Bottom"
+                                    Background="#991E88E5"
+                                    Cursor="SizeWE"
+                                    ToolTip="右下をドラッグしてカード幅を変更"
+                                    DragStarted="CardWidthGrip_DragStarted"
+                                    DragDelta="CardWidthGrip_DragDelta"
+                                    DragCompleted="CardWidthGrip_DragCompleted" />
+                                <Thumb
+                                    x:Name="CardHeightGrip"
+                                    Width="28"
+                                    Height="10"
+                                    Margin="0,0,16,-1"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Bottom"
+                                    Background="#661E88E5"
+                                    Cursor="SizeNS"
+                                    ToolTip="下辺をドラッグしてカード高さを変更（0=自動に戻すには左の height を 0）"
+                                    DragStarted="CardHeightGrip_DragStarted"
+                                    DragDelta="CardHeightGrip_DragDelta"
+                                    DragCompleted="CardHeightGrip_DragCompleted" />
+                            </Grid>
                         </StackPanel>
                     </ScrollViewer>
                 </Border>
@@ -466,9 +636,11 @@
 
             <ScrollViewer
                 Grid.Column="4"
+                Margin="0,0,8,8"
+                Padding="0,0,2,0"
                 VerticalScrollBarVisibility="Auto"
                 HorizontalScrollBarVisibility="Disabled">
-                <StackPanel Margin="0,0,0,4">
+                <StackPanel Margin="0,0,6,8">
                     <TextBlock
                         Margin="0,0,0,6"
                         FontSize="13"
@@ -638,27 +810,79 @@
                             <ComboBoxItem Content="right" />
                         </ComboBox>
                     </UniformGrid>
+                    <TextBlock
+                        Margin="0,0,0,4"
+                        FontSize="11"
+                        Foreground="{DynamicResource MaterialDesign.Brush.ForegroundLight}"
+                        Text="レイアウト格子（見た目の分割）。px=固定、*=残り幅。生成用の thumbnail columns/rows とは別です。"
+                        TextWrapping="Wrap" />
                     <UniformGrid Columns="2" Margin="0,0,0,6">
                         <TextBox
                             x:Name="NodeRowsBox"
                             Margin="0,0,4,0"
-                            materialDesign:HintAssist.Hint="rows (例: auto,*)"
+                            materialDesign:HintAssist.Hint="layout rows (例: auto,*)"
                             materialDesign:HintAssist.IsFloating="True"
                             materialDesign:TextFieldAssist.HasOutlinedTextField="True"
                             TextChanged="NodeField_Changed" />
                         <TextBox
                             x:Name="NodeColumnsBox"
                             Margin="4,0,0,0"
-                            materialDesign:HintAssist.Hint="columns (例: 2*,*)"
+                            materialDesign:HintAssist.Hint="layout columns (例: 360,*)"
                             materialDesign:HintAssist.IsFloating="True"
                             materialDesign:TextFieldAssist.HasOutlinedTextField="True"
                             TextChanged="NodeField_Changed" />
                     </UniformGrid>
+                    <StackPanel
+                        x:Name="ColumnConstraintPanel"
+                        Margin="0,0,0,6"
+                        Visibility="Collapsed">
+                        <TextBlock
+                            Margin="0,0,0,4"
+                            FontSize="11"
+                            Foreground="{DynamicResource MaterialDesign.Brush.ForegroundLight}"
+                            Text="選択中の列制約（スプリッターと同等）。最終列は保存時に残り(*)になりやすいです。"
+                            TextWrapping="Wrap" />
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock
+                                x:Name="ColumnConstraintTargetText"
+                                Margin="0,0,12,0"
+                                VerticalAlignment="Center"
+                                FontSize="11"
+                                Text="列 0" />
+                            <RadioButton
+                                x:Name="ColumnConstraintFixedRadio"
+                                Margin="0,0,12,0"
+                                Content="固定 (px)"
+                                GroupName="ColumnConstraint"
+                                Checked="ColumnConstraint_Changed" />
+                            <RadioButton
+                                x:Name="ColumnConstraintFillRadio"
+                                Content="残り (*)"
+                                GroupName="ColumnConstraint"
+                                Checked="ColumnConstraint_Changed" />
+                        </StackPanel>
+                    </StackPanel>
                     <UniformGrid Columns="4" Margin="0,0,0,6">
                         <controls:IntegerSpinBox x:Name="NodeRowSpin" Margin="0,0,4,0" Hint="row" Minimum="0" Maximum="20" ValueChanged="NodeSpin_Changed" />
                         <controls:IntegerSpinBox x:Name="NodeColSpin" Margin="4,0,4,0" Hint="col" Minimum="0" Maximum="20" ValueChanged="NodeSpin_Changed" />
                         <controls:IntegerSpinBox x:Name="NodeRowSpanSpin" Margin="4,0,4,0" Hint="rowSpan" Minimum="1" Maximum="20" ValueChanged="NodeSpin_Changed" />
                         <controls:IntegerSpinBox x:Name="NodeColSpanSpin" Margin="4,0,0,0" Hint="colSpan" Minimum="1" Maximum="20" ValueChanged="NodeSpin_Changed" />
+                    </UniformGrid>
+                    <UniformGrid Columns="2" Margin="0,0,0,6">
+                        <controls:IntegerSpinBox
+                            x:Name="NodeWidthSpin"
+                            Margin="0,0,4,0"
+                            Hint="width (0=自動)"
+                            Minimum="0"
+                            Maximum="4000"
+                            ValueChanged="NodeSpin_Changed" />
+                        <TextBlock
+                            x:Name="NodeWidthHintText"
+                            Margin="4,8,0,0"
+                            FontSize="11"
+                            Opacity="0.75"
+                            TextWrapping="Wrap"
+                            Text="0 で親に追従" />
                     </UniformGrid>
                     <UniformGrid Columns="2" Margin="0,0,0,6">
                         <controls:IntegerSpinBox x:Name="NodeFontSizeSpin" Margin="0,0,4,0" Hint="fontSize" Minimum="0" Maximum="72" ValueChanged="NodeSpin_Changed" />

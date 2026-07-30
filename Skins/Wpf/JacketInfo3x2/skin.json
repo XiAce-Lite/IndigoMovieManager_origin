@@ -34,45 +34,46 @@
   },
 
   "card": {
-    "width": 600,
+    "width": 645,
     "height": 0,
     "padding": 8,
-    "stretch": true,
+    "stretch": false,
     "background": "",
 
     "layout": {
       "panel": "grid",
-      "columns": ["360", "1*"],
-      "rows": ["auto", "1*"],
+      "columns": ["360", "*"],
+      "rows": ["auto"],
       "children": [
         {
           "type": "thumbnail",
           "col": 0,
           "row": 0,
-          "rowSpan": 2,
           "width": 360,
-          "height": 0
+          "vAlign": "top",
+          "hAlign": "left"
         },
         {
-          "type": "text",
-          "field": "title",
-          "col": 1,
-          "row": 0,
-          "style": "title",
-          "margin": 4
-        },
-        {
+          "panel": "stack",
           "stack": "vertical",
           "col": 1,
-          "row": 1,
+          "row": 0,
           "margin": 4,
+          "vAlign": "top",
           "children": [
-            { "type": "text", "field": "length",   "label": "尺: ",     "style": "meta" },
-            { "type": "text", "field": "size",      "label": "サイズ: ", "format": "filesize", "style": "meta" },
-            { "type": "text", "field": "fileDate",  "label": "更新: ",   "style": "meta" },
-            { "type": "text", "field": "video",     "label": "映像: ",   "style": "meta" },
-            { "type": "text", "field": "audio",     "label": "音声: ",   "style": "meta" },
-            { "type": "text", "field": "path",      "style": "path" },
+            {
+              "type": "text",
+              "field": "title",
+              "style": "title",
+              "wrap": true,
+              "margin": "0,0,0,4"
+            },
+            { "type": "text", "field": "length", "label": "尺: ", "style": "meta" },
+            { "type": "text", "field": "size", "label": "サイズ: ", "format": "filesize", "style": "meta" },
+            { "type": "text", "field": "fileDate", "label": "更新: ", "style": "meta" },
+            { "type": "text", "field": "video", "label": "映像: ", "style": "meta" },
+            { "type": "text", "field": "audio", "label": "音声: ", "style": "meta" },
+            { "type": "text", "field": "path", "style": "path" },
             { "type": "tags", "margin": "0,6,0,0" }
           ]
         }

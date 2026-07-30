@@ -20,7 +20,7 @@
 
             <TabControl x:Name="MainTabs" Grid.Row="0">
                 <!-- ── 既存スキンから ── -->
-                <TabItem Header="既存スキンから複製">
+                <TabItem Header="既存複製（中身あり）">
                     <Grid Margin="0,8,0,0">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
@@ -30,7 +30,7 @@
                             Grid.Row="0"
                             Margin="0,0,0,8"
                             FontSize="12"
-                            Text="元にするスキンを選んでください。layout / styles / 配色をそのまま複製して編集を開始します（Default* は雛形として使えますが、上書き保存はできません）。"
+                            Text="【中身あり】元スキンの layout / styles / 配色をそのまま複製して編集を開始します。Default* も雛形に使えますが、上書き保存はできません。"
                             TextWrapping="Wrap" />
                         <ListBox
                             x:Name="TemplateList"
@@ -55,7 +55,7 @@
                 </TabItem>
 
                 <!-- ── 構造から ── -->
-                <TabItem Header="構造テンプレから">
+                <TabItem Header="構造（骨格のみ・空）">
                     <Grid Margin="0,8,0,0">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
@@ -65,7 +65,7 @@
                             Grid.Row="0"
                             Margin="0,0,0,8"
                             FontSize="12"
-                            Text="行列レイアウトのパターンを選んでください。空の枠組みが作成されるので、左パレットから DB フィールドを D&amp;D して配置できます。"
+                            Text="【骨格のみ・空】行列パターンだけを作ります。タイトル等の中身は入りません。左パレットから DB フィールドを D&amp;D して配置してください。"
                             TextWrapping="Wrap" />
                         <ListBox
                             x:Name="StructList"
