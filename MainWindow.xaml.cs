@@ -2922,11 +2922,28 @@ namespace IndigoMovieManager
                 : NavigationMenuIds.DmmPendingCandidates;
         }
 
+        private static string AppTitle =>
+            Assembly.GetExecutingAssembly().GetName().Name;
+
+        private bool EnsureDatabaseSelected()
+        {
+            if (!string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
+            {
+                return true;
+            }
+
+            MessageBox.Show(
+                "管理ファイルが選択されていません。",
+                AppTitle,
+                MessageBoxButton.OK,
+                MessageBoxImage.Exclamation);
+            return false;
+        }
+
         private void BtnReCreateThumbnail_Click(object sender, RoutedEventArgs e)
         {
-            if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
+            if (!EnsureDatabaseSelected())
             {
-                MessageBox.Show("管理ファイルが選択されていません。", Assembly.GetExecutingAssembly().GetName().Name, MessageBoxButton.OK, MessageBoxImage.Exclamation);
                 return;
             }
 
@@ -2961,9 +2978,8 @@ namespace IndigoMovieManager
 
         private void BeginRefreshAllFileInfoFromMenu()
         {
-            if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
+            if (!EnsureDatabaseSelected())
             {
-                MessageBox.Show("管理ファイルが選択されていません。", Assembly.GetExecutingAssembly().GetName().Name, MessageBoxButton.OK, MessageBoxImage.Exclamation);
                 return;
             }
 
@@ -3749,9 +3765,8 @@ namespace IndigoMovieManager
                     CommonSettingsWindow.ShowDialog();
                     break;
                 case NavigationMenuIds.DatabaseSettings:
-                    if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
+                    if (!EnsureDatabaseSelected())
                     {
-                        MessageBox.Show("管理ファイルが選択されていません。", Assembly.GetExecutingAssembly().GetName().Name, MessageBoxButton.OK, MessageBoxImage.Exclamation);
                         return;
                     }
 
@@ -3783,9 +3798,8 @@ namespace IndigoMovieManager
 
         private void ExecuteToolNavigation(string menuId)
         {
-            if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
+            if (!EnsureDatabaseSelected())
             {
-                MessageBox.Show("管理ファイルが選択されていません。", Assembly.GetExecutingAssembly().GetName().Name, MessageBoxButton.OK, MessageBoxImage.Exclamation);
                 return;
             }
 
@@ -4848,13 +4862,8 @@ namespace IndigoMovieManager
 
         private void BeginAddTagBarItem(string initialContents)
         {
-            if (string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
+            if (!EnsureDatabaseSelected())
             {
-                MessageBox.Show(
-                    "管理ファイルが選択されていません。",
-                    Assembly.GetExecutingAssembly().GetName().Name,
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Exclamation);
                 return;
             }
 
