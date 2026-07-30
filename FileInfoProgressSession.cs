@@ -7,41 +7,31 @@ namespace IndigoMovieManager
     /// </summary>
     internal sealed class FileInfoProgressSession : IDisposable
     {
-        private readonly StatusBarProgressCoordinator.FileInfoSlotHandle _handle;
-        private readonly int _total;
+        private readonly CountedProgressSession _session;
 
         public FileInfoProgressSession(int total)
         {
-            _total = total;
-            _handle = StatusBarProgressHost.Coordinator.BeginFileInfo(total);
-            Report(0, "開始しています…");
+            StatusBarProgressCoordinator.FileInfoSlotHandle handle =
+                StatusBarProgressHost.Coordinator.BeginFileInfo(total);
+            _session = new CountedProgressSession(
+                total,
+                handle.Report,
+                handle.Dispose,
+                handle.Cancel,
+                "開始しています…",
+                CountedProgressSession.FormatDetail);
         }
 
-        public CancellationToken Cancel => _handle.Cancel;
+        public CancellationToken Cancel => _session.Cancel;
 
         public void Report(int done, string detail)
         {
-            int clampedDone = done;
-            if (clampedDone < 0)
-            {
-                clampedDone = 0;
-            }
-
-            if (clampedDone > _total)
-            {
-                clampedDone = _total;
-            }
-
-            string message = string.IsNullOrEmpty(detail)
-                ? string.Empty
-                : ProgressPathFormatter.Format(detail, StatusBarProgressViewModel.DetailMaxWidth);
-
-            _handle.Report(clampedDone, message);
+            _session.Report(done, detail);
         }
 
         public void Dispose()
         {
-            _handle.Dispose();
+            _session.Dispose();
         }
     }
 }
