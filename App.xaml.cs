@@ -1,8 +1,10 @@
 ﻿using IndigoMovieManager.Services;
+using System;
 using System.Globalization;
 using System.Threading;
 using System.Windows;
 using Microsoft.Win32;
+using System.Windows.Threading;
 
 namespace IndigoMovieManager
 {
@@ -18,6 +20,12 @@ namespace IndigoMovieManager
 
         protected override void OnStartup(StartupEventArgs e)
         {
+            AppFileLogger.Initialize();
+            AppFileLogger.LogInfo("startup", "application starting");
+            DispatcherUnhandledException += App_DispatcherUnhandledException;
+            AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
+            TaskScheduler.UnobservedTaskException += TaskScheduler_UnobservedTaskException;
+
             var japanese = CultureInfo.GetCultureInfo("ja");
             CultureInfo.DefaultThreadCurrentCulture = japanese;
             CultureInfo.DefaultThreadCurrentUICulture = japanese;
@@ -32,12 +40,41 @@ namespace IndigoMovieManager
             base.OnStartup(e);
         }
 
+        protected override void OnExit(ExitEventArgs e)
+        {
+            DispatcherUnhandledException -= App_DispatcherUnhandledException;
+            AppDomain.CurrentDomain.UnhandledException -= CurrentDomain_UnhandledException;
+            TaskScheduler.UnobservedTaskException -= TaskScheduler_UnobservedTaskException;
+            base.OnExit(e);
+        }
+
         private static void App_SystemPreferenceChanged(object sender, UserPreferenceChangedEventArgs e)
         {
             if (e.Category == UserPreferenceCategory.General)
             {
                 AppThemeService.HandleSystemThemeChanged();
             }
+        }
+
+        private static void CurrentDomain_UnhandledException(object sender, UnhandledExceptionEventArgs e)
+        {
+            if (e.ExceptionObject is Exception exception)
+            {
+                AppFileLogger.LogError(exception, "AppDomain.UnhandledException");
+                return;
+            }
+
+            AppFileLogger.LogError("AppDomain.UnhandledException", "non-Exception object");
+        }
+
+        private static void TaskScheduler_UnobservedTaskException(object sender, UnobservedTaskExceptionEventArgs e)
+        {
+            AppFileLogger.LogError(e.Exception, "TaskScheduler.UnobservedTaskException");
+        }
+
+        private static void App_DispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
+        {
+            AppFileLogger.LogError(e.Exception, "Application.DispatcherUnhandledException");
         }
     }
 }
