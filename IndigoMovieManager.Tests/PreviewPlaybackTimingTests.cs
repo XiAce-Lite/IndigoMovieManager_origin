@@ -23,5 +23,19 @@ namespace IndigoMovieManager.Tests
             TimeSpan interval = PreviewPlaybackTiming.GetTimerInterval(30d);
             Assert.Equal(33.333, interval.TotalMilliseconds, 1);
         }
+
+        [Theory]
+        [InlineData(500, -100, 0, 1000, 400)]
+        [InlineData(50, -100, 0, 1000, 0)]
+        [InlineData(950, 100, 0, 1000, 1000)]
+        public void ClampSeekMs_clamps_stepped_values(
+            int value,
+            int delta,
+            int minimum,
+            int maximum,
+            int expected)
+        {
+            Assert.Equal(expected, PreviewPlaybackTiming.ClampSeekMs(value, delta, minimum, maximum));
+        }
     }
 }

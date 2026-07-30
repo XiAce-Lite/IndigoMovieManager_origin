@@ -6224,14 +6224,11 @@ namespace IndigoMovieManager
                 uxPreviewImage.Pause();
             }
 
-            QueueObj queueObj = new()
-            {
-                MovieId = mv.Movie_Id,
-                MovieFullPath = mv.Movie_Path,
-                ThumbPanelPos = manualPos,
-                ThumbTimePos = _manualPreview.PositionSeconds,
-                IsManual = true
-            };
+            QueueObj queueObj = ManualThumbnailCaptureFactory.Create(
+                mv.Movie_Id,
+                mv.Movie_Path,
+                manualPos,
+                _manualPreview.PositionSeconds);
             PopulateActiveListQueueLayout(queueObj);
 
             CloseManualThumbnailPreview();
@@ -6241,20 +6238,20 @@ namespace IndigoMovieManager
 
         private async Task EnqueueManualThumbnailWorkAsync(QueueObj queueObj)
         {
-            for (int i = 0; i < 120; i++)
+            for (int i = 0; i < ManualThumbnailCaptureFactory.EnqueueRetryCount; i++)
             {
                 if (TryEnqueueManualThumbnailWork(queueObj))
                 {
                     return;
                 }
 
-                await Task.Delay(500).ConfigureAwait(true);
+                await Task.Delay(ManualThumbnailCaptureFactory.EnqueueRetryDelayMs).ConfigureAwait(true);
             }
 
             MessageBox.Show(
                 this,
-                "サムネイル作成が混み合っています。しばらくしてから再度お試しください。",
-                Assembly.GetExecutingAssembly().GetName().Name,
+                ManualThumbnailCaptureFactory.BusyMessage,
+                AppTitle,
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
         }
@@ -6296,14 +6293,15 @@ namespace IndigoMovieManager
             MovieInfo mvi = new(mv.Movie_Path, true);        //Hashの取得が重いのでオプション付けた。ブックマークには不要。
 
             int pos = _manualPreview.PositionSeconds;
-            var targetFrame = pos * (int)mvi.FPS;
-            var timestamp = string.Format($"{DateTime.Now:HH-mm-ss}");
-            var thumbBody = $"{mv.Movie_Body}[({targetFrame}){timestamp}]";
-            var thumbFileName = $"{thumbBody}.jpg";
-            var thumbFolder = MainVM.DbInfo.BookmarkFolder;
-            var defaultThumbFolder = Path.Combine(Directory.GetCurrentDirectory(), "bookmark", MainVM.DbInfo.DBName);
-            thumbFolder = thumbFolder == "" ? defaultThumbFolder : thumbFolder;
-            thumbFileName = Path.Combine(thumbFolder, thumbFileName);
+            string thumbBody = BookmarkCaptureNaming.BuildThumbBody(
+                mv.Movie_Body,
+                pos,
+                mvi.FPS,
+                DateTime.Now);
+            string thumbFolder = BookmarkCaptureNaming.ResolveFolderOrDefault(
+                MainVM.DbInfo.BookmarkFolder,
+                MainVM.DbInfo.DBName);
+            string thumbFileName = BookmarkCaptureNaming.BuildThumbFilePath(thumbFolder, thumbBody);
             if (!Path.Exists(thumbFolder))
             {
                 Directory.CreateDirectory(thumbFolder);
@@ -6317,7 +6315,7 @@ namespace IndigoMovieManager
 
             //Bookmarkテーブルへのレコード書き込み処理追加
             mvi.MovieName = thumbBody;
-            mvi.MoviePath = $"{thumbBody}.jpg";
+            mvi.MoviePath = BookmarkCaptureNaming.BuildThumbFileName(thumbBody);
             InsertBookmarkTable(MainVM.DbInfo.DBFullPath, mvi, mv.Movie_Path, mv.Hash);
             GetBookmarkTable();
             BookmarkList.Items.Refresh();
@@ -6405,14 +6403,20 @@ namespace IndigoMovieManager
 
         private void FR_Click(object sender, RoutedEventArgs e)
         {
-            var tempSlider = (int)uxTimeSlider.Value - 100;
-            if (tempSlider < 0) { tempSlider = 0; }
+            int tempSlider = PreviewPlaybackTiming.ClampSeekMs(
+                (int)uxTimeSlider.Value,
+                -100,
+                0,
+                (int)uxTimeSlider.Maximum);
             FF_FR(tempSlider);
         }
         private void FF_Click(object sender, RoutedEventArgs e)
         {
-            var tempSlider = (int)uxTimeSlider.Value + 100;
-            if (tempSlider > uxTimeSlider.Maximum) { tempSlider = (int)uxTimeSlider.Maximum; }
+            int tempSlider = PreviewPlaybackTiming.ClampSeekMs(
+                (int)uxTimeSlider.Value,
+                100,
+                0,
+                (int)uxTimeSlider.Maximum);
             FF_FR(tempSlider);
         }
         private void FF_FR(int tempSlider)
