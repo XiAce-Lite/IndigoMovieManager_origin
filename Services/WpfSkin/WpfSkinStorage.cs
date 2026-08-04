@@ -92,17 +92,25 @@ namespace IndigoMovieManager.Services.WpfSkin
                 return CreateFromDefaultTemplate();
             }
 
+            var thumb = new WpfSkinThumbnail
+            {
+                Width = tmpl.ThumbWidth,
+                Height = tmpl.ThumbHeight,
+                Columns = Math.Clamp(tmpl.ThumbColumns > 0 ? tmpl.ThumbColumns : 1, 1, 5),
+                Rows = Math.Clamp(tmpl.ThumbRows > 0 ? tmpl.ThumbRows : 1, 1, 5),
+                PreferJacket = tmpl.PreferJacket && !tmpl.UseCoexistSources,
+            };
+            if (tmpl.UseCoexistSources)
+            {
+                thumb.Sources = WpfSkinThumbnailSources.CreateDefaultCoexist();
+                thumb.PreferJacket = false;
+            }
+
             var def = new WpfSkinDefinition
             {
                 Name = "新規スキン",
                 FolderName = null,
-                Thumbnail = new WpfSkinThumbnail
-                {
-                    Width = tmpl.ThumbWidth,
-                    Height = tmpl.ThumbHeight,
-                    Columns = 1,
-                    Rows = 1,
-                },
+                Thumbnail = thumb,
                 Card = new WpfSkinCard
                 {
                     Width = tmpl.CardWidth,

@@ -111,7 +111,7 @@ namespace IndigoMovieManager
             {
                 form.Children.Add(new TextBlock
                 {
-                    Text = "サムネイルに追加の個別設定はありません。preferJacket は左ペインのスキン全体設定を使います。",
+                    Text = "サムネ枠の個別 source はノードに保存されます。preferJacket / sources 同居チェックは左ペインのスキン全体設定です。",
                     TextWrapping = TextWrapping.Wrap,
                 });
                 return;

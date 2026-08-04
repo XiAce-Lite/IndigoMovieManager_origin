@@ -217,7 +217,10 @@ namespace IndigoMovieManager
             _gridClampedFromSource = _sourceColumns > 5 || _sourceRows > 5;
             ThumbColumnsCombo.SelectedItem = Math.Clamp(_sourceColumns, 1, 5);
             ThumbRowsCombo.SelectedItem = Math.Clamp(_sourceRows, 1, 5);
-            ThumbPreferJacketCheck.IsChecked = _working.Thumbnail?.PreferJacket == true;
+            bool hasSources = WpfSkinThumbnailSources.Normalize(_working.Thumbnail?.Sources).Count > 0;
+            ThumbCoexistSourcesCheck.IsChecked = hasSources;
+            ThumbPreferJacketCheck.IsChecked = !hasSources && _working.Thumbnail?.PreferJacket == true;
+            UpdateThumbnailModeChecksEnabled();
 
             RefreshStyleList();
             RebuildLayoutTree(_working.Card?.Layout);
@@ -501,7 +504,34 @@ namespace IndigoMovieManager
             _working.Thumbnail.Height = Math.Max(1, ThumbHeightSpin.Value);
             _working.Thumbnail.Columns = Math.Clamp(ThumbColumnsCombo.SelectedItem as int? ?? 1, 1, 5);
             _working.Thumbnail.Rows = Math.Clamp(ThumbRowsCombo.SelectedItem as int? ?? 1, 1, 5);
-            _working.Thumbnail.PreferJacket = ThumbPreferJacketCheck.IsChecked == true;
+            // sources 優先: 同居 ON なら PreferJacket は false。list でも Sources は消さない。
+            if (ThumbCoexistSourcesCheck.IsChecked == true)
+            {
+                if (WpfSkinThumbnailSources.Normalize(_working.Thumbnail.Sources).Count == 0)
+                {
+                    _working.Thumbnail.Sources = WpfSkinThumbnailSources.CreateDefaultCoexist();
+                }
+
+                _working.Thumbnail.PreferJacket = false;
+            }
+            else if (ThumbPreferJacketCheck.IsChecked == true)
+            {
+                _working.Thumbnail.PreferJacket = true;
+                // 同居 OFF にしたときだけ sources を消す（list 切替では触らない）
+                if (!_working.IsList)
+                {
+                    _working.Thumbnail.Sources = null;
+                }
+            }
+            else
+            {
+                _working.Thumbnail.PreferJacket = false;
+                if (!_working.IsList)
+                {
+                    _working.Thumbnail.Sources = null;
+                }
+            }
+
             ApplyStyleEditorsToWorking();
             ApplyNodeEditorsToWorking();
         }
@@ -1334,8 +1364,13 @@ namespace IndigoMovieManager
 
             if (string.Equals(node.Type, "thumbnail", StringComparison.OrdinalIgnoreCase))
             {
-                SelectedNodeLayoutHint.Text =
-                    "選択: サムネ — 表示枠は親列幅に追従／生成ピクセルは左ペイン「サムネ生成」";
+                string src = node.Source?.Trim().ToLowerInvariant() ?? "";
+                SelectedNodeLayoutHint.Text = src switch
+                {
+                    "comment1" => "選択: ジャケ写（Comment1）— preferJacket / sources は左ペイン",
+                    "local" => "選択: サムネイル（ローカル）— 生成ピクセルは左ペイン「サムネ生成」",
+                    _ => "選択: サムネ（兼用枠）— preferJacket 時はジャケ差し替え／生成は左ペイン",
+                };
                 SelectedNodeLayoutHint.Visibility = Visibility.Visible;
                 return;
             }
@@ -1517,9 +1552,78 @@ namespace IndigoMovieManager
                 return;
             }
 
+            if (ReferenceEquals(sender, TypeCombo))
+            {
+                // Type を先に反映して list/card の有効状態を更新
+                _working.Type = (TypeCombo.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "card";
+                UpdateThumbnailModeChecksEnabled();
+            }
+
             CapturePropertyUndoIfNeeded();
             MarkDirty();
             RefreshPreview();
+        }
+
+        private void ThumbPreferJacketCheck_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressUi || _working == null)
+            {
+                return;
+            }
+
+            if (ThumbPreferJacketCheck.IsChecked == true)
+            {
+                _suppressUi = true;
+                ThumbCoexistSourcesCheck.IsChecked = false;
+                _suppressUi = false;
+            }
+
+            UpdateThumbnailModeChecksEnabled();
+            Field_Changed(sender, e);
+        }
+
+        private void ThumbCoexistSourcesCheck_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressUi || _working == null)
+            {
+                return;
+            }
+
+            if (ThumbCoexistSourcesCheck.IsChecked == true)
+            {
+                _suppressUi = true;
+                ThumbPreferJacketCheck.IsChecked = false;
+                _suppressUi = false;
+            }
+
+            UpdateThumbnailModeChecksEnabled();
+            Field_Changed(sender, e);
+        }
+
+        private void UpdateThumbnailModeChecksEnabled()
+        {
+            if (_working == null)
+            {
+                return;
+            }
+
+            bool isList = string.Equals(
+                (TypeCombo.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? _working.Type,
+                "list",
+                StringComparison.OrdinalIgnoreCase);
+
+            // list では同居チェックを無効（値は保持）。preferJacket は list でも可。
+            ThumbCoexistSourcesCheck.IsEnabled = !isList;
+            ThumbPreferJacketCheck.IsEnabled = ThumbCoexistSourcesCheck.IsChecked != true;
+            if (isList)
+            {
+                // list 中は preferJacket を常に操作可（sources は描画無視）
+                ThumbPreferJacketCheck.IsEnabled = true;
+            }
+            else if (ThumbPreferJacketCheck.IsChecked == true)
+            {
+                ThumbCoexistSourcesCheck.IsEnabled = false;
+            }
         }
 
         private void Spin_Changed(object sender, RoutedPropertyChangedEventArgs<int> e)
@@ -2388,6 +2492,9 @@ namespace IndigoMovieManager
                 WpfSkinLayoutEditor.AssignGridSlot(added, gridRow.Value, gridCol.Value);
             }
 
+            WpfSkinThumbnailSources.SyncSourcesFromLayout(_working, _working.Card.Layout);
+            SyncThumbnailModeChecksFromWorking();
+
             var treeChild = new WpfSkinLayoutTreeNode(added, parentView);
             int safeIndex = Math.Clamp(index, 0, parentView.Children.Count);
             parentView.Children.Insert(safeIndex, treeChild);
@@ -2644,10 +2751,27 @@ namespace IndigoMovieManager
 
             parent.Children.Remove(treeNode);
             parent.NotifyDisplayNameChanged();
+            WpfSkinThumbnailSources.SyncSourcesFromLayout(_working, _working.Card?.Layout);
+            SyncThumbnailModeChecksFromWorking();
             MarkDirty();
             SelectLayoutNode(parent.Model);
             RefreshPreview();
             RefreshFieldPalette();
+        }
+
+        private void SyncThumbnailModeChecksFromWorking()
+        {
+            if (_working == null)
+            {
+                return;
+            }
+
+            _suppressUi = true;
+            bool hasSources = WpfSkinThumbnailSources.Normalize(_working.Thumbnail?.Sources).Count > 0;
+            ThumbCoexistSourcesCheck.IsChecked = hasSources;
+            ThumbPreferJacketCheck.IsChecked = !hasSources && _working.Thumbnail?.PreferJacket == true;
+            UpdateThumbnailModeChecksEnabled();
+            _suppressUi = false;
         }
 
         /// <summary>

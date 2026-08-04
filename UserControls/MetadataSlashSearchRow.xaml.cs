@@ -6,10 +6,15 @@ using IndigoMovieManager.Services;
 namespace IndigoMovieManager.UserControls
 {
     /// <summary>
-    /// <c> / </c> 区切りメタデータ行。各セグメントをクリックすると検索する。
+    /// <c> / </c> 区切りメタデータ行。
+    /// <see cref="ClickSearchMode"/> が Comment3Brace のとき各語クリックで列指定 SQL 検索。
+    /// None のときは表示のみ。
     /// </summary>
     public partial class MetadataSlashSearchRow : UserControl
     {
+        public const string ModeNone = "None";
+        public const string ModeComment3Brace = "Comment3Brace";
+
         public static readonly DependencyProperty LabelProperty =
             DependencyProperty.Register(
                 nameof(Label),
@@ -24,7 +29,12 @@ namespace IndigoMovieManager.UserControls
                 typeof(MetadataSlashSearchRow),
                 new PropertyMetadata(string.Empty, OnValueChanged));
 
-        private bool _ctrlFlg;
+        public static readonly DependencyProperty ClickSearchModeProperty =
+            DependencyProperty.Register(
+                nameof(ClickSearchMode),
+                typeof(string),
+                typeof(MetadataSlashSearchRow),
+                new PropertyMetadata(ModeComment3Brace, OnClickSearchModeChanged));
 
         public MetadataSlashSearchRow()
         {
@@ -43,6 +53,16 @@ namespace IndigoMovieManager.UserControls
             set => SetValue(ValueProperty, value);
         }
 
+        /// <summary><see cref="ModeNone"/> または <see cref="ModeComment3Brace"/>。</summary>
+        public string ClickSearchMode
+        {
+            get => (string)GetValue(ClickSearchModeProperty);
+            set => SetValue(ClickSearchModeProperty, value);
+        }
+
+        private bool IsComment3Search =>
+            string.Equals(ClickSearchMode, ModeComment3Brace, StringComparison.OrdinalIgnoreCase);
+
         private static void OnLabelChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
             if (d is MetadataSlashSearchRow row)
@@ -59,10 +79,23 @@ namespace IndigoMovieManager.UserControls
             }
         }
 
+        private static void OnClickSearchModeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            if (d is MetadataSlashSearchRow row)
+            {
+                row.RebuildSegments(row.Value ?? string.Empty);
+            }
+        }
+
         private void RebuildSegments(string value)
         {
             SegmentsPanel.Children.Clear();
             IReadOnlyList<string> segments = MetadataSlashSegments.Split(value);
+            bool searchable = IsComment3Search;
+            Style segmentStyle = searchable
+                ? (Style)FindResource("MetadataSegmentStyle")
+                : (Style)FindResource("MetadataSegmentPlainStyle");
+
             for (int i = 0; i < segments.Count; i++)
             {
                 if (i > 0)
@@ -73,34 +106,27 @@ namespace IndigoMovieManager.UserControls
                 string segment = segments[i];
                 var textBlock = new TextBlock
                 {
-                    Style = (Style)FindResource("MetadataSegmentStyle"),
+                    Style = segmentStyle,
                     Text = segment,
-                    ToolTip = $"{segment}\nクリックで検索",
                     Tag = segment,
                 };
-                textBlock.MouseLeftButtonDown += Segment_MouseLeftButtonDown;
+                if (searchable)
+                {
+                    textBlock.ToolTip = $"{segment}\nクリックで Comment3 検索";
+                    textBlock.MouseLeftButtonDown += Segment_MouseLeftButtonDown;
+                }
+
                 SegmentsPanel.Children.Add(textBlock);
-            }
-        }
-
-        private void MetadataSlashSearchRow_PreviewKeyDown(object sender, KeyEventArgs e)
-        {
-            if (e.Key is Key.LeftCtrl or Key.RightCtrl)
-            {
-                _ctrlFlg = true;
-            }
-        }
-
-        private void MetadataSlashSearchRow_PreviewKeyUp(object sender, KeyEventArgs e)
-        {
-            if (e.Key is Key.LeftCtrl or Key.RightCtrl)
-            {
-                _ctrlFlg = false;
             }
         }
 
         private async void Segment_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
+            if (!IsComment3Search)
+            {
+                return;
+            }
+
             if (sender is not TextBlock textBlock || textBlock.Tag is not string keyword)
             {
                 return;
@@ -117,9 +143,12 @@ namespace IndigoMovieManager.UserControls
                 return;
             }
 
-            string searchKeyword = _ctrlFlg
-                ? (actions.SearchBox.Text ?? "") + " " + keyword
-                : keyword;
+            // Ctrl+クリック加算は無効（列指定 SQL 同士の結合を避ける）。
+            string searchKeyword = BraceFieldSearchBuilder.BuildComment3Like(keyword);
+            if (string.IsNullOrEmpty(searchKeyword))
+            {
+                return;
+            }
 
             await actions.SearchByKeywordAsync(searchKeyword).ConfigureAwait(true);
             e.Handled = true;

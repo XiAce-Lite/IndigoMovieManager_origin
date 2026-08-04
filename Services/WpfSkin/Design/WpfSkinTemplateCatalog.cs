@@ -37,6 +37,7 @@ namespace IndigoMovieManager.Services.WpfSkin.Design
             new("WideGridInfo", "WideGridInfo", "横長 grid で情報を並べるレイアウト。"),
             new("JacketInfo", "JacketInfo", "ジャケ写優先の情報カード。"),
             new("JacketInfo3x2", "JacketInfo3x2", "3×2 サムネ格子＋情報。"),
+            new("JacketLocalSide", "JacketLocalSide", "左ジャケ＋右5×2格子＋ファイル名/タグ。"),
             new("DarkModeSample", "DarkModeSample", "暗い背景向けのサンプル配色。"),
             new("DefaultList", "DefaultList（リスト）", "list 型。ヘッダー行付きの一覧向け。"),
             new("DefaultSmall", "DefaultSmall", "小さめカードの保護テンプレ。"),

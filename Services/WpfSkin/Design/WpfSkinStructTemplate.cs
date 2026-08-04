@@ -15,6 +15,14 @@ namespace IndigoMovieManager.Services.WpfSkin.Design
         // サムネイル既定サイズ
         public int ThumbWidth  { get; init; } = 320;
         public int ThumbHeight { get; init; } = 180;
+        public int ThumbColumns { get; init; } = 1;
+        public int ThumbRows { get; init; } = 1;
+
+        /// <summary>true なら thumbnail.preferJacket を立てる。</summary>
+        public bool PreferJacket { get; init; }
+
+        /// <summary>true なら comment1+local の thumbnail.sources（同居）を設定する。</summary>
+        public bool UseCoexistSources { get; init; }
 
         // カード全体
         public double CardWidth   { get; init; } = 0;
@@ -237,7 +245,71 @@ namespace IndigoMovieManager.Services.WpfSkin.Design
                 BuildStyles = BaseStyles,
             },
 
-            // ── 6) 横 3 列（均等）────────────────────────────────────
+            // ── 6) 左ジャケ + 右ローカル 5×2（同居）─────────────────────
+            new()
+            {
+                Id = "jacket_local_side",
+                DisplayName = "左ジャケ ＋ 右ローカル（同居）",
+                Description = "左にジャケ写（360×203）、右上にローカル 5×2（120×90）、右下にファイル名／タグ。JacketLocalSide 相当。",
+                ThumbWidth = 120,
+                ThumbHeight = 90,
+                ThumbColumns = 5,
+                ThumbRows = 2,
+                UseCoexistSources = true,
+                CardWidth = 980,
+                CardStretch = false,
+                BuildLayout = () => new WpfSkinNode
+                {
+                    Panel = "stack",
+                    Stack = "horizontal",
+                    VAlign = "top",
+                    Children =
+                    [
+                        new WpfSkinNode
+                        {
+                            Type = "thumbnail",
+                            Source = "comment1",
+                            Width = WpfSkinThumbnailSources.JacketInfoFallbackWidth,
+                            Height = WpfSkinThumbnailSources.JacketInfoFallbackHeight,
+                            VAlign = "top",
+                            HAlign = "left",
+                            Margin = new WpfSkinSpacing { Right = 8 },
+                        },
+                        new WpfSkinNode
+                        {
+                            Panel = "stack",
+                            Stack = "vertical",
+                            VAlign = "top",
+                            HAlign = "left",
+                            MaxWidth = WpfSkinThumbnailSources.DefaultBig10DisplayWidth,
+                            Children =
+                            [
+                                new WpfSkinNode
+                                {
+                                    Type = "thumbnail",
+                                    Source = "local",
+                                    Width = WpfSkinThumbnailSources.DefaultBig10DisplayWidth,
+                                    Height = WpfSkinThumbnailSources.DefaultBig10DisplayHeight,
+                                    VAlign = "top",
+                                    HAlign = "left",
+                                },
+                                new WpfSkinNode
+                                {
+                                    Type = "text",
+                                    Field = "title",
+                                    Style = "title",
+                                    Wrap = true,
+                                    Margin = new WpfSkinSpacing { Top = 6, Bottom = 4 },
+                                },
+                                new WpfSkinNode { Type = "tags" },
+                            ],
+                        },
+                    ],
+                },
+                BuildStyles = BaseStyles,
+            },
+
+            // ── 7) 横 3 列（均等）────────────────────────────────────
             new()
             {
                 Id = "3col_equal",
@@ -260,7 +332,7 @@ namespace IndigoMovieManager.Services.WpfSkin.Design
                 BuildStyles = BaseStyles,
             },
 
-            // ── 7) リスト行（list 型用）──────────────────────────────────
+            // ── 8) リスト行（list 型用）──────────────────────────────────
             new()
             {
                 Id = "list_row",

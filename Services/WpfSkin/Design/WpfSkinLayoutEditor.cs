@@ -55,6 +55,7 @@ namespace IndigoMovieManager.Services.WpfSkin.Design
                 WpfSkinNodeKind.Thumbnail => new WpfSkinNode
                 {
                     Type = "thumbnail",
+                    Source = "local",
                 },
                 WpfSkinNodeKind.Tags => new WpfSkinNode
                 {
@@ -100,7 +101,7 @@ namespace IndigoMovieManager.Services.WpfSkin.Design
             string defaultStyle = WpfSkinFieldCatalog.GetDefaultStyleKey(desc.Id);
             WpfSkinNode node = desc.Kind switch
             {
-                WpfSkinFieldKind.Thumbnail => CreateNode(WpfSkinNodeKind.Thumbnail),
+                WpfSkinFieldKind.Thumbnail => CreateThumbnailNodeFromFieldId(desc.Id),
                 WpfSkinFieldKind.Tags => new WpfSkinNode
                 {
                     Type = "tags",
@@ -137,6 +138,31 @@ namespace IndigoMovieManager.Services.WpfSkin.Design
             }
 
             return node;
+        }
+
+        private static WpfSkinNode CreateThumbnailNodeFromFieldId(string fieldId)
+        {
+            if (string.Equals(fieldId, WpfSkinFieldCatalog.ThumbnailJacketId, StringComparison.OrdinalIgnoreCase))
+            {
+                return new WpfSkinNode
+                {
+                    Type = "thumbnail",
+                    Source = "comment1",
+                    Width = WpfSkinThumbnailSources.JacketInfoFallbackWidth,
+                    Height = WpfSkinThumbnailSources.JacketInfoFallbackHeight,
+                    VAlign = "top",
+                    HAlign = "left",
+                };
+            }
+
+            // thumbnail:local（および旧 thumbnail）
+            return new WpfSkinNode
+            {
+                Type = "thumbnail",
+                Source = "local",
+                VAlign = "top",
+                HAlign = "left",
+            };
         }
 
         public static bool IsFieldUsed(WpfSkinNode root, string fieldId)
@@ -545,6 +571,17 @@ namespace IndigoMovieManager.Services.WpfSkin.Design
                 }
 
                 string leaf = string.IsNullOrWhiteSpace(Model.Type) ? "text" : Model.Type.Trim();
+                if (string.Equals(leaf, "thumbnail", StringComparison.OrdinalIgnoreCase))
+                {
+                    string src = Model.Source?.Trim().ToLowerInvariant() ?? "";
+                    return src switch
+                    {
+                        "comment1" => "thumbnail: jacket",
+                        "local" => "thumbnail: local",
+                        _ => "thumbnail",
+                    };
+                }
+
                 string detail = !string.IsNullOrWhiteSpace(Model.Field)
                     ? Model.Field.Trim()
                     : (!string.IsNullOrWhiteSpace(Model.Label) ? Model.Label.Trim() : "");

@@ -21,12 +21,17 @@ namespace IndigoMovieManager.Services.WpfSkin.Design
     /// </summary>
     internal static class WpfSkinFieldCatalog
     {
+        /// <summary>旧互換: source 無し thumbnail ノードのキー。</summary>
         public const string ThumbnailId = "thumbnail";
+
+        public const string ThumbnailLocalId = "thumbnail:local";
+        public const string ThumbnailJacketId = "thumbnail:comment1";
         public const string TagsId = "tags";
 
         public static readonly IReadOnlyList<WpfSkinFieldDescriptor> All =
         [
-            new() { Id = ThumbnailId, DisplayName = "サムネイル", Kind = WpfSkinFieldKind.Thumbnail, DefaultStyleKey = "" },
+            new() { Id = ThumbnailLocalId, DisplayName = "サムネイル（ローカル）", Kind = WpfSkinFieldKind.Thumbnail, DefaultStyleKey = "" },
+            new() { Id = ThumbnailJacketId, DisplayName = "ジャケ写（Comment1）", Kind = WpfSkinFieldKind.Thumbnail, DefaultStyleKey = "" },
             new() { Id = "title", DisplayName = "タイトル（ファイル名）", Kind = WpfSkinFieldKind.Text, DefaultStyleKey = "title" },
             new() { Id = "metatitle", DisplayName = "メタタイトル", Kind = WpfSkinFieldKind.Text, DefaultStyleKey = "title" },
             new() { Id = "body", DisplayName = "ファイル名（拡張子なし）", Kind = WpfSkinFieldKind.Text, DefaultStyleKey = "meta" },
@@ -75,6 +80,11 @@ namespace IndigoMovieManager.Services.WpfSkin.Design
         public static bool IsPathField(string field) =>
             TryGet(field, out WpfSkinFieldDescriptor d) && d.Kind == WpfSkinFieldKind.Path;
 
+        public static bool IsThumbnailFieldId(string fieldId) =>
+            string.Equals(fieldId, ThumbnailLocalId, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(fieldId, ThumbnailJacketId, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(fieldId, ThumbnailId, StringComparison.OrdinalIgnoreCase);
+
         public static string GetDefaultStyleKey(string fieldId) =>
             TryGet(fieldId, out WpfSkinFieldDescriptor d)
                 ? d.DefaultStyleKey ?? ""
@@ -82,6 +92,7 @@ namespace IndigoMovieManager.Services.WpfSkin.Design
 
         /// <summary>
         /// layout 上の一意キー。静的ラベルや container は null。
+        /// source 無し thumbnail は <see cref="ThumbnailId"/>（収集時に local/jacket 両方使用扱いに展開）。
         /// </summary>
         public static string ResolveUniqueKey(WpfSkinNode node)
         {
@@ -101,6 +112,19 @@ namespace IndigoMovieManager.Services.WpfSkin.Design
             string type = node.Type?.Trim().ToLowerInvariant() ?? "";
             if (type == "thumbnail")
             {
+                string src = node.Source?.Trim().ToLowerInvariant() ?? "";
+                if (string.Equals(src, "local", StringComparison.OrdinalIgnoreCase))
+                {
+                    return ThumbnailLocalId;
+                }
+
+                if (string.Equals(src, "comment1", StringComparison.OrdinalIgnoreCase))
+                {
+                    return ThumbnailJacketId;
+                }
+
+                // source 無し = ローカル兼用枠（preferJacket 時は同枠でジャケ差し替え）。
+                // パレットでは local のみ使用済み（ジャケ写枠は別途配置可＝同居へ）。
                 return ThumbnailId;
             }
 
@@ -122,6 +146,27 @@ namespace IndigoMovieManager.Services.WpfSkin.Design
             return null;
         }
 
+        /// <summary>
+        /// パレット用: source 無し thumbnail は local のみ使用済みにする。
+        /// （ジャケ写は未配置のまま＝同居用に追加できる）
+        /// </summary>
+        public static void AddExpandedUsedKeys(ISet<string> used, string uniqueKey)
+        {
+            if (used == null || string.IsNullOrEmpty(uniqueKey))
+            {
+                return;
+            }
+
+            if (string.Equals(uniqueKey, ThumbnailId, StringComparison.OrdinalIgnoreCase))
+            {
+                used.Add(ThumbnailLocalId);
+                used.Add(ThumbnailId);
+                return;
+            }
+
+            used.Add(uniqueKey);
+        }
+
         public static HashSet<string> CollectUsedFieldIds(WpfSkinNode root)
         {
             var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -137,10 +182,7 @@ namespace IndigoMovieManager.Services.WpfSkin.Design
             }
 
             string key = ResolveUniqueKey(node);
-            if (!string.IsNullOrEmpty(key))
-            {
-                used.Add(key);
-            }
+            AddExpandedUsedKeys(used, key);
 
             foreach (WpfSkinNode child in node.Children ?? [])
             {

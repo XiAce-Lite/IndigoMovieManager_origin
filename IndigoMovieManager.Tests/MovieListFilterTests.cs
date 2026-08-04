@@ -52,7 +52,7 @@ public class MovieListFilterTests
   }
 
   [Fact]
-  public void Build_GenrePartialMatch_FiltersRecords()
+  public void Build_GenrePartialMatch_DoesNotHit()
   {
     var source = new[]
     {
@@ -62,12 +62,11 @@ public class MovieListFilterTests
 
     var result = MovieListFilter.Build(source, "ジャンルX", "1");
 
-    Assert.Single(result.Items);
-    Assert.Equal("a.mp4", result.Items[0].Movie_Name);
+    Assert.Empty(result.Items);
   }
 
   [Fact]
-  public void Build_ExactQuotedMatch_IncludesTitleAndGenre()
+  public void Build_ExactQuotedMatch_IncludesTitle_NotGenre()
   {
     var source = new[]
     {
@@ -81,12 +80,11 @@ public class MovieListFilterTests
     Assert.Equal("a.mp4", titleResult.Items[0].Movie_Name);
 
     var genreResult = MovieListFilter.Build(source, "\"完全一致ジャンル\"", "1");
-    Assert.Single(genreResult.Items);
-    Assert.Equal("b.mp4", genreResult.Items[0].Movie_Name);
+    Assert.Empty(genreResult.Items);
   }
 
   [Fact]
-  public void Build_ArtistPartialMatch_FiltersRecords()
+  public void Build_ArtistPartialMatch_DoesNotHit()
   {
     var source = new[]
     {
@@ -96,12 +94,11 @@ public class MovieListFilterTests
 
     var result = MovieListFilter.Build(source, "メーカーA", "1");
 
-    Assert.Single(result.Items);
-    Assert.Equal("a.mp4", result.Items[0].Movie_Name);
+    Assert.Empty(result.Items);
   }
 
   [Fact]
-  public void Build_CommentPartialMatch_StillWorks()
+  public void Build_CommentPartialMatch_DoesNotHit()
   {
     var source = new[]
     {
@@ -111,8 +108,7 @@ public class MovieListFilterTests
 
     var result = MovieListFilter.Build(source, "メーカー", "1");
 
-    Assert.Single(result.Items);
-    Assert.Equal("a.mp4", result.Items[0].Movie_Name);
+    Assert.Empty(result.Items);
   }
 
   [Fact]

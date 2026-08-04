@@ -49,8 +49,9 @@ namespace IndigoMovieManager.Services.WpfSkin
             var panelFactory = new FrameworkElementFactory(typeof(VirtualizingWrapPanel));
             panelFactory.SetValue(VirtualizingWrapPanel.OrientationProperty, Orientation.Horizontal);
 
-            // ジャケ比で行高がアイテムごとに変わるため、先頭行サイズへの均一化を外す
-            if (def?.Thumbnail?.PreferJacket == true)
+            // ジャケ比・sources 同居で行高がアイテムごとに変わるため、先頭行サイズへの均一化を外す
+            if (def?.Thumbnail?.PreferJacket == true
+                || WpfSkinThumbnailSources.TryGetRenderKinds(def, out _))
             {
                 panelFactory.SetValue(VirtualizingWrapPanel.AllowDifferentSizedItemsProperty, true);
             }

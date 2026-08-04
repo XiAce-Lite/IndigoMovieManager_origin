@@ -7,7 +7,7 @@ namespace IndigoMovieManager.Tests;
 public class WpfSkinFieldCatalogTests
 {
     [Fact]
-    public void CollectUsedFieldIds_finds_thumbnail_tags_and_text_fields()
+    public void CollectUsedFieldIds_plain_thumbnail_marks_local_only()
     {
         var root = new WpfSkinNode
         {
@@ -23,11 +23,32 @@ public class WpfSkinFieldCatalogTests
 
         HashSet<string> used = WpfSkinFieldCatalog.CollectUsedFieldIds(root);
 
-        Assert.Contains("thumbnail", used);
+        Assert.Contains(WpfSkinFieldCatalog.ThumbnailId, used);
+        Assert.Contains(WpfSkinFieldCatalog.ThumbnailLocalId, used);
+        Assert.DoesNotContain(WpfSkinFieldCatalog.ThumbnailJacketId, used);
         Assert.Contains("title", used);
         Assert.Contains("tags", used);
         Assert.Contains("dir", used);
         Assert.DoesNotContain("path", used);
+    }
+
+    [Fact]
+    public void CollectUsedFieldIds_distinguishes_thumbnail_sources()
+    {
+        var root = new WpfSkinNode
+        {
+            Panel = "grid",
+            Children =
+            [
+                new WpfSkinNode { Type = "thumbnail", Source = "comment1" },
+                new WpfSkinNode { Type = "thumbnail", Source = "local" },
+            ],
+        };
+
+        HashSet<string> used = WpfSkinFieldCatalog.CollectUsedFieldIds(root);
+        Assert.Contains(WpfSkinFieldCatalog.ThumbnailJacketId, used);
+        Assert.Contains(WpfSkinFieldCatalog.ThumbnailLocalId, used);
+        Assert.DoesNotContain(WpfSkinFieldCatalog.ThumbnailId, used);
     }
 
     [Fact]
@@ -90,6 +111,18 @@ public class WpfSkinFieldCatalogTests
     }
 
     [Fact]
+    public void CreateNodeFromField_thumbnail_local_and_jacket()
+    {
+        WpfSkinNode local = WpfSkinLayoutEditor.CreateNodeFromField(WpfSkinFieldCatalog.ThumbnailLocalId);
+        WpfSkinNode jacket = WpfSkinLayoutEditor.CreateNodeFromField(WpfSkinFieldCatalog.ThumbnailJacketId);
+
+        Assert.Equal("thumbnail", local.Type);
+        Assert.Equal("local", local.Source);
+        Assert.Equal("thumbnail", jacket.Type);
+        Assert.Equal("comment1", jacket.Source);
+    }
+
+    [Fact]
     public void CreateNodeFromField_sets_list_header_for_list_skin()
     {
         WpfSkinNode node = WpfSkinLayoutEditor.CreateNodeFromField("viewcount", isListSkin: true);
@@ -109,7 +142,42 @@ public class WpfSkinFieldCatalogTests
     }
 
     [Fact]
-    public void UnusedFields_hides_placed_items()
+    public void TryInsertField_rejects_local_when_plain_thumbnail_exists()
+    {
+        var root = new WpfSkinNode
+        {
+            Panel = "stack",
+            Children = [new WpfSkinNode { Type = "thumbnail" }],
+        };
+
+        Assert.False(WpfSkinLayoutEditor.TryInsertField(
+            root, root, WpfSkinFieldCatalog.ThumbnailLocalId, 1, out _, out string error));
+        Assert.Contains("既に配置", error);
+    }
+
+    [Fact]
+    public void UnusedFields_hides_placed_thumbnail_slots()
+    {
+        var root = new WpfSkinNode
+        {
+            Panel = "stack",
+            Children =
+            [
+                new WpfSkinNode { Type = "thumbnail", Source = "local" },
+                new WpfSkinNode { Type = "thumbnail", Source = "comment1" },
+            ],
+        };
+
+        List<string> unused = WpfSkinFieldCatalog.UnusedFields(root).Select(f => f.Id).ToList();
+
+        Assert.DoesNotContain(WpfSkinFieldCatalog.ThumbnailLocalId, unused);
+        Assert.DoesNotContain(WpfSkinFieldCatalog.ThumbnailJacketId, unused);
+        Assert.Contains("title", unused);
+        Assert.Contains("tags", unused);
+    }
+
+    [Fact]
+    public void UnusedFields_plain_thumbnail_hides_local_allows_jacket()
     {
         var root = new WpfSkinNode
         {
@@ -119,9 +187,46 @@ public class WpfSkinFieldCatalogTests
 
         List<string> unused = WpfSkinFieldCatalog.UnusedFields(root).Select(f => f.Id).ToList();
 
-        Assert.DoesNotContain("thumbnail", unused);
-        Assert.Contains("title", unused);
-        Assert.Contains("tags", unused);
+        Assert.DoesNotContain(WpfSkinFieldCatalog.ThumbnailLocalId, unused);
+        Assert.Contains(WpfSkinFieldCatalog.ThumbnailJacketId, unused);
+    }
+
+    [Fact]
+    public void TryInsertField_allows_jacket_when_plain_thumbnail_exists()
+    {
+        var root = new WpfSkinNode
+        {
+            Panel = "stack",
+            Children = [new WpfSkinNode { Type = "thumbnail" }],
+        };
+
+        Assert.True(WpfSkinLayoutEditor.TryInsertField(
+            root, root, WpfSkinFieldCatalog.ThumbnailJacketId, 1, out WpfSkinNode jacket, out string error));
+        Assert.True(string.IsNullOrEmpty(error));
+        Assert.Equal("comment1", jacket.Source);
+        Assert.Equal(2, root.Children.Count);
+    }
+
+    [Fact]
+    public void SyncSourcesFromLayout_plain_plus_jacket_promotes_local()
+    {
+        var def = new WpfSkinDefinition { Thumbnail = new WpfSkinThumbnail { PreferJacket = true } };
+        var plain = new WpfSkinNode { Type = "thumbnail" };
+        var root = new WpfSkinNode
+        {
+            Panel = "stack",
+            Children =
+            [
+                plain,
+                new WpfSkinNode { Type = "thumbnail", Source = "comment1" },
+            ],
+        };
+
+        WpfSkinThumbnailSources.SyncSourcesFromLayout(def, root);
+
+        Assert.Equal("local", plain.Source);
+        Assert.False(def.Thumbnail.PreferJacket);
+        Assert.Equal(["comment1", "local"], WpfSkinThumbnailSources.Normalize(def.Thumbnail.Sources));
     }
 
     [Fact]
@@ -130,5 +235,25 @@ public class WpfSkinFieldCatalogTests
         Assert.True(WpfSkinFieldCatalog.TryGet("comment1", out WpfSkinFieldDescriptor desc));
         Assert.Equal(WpfSkinFieldKind.Path, desc.Kind);
         Assert.True(WpfSkinFieldCatalog.IsPathField("comment1"));
+    }
+
+    [Fact]
+    public void SyncSourcesFromLayout_from_explicit_nodes()
+    {
+        var def = new WpfSkinDefinition { Thumbnail = new WpfSkinThumbnail { PreferJacket = true } };
+        var root = new WpfSkinNode
+        {
+            Panel = "stack",
+            Children =
+            [
+                new WpfSkinNode { Type = "thumbnail", Source = "local" },
+                new WpfSkinNode { Type = "thumbnail", Source = "comment1" },
+            ],
+        };
+
+        WpfSkinThumbnailSources.SyncSourcesFromLayout(def, root);
+
+        Assert.False(def.Thumbnail.PreferJacket);
+        Assert.Equal(["comment1", "local"], WpfSkinThumbnailSources.Normalize(def.Thumbnail.Sources));
     }
 }

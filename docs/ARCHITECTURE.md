@@ -186,7 +186,7 @@ dotnet publish IndigoMovieManager.csproj -c Release -p:Platform=x64 -p:StandardD
 | DB / モデル | UI 表示名 | 用途 |
 |-------------|-----------|------|
 | `artist` | **メーカー** | DMM 取得時のメーカー名を格納。フィールド名は WhiteBrowser 互換で `artist` のまま |
-| `comment1` | ジャケット表 URL 等 | HTTP(S) URL ならジャケ写として詳細パネル・preferJacket 一覧で表示（一覧はローカル先行→HttpClient 差し替え。ジャケあり時は JSON 幅×ジャケ比で枠高自動。タイムアウトあり） |
+| `comment1` | ジャケット表 URL 等 | HTTP(S) URL ならジャケ写として詳細パネル・preferJacket 一覧・`thumbnail.sources` の comment1 枠で表示（preferJacket はローカル先行→HttpClient 差し替え。sources 有効時は preferJacket より優先。list 型では sources を描画無視だが JSON は保持。ジャケあり時は枠高をジャケ比で自動。タイムアウトあり） |
 | `comment3` | メーカー / レーベル / シリーズ | DMM のメーカー・レーベル・シリーズを連結して格納する場合あり |
 | `title` | タイトル | 作品タイトル |
 | `genre` | ジャンル | ジャンル文字列 |

@@ -1,0 +1,78 @@
+{
+  "$schema": "../skin.schema.json",
+  "name": "JacketLocalSide",
+  "type": "card",
+
+  "surface": {
+    "background": "#FFFFFF"
+  },
+
+  "styles": {
+    "title": { "fontSize": 14, "foreground": "#000000", "bold": true, "wrap": true },
+    "meta":  { "fontSize": 12, "foreground": "#555555", "wrap": true }
+  },
+
+  "thumbnail": {
+    "width": 120,
+    "height": 90,
+    "columns": 5,
+    "rows": 2,
+    "preferJacket": false,
+    "sources": [
+      { "kind": "comment1" },
+      { "kind": "local" }
+    ]
+  },
+
+  "card": {
+    "width": 980,
+    "height": 0,
+    "padding": 8,
+    "stretch": false,
+    "background": "",
+
+    "layout": {
+      "panel": "stack",
+      "stack": "horizontal",
+      "vAlign": "top",
+      "children": [
+        {
+          "type": "thumbnail",
+          "source": "comment1",
+          "width": 360,
+          "height": 203,
+          "vAlign": "top",
+          "hAlign": "left",
+          "margin": "0,0,8,0"
+        },
+        {
+          "panel": "stack",
+          "stack": "vertical",
+          "vAlign": "top",
+          "hAlign": "left",
+          "maxWidth": 600,
+          "children": [
+            {
+              "type": "thumbnail",
+              "source": "local",
+              "width": 600,
+              "height": 180,
+              "vAlign": "top",
+              "hAlign": "left"
+            },
+            {
+              "type": "text",
+              "field": "title",
+              "style": "title",
+              "wrap": true,
+              "margin": "0,6,0,4"
+            },
+            {
+              "type": "tags"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -392,6 +392,35 @@ namespace IndigoMovieManager.UserControls
             }
         }
 
+        private async void ArtistRow_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is not FrameworkElement element || element.Tag is not string keyword)
+            {
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(keyword))
+            {
+                return;
+            }
+
+            IMainWindowActions actions = MainWindowActionsHelper.GetActions(this);
+            if (actions == null)
+            {
+                return;
+            }
+
+            // Ctrl+クリック加算は無効。行全文で artist = 検索。
+            string searchKeyword = BraceFieldSearchBuilder.BuildArtistEquals(keyword);
+            if (string.IsNullOrEmpty(searchKeyword))
+            {
+                return;
+            }
+
+            await actions.SearchByKeywordAsync(searchKeyword).ConfigureAwait(true);
+            e.Handled = true;
+        }
+
         private async void MetadataRow_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             if (sender is not FrameworkElement element || element.Tag is not string keyword)
@@ -410,6 +439,7 @@ namespace IndigoMovieManager.UserControls
                 return;
             }
 
+            // Title 等: Ctrl+クリックで AND 追加は従来どおり。
             string searchKeyword = _ctrlFlg
                 ? (actions.SearchBox.Text ?? "") + " " + keyword
                 : keyword;

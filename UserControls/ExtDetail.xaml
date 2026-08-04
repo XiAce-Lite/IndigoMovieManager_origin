@@ -274,13 +274,14 @@
                 <view:MetadataSlashSearchRow
                     Label="コメント3:"
                     Value="{Binding Comment3}"
+                    ClickSearchMode="Comment3Brace"
                     Visibility="{Binding Comment3, Converter={StaticResource NullOrEmptyToVisibility}}" />
                 <Border
                     HorizontalAlignment="Left"
-                    MouseLeftButtonDown="MetadataRow_MouseLeftButtonDown"
+                    MouseLeftButtonDown="ArtistRow_MouseLeftButtonDown"
                     Style="{StaticResource MetadataRowStyle}"
                     Tag="{Binding Artist}"
-                    ToolTip="{Binding Artist, StringFormat='{}{0}&#10;クリックで検索'}"
+                    ToolTip="{Binding Artist, StringFormat='{}{0}&#10;クリックでメーカー検索'}"
                     Visibility="{Binding Artist, Converter={StaticResource NullOrEmptyToVisibility}}">
                     <StackPanel Orientation="Horizontal">
                         <TextBlock
@@ -300,6 +301,7 @@
                 <view:MetadataSlashSearchRow
                     Label="ジャンル:"
                     Value="{Binding Genre}"
+                    ClickSearchMode="None"
                     Visibility="{Binding Genre, Converter={StaticResource NullOrEmptyToVisibility}}" />
             </StackPanel>
 

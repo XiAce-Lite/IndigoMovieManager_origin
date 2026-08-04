@@ -133,7 +133,10 @@ WQHD で 3 列になっても、カード幅を大きくすれば 2 列運用に
 | キー | 説明 |
 | --- | --- |
 | `width` / `height` | 個別サイズ（省略時は `thumbnail` セクション） |
+| `source` | `local` / `comment1`。枠を分割して同居させるとき指定。省略＝兼用枠（`preferJacket` 時はジャケ差し替え） |
 | `valign: "stretch"` | Grid セルいっぱいに伸ばす |
+
+簡易エディタの項目パレットでは **「サムネイル（ローカル）」** と **「ジャケ写（Comment1）」** が別項目です（各1枠まで）。配置・削除に合わせて `thumbnail.sources` を同期します。`source` 無しの兼用枠はローカル扱い（ジャケ写は未配置のまま追加可＝同居へ）。
 
 ### `tags`
 
@@ -191,7 +194,7 @@ WQHD で 3 列になっても、カード幅を大きくすれば 2 列運用に
 
 ### thumbnail.preferJacket
 
-`true` のとき、一覧は次の順で表示する。
+`true` のとき、一覧は次の順で表示する（**`thumbnail.sources` が有効なときは無視**）。
 
 1. スキンの `thumbnail`（W×H×C×R）で生成した**ローカルサムネを先に表示**（枠サイズは JSON の幅×高さ）
 2. `comment1` が HTTP(S) のジャケ写 URL なら裏で取得し、成功したら**差し替え**（ディスクへは保存しない）
@@ -204,6 +207,23 @@ WQHD で 3 列になっても、カード幅を大きくすれば 2 列運用に
 
 読み込み中はセル下端に細いインジケータ、他の進捗が無いときはステータスバーに「ジャケ写取得中 n 件」を表示する。
 
+### thumbnail.sources
+
+ジャケ写とローカルサムネを**同居**させる（最大 2、`kind` は `local` / `comment1` のみ）。
+
+```json
+"sources": [
+  { "kind": "comment1" },
+  { "kind": "local" }
+]
+```
+
+- **sources 優先**: 有効な sources があるとき `preferJacket` は実行時無視
+- **list 型**: 描画では sources を無視（preferJacket / local のみ）。JSON の sources は**消さない**（card に戻すと同居が復活）
+- `sources: [{ "kind": "comment1" }]` のみ、または分割配置のジャケ枠で URL 無し・取得失敗 → **local をジャケ枠サイズ（既定 360×203）で表示**
+- 2 ソース時にジャケ失敗 → ジャケ枠は local フォールバック（上記）。右の local 枠は通常表示
+- ローカル枠の表示サイズはノードの `width`/`height` を優先（5×2 なら 600×180）。親幅追従で高さを再計算するときはセル×格子を使う
+
 ---
 
 ## 同梱サンプル
@@ -214,6 +234,10 @@ WQHD で 3 列になっても、カード幅を大きくすれば 2 列運用に
 | `BigInfo` | Big風。左サムネ全高 + 右に詳細情報 |
 | `JacketInfo` | BigInfo 系。ジャケ写優先（幅 JSON・高さはジャケ比自動／なしは 360×203）、タグ表示 |
 | `JacketInfo3x2` | JacketInfo 派生。ジャケ写優先＋ローカルは 360×202×3×2 の格子サムネ |
+| `JacketLocalSide` | 左ジャケ（JacketInfo フォールバック 360×203）＋右上 5×2（DefaultBig10）＋右下ファイル名／タグ。`source` で枠を分割 |
+
+骨格テンプレ「構造から」にも同系の **「左ジャケ ＋ 右ローカル（同居）」** あり（生成セル 120×90×5×2＝4:3）。
+
 | `CenterThumb` | 中央サムネ、左右に尺/サイズ、上下にタイトル/タグ |
 | `WideGridInfo` | 大サムネ + 右に詳細情報（WideGrid 風レイアウト） |
 | `DarkModeSample` | DefaultSmall と同一レイアウト。色のみダーク版（`colorProfile: "dark"` のサンプル） |

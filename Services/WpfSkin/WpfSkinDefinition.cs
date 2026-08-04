@@ -47,8 +47,14 @@ namespace IndigoMovieManager.Services.WpfSkin
         /// <summary>
         /// true のとき comment1 のジャケ写 URL を一覧サムネとして表示（保存しない）。
         /// 無い場合のみ通常のローカルサムネを生成・表示する。
+        /// thumbnail.sources が有効なときは実行時無視（sources 優先）。
         /// </summary>
         public bool PreferJacket { get; set; }
+
+        /// <summary>
+        /// 画像ソース一覧（最大2: local / comment1）。list 型では描画時のみ無視し JSON は保持。
+        /// </summary>
+        public List<WpfSkinThumbnailSource> Sources { get; set; }
 
         public double TargetAspect => Height > 0 ? (double)Width / Height : 16.0 / 9.0;
     }
@@ -104,6 +110,12 @@ namespace IndigoMovieManager.Services.WpfSkin
         public string Type { get; set; } = "text";
         public string Field { get; set; } = "";
         public string Label { get; set; } = "";
+
+        /// <summary>
+        /// thumbnail ノードで sources のうちどれを描画するか（local / comment1）。
+        /// 未指定時は有効 sources をすべて横並び（従来）。
+        /// </summary>
+        public string Source { get; set; } = "";
 
         /// <summary>list 型のカラム見出し（ヘッダー行に表示）。</summary>
         public string Header { get; set; } = "";

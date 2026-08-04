@@ -1173,7 +1173,481 @@ namespace IndigoMovieManager.Services.WpfSkin
 
         private static UIElement BuildThumbnail(WpfSkinNode node, WpfSkinDefinition def)
         {
+            string nodeSource = node?.Source?.Trim().ToLowerInvariant() ?? "";
+            bool hasNodeSource = nodeSource is "local" or "comment1";
+
+            if (WpfSkinThumbnailSources.TryGetRenderKinds(def, out IReadOnlyList<string> sourceKinds))
+            {
+                if (hasNodeSource)
+                {
+                    IReadOnlyList<string> filtered = [.. sourceKinds.Where(k =>
+                        string.Equals(k, nodeSource, StringComparison.OrdinalIgnoreCase))];
+                    // sources に無くてもノード source を優先（編集で枠だけ置いた場合）
+                    sourceKinds = filtered.Count > 0 ? filtered : [nodeSource];
+                }
+
+                return BuildThumbnailFromSources(node, def, sourceKinds);
+            }
+
+            // thumbnail.sources 未設定でも、ノードに source があればその kind で描画
+            if (hasNodeSource)
+            {
+                return BuildThumbnailFromSources(node, def, [nodeSource]);
+            }
+
             bool preferJacket = def.Thumbnail?.PreferJacket == true;
+            return BuildThumbnailSingle(node, def, preferJacket);
+        }
+
+        private static UIElement BuildThumbnailFromSources(
+            WpfSkinNode node,
+            WpfSkinDefinition def,
+            IReadOnlyList<string> kinds)
+        {
+            bool trackParentWidth = WpfSkinThumbnailDisplaySize.ShouldTrackParentWidth(node)
+                && !node.Width.HasValue;
+            bool autoHeight = WpfSkinThumbnailDisplaySize.ShouldAutoHeight(node);
+            int count = Math.Max(1, kinds.Count);
+
+            // 各 kind の枠サイズ（ジャケは JacketInfo フォールバック、local はノードまたは生成格子の表示サイズ）
+            var slotSizes = new (double W, double H)[count];
+            double totalW = 0;
+            double maxH = 0;
+            for (int i = 0; i < count; i++)
+            {
+                bool isJacket = string.Equals(kinds[i], WpfSkinThumbnailSources.KindComment1, StringComparison.Ordinal);
+                double w;
+                double h;
+                if (isJacket)
+                {
+                    w = count == 1 && node.Width is > 0
+                        ? node.Width.Value
+                        : WpfSkinThumbnailSources.JacketInfoFallbackWidth;
+                    h = count == 1 && node.Height is > 0
+                        ? node.Height.Value
+                        : WpfSkinThumbnailSources.JacketInfoFallbackHeight;
+                }
+                else
+                {
+                    // local: ノード明示サイズ優先。未指定時はセル×格子の表示サイズ
+                    // （thumbnail.Width/Height はセル寸法。CalcDisplayHeight は総枠参照のためここでは使わない）
+                    w = count == 1 && node.Width is > 0
+                        ? node.Width.Value
+                        : (def.Thumbnail != null
+                            ? def.Thumbnail.Width * Math.Max(1, def.Thumbnail.Columns)
+                            : WpfSkinThumbnailSources.DefaultBig10DisplayWidth);
+                    if (count == 1 && node.Height is > 0)
+                    {
+                        h = node.Height.Value;
+                    }
+                    else if (def.Thumbnail != null)
+                    {
+                        h = def.Thumbnail.Height * Math.Max(1, def.Thumbnail.Rows)
+                            * (w / (def.Thumbnail.Width * Math.Max(1, def.Thumbnail.Columns)));
+                    }
+                    else
+                    {
+                        h = WpfSkinThumbnailSources.DefaultBig10DisplayHeight;
+                    }
+                }
+
+                slotSizes[i] = (w, h);
+                totalW += w;
+                if (h > maxH)
+                {
+                    maxH = h;
+                }
+            }
+
+            if (count == 1 && node.Width is > 0)
+            {
+                totalW = node.Width.Value;
+                slotSizes[0].W = totalW;
+            }
+
+            var row = new Grid { Background = Brushes.Black };
+            for (int i = 0; i < count; i++)
+            {
+                row.ColumnDefinitions.Add(new ColumnDefinition
+                {
+                    Width = new GridLength(slotSizes[i].W, GridUnitType.Pixel),
+                });
+            }
+
+            Label host = null;
+            for (int i = 0; i < count; i++)
+            {
+                string kind = kinds[i];
+                bool isJacket = string.Equals(kind, WpfSkinThumbnailSources.KindComment1, StringComparison.Ordinal);
+                // ジャケ枠が1つのとき、URL 無し／失敗なら local を JacketInfo 枠サイズで表示。
+                // （同居で右に local があっても左は 360×203 枠のフォールバック）
+                bool fallbackLocal = isJacket && count == 1;
+                Label slot = CreateThumbnailSlot(
+                    def,
+                    slotSizes[i].W,
+                    slotSizes[i].H,
+                    isJacket,
+                    fallbackLocal);
+                if (isJacket)
+                {
+                    slot.Tag = WpfSkinThumbnailSources.JacketPlaySlotTag;
+                }
+
+                Grid.SetColumn(slot, i);
+                row.Children.Add(slot);
+                slot.SizeChanged += (_, _) =>
+                {
+                    if (host != null)
+                    {
+                        SyncSourcesRowHeight(host, row);
+                    }
+                };
+            }
+
+            host = new Label
+            {
+                Background = Brushes.Black,
+                Padding = new Thickness(0),
+                ClipToBounds = true,
+                HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                VerticalContentAlignment = VerticalAlignment.Stretch,
+                Content = row,
+                Height = maxH,
+            };
+
+            if (trackParentWidth && count == 1)
+            {
+                host.HorizontalAlignment = HorizontalAlignment.Stretch;
+                host.Width = double.NaN;
+                host.VerticalAlignment = VerticalAlignment.Top;
+                if (autoHeight)
+                {
+                    AttachSourcesParentWidthSync(host, row, def.Thumbnail, count);
+                }
+                else if (maxH > 0)
+                {
+                    host.Height = maxH;
+                    // 幅だけ親追従、高さはノード固定。スロット幅も親に合わせる
+                    AttachSourcesParentWidthFixedHeight(host, row, maxH, count);
+                }
+            }
+            else if (totalW > 0)
+            {
+                host.Width = totalW;
+                host.Height = maxH;
+                host.HorizontalAlignment = HorizontalAlignment.Left;
+                host.VerticalAlignment = VerticalAlignment.Top;
+            }
+
+            ApplyBox(host, node, skipSize: true, def);
+            return host;
+        }
+
+        private static Label CreateThumbnailSlot(
+            WpfSkinDefinition def,
+            double slotW,
+            double localH,
+            bool jacketSlot,
+            bool fallbackToLocal)
+        {
+            var label = new Label
+            {
+                Background = Brushes.Black,
+                Padding = new Thickness(0),
+                ClipToBounds = true,
+                HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                VerticalContentAlignment = VerticalAlignment.Stretch,
+                Width = slotW > 0 ? slotW : double.NaN,
+                Height = localH > 0 ? localH : double.NaN,
+            };
+
+            if (WpfSkinHostContext.ThumbnailDoubleClick != null)
+            {
+                label.MouseDoubleClick += WpfSkinHostContext.ThumbnailDoubleClick;
+            }
+
+            if (WpfSkinHostContext.ThumbnailMouseDown != null)
+            {
+                label.MouseDown += WpfSkinHostContext.ThumbnailMouseDown;
+            }
+
+            var image = new Image { Stretch = Stretch.Uniform };
+            UIElement content = image;
+
+            if (jacketSlot)
+            {
+                var loadingBar = new ProgressBar
+                {
+                    Height = 3,
+                    Minimum = 0,
+                    Maximum = 1,
+                    IsIndeterminate = true,
+                    VerticalAlignment = VerticalAlignment.Bottom,
+                    HorizontalAlignment = HorizontalAlignment.Stretch,
+                    Visibility = Visibility.Collapsed,
+                    Opacity = 0.85,
+                };
+
+                JacketSlotImageBehavior.SetHost(image, label);
+                JacketSlotImageBehavior.SetFrameWidth(image, slotW);
+                JacketSlotImageBehavior.SetLocalFrameHeight(image, localH);
+                JacketSlotImageBehavior.SetFallbackToLocal(image, fallbackToLocal);
+                JacketSlotImageBehavior.SetLocalConverter(image, WpfSkinHostContext.ImageConverter);
+                JacketSlotImageBehavior.SetLoadingIndicator(image, loadingBar);
+                BindingOperations.SetBinding(
+                    image,
+                    JacketSlotImageBehavior.JacketUrlProperty,
+                    new Binding(nameof(MovieRecords.Comment1)));
+                BindingOperations.SetBinding(
+                    image,
+                    JacketSlotImageBehavior.LocalPathProperty,
+                    new Binding(nameof(MovieRecords.ThumbPathWpfSkin)));
+                BindingOperations.SetBinding(
+                    image,
+                    JacketSlotImageBehavior.LocalExistsProperty,
+                    new Binding(nameof(MovieRecords.IsExists)));
+
+                var overlay = new Grid();
+                overlay.Children.Add(image);
+                overlay.Children.Add(loadingBar);
+                content = overlay;
+            }
+            else
+            {
+                var sourceBinding = new MultiBinding
+                {
+                    Converter = new ThumbSourceAdapter(WpfSkinHostContext.ImageConverter),
+                };
+                sourceBinding.Bindings.Add(new Binding(nameof(MovieRecords.ThumbPathWpfSkin)));
+                sourceBinding.Bindings.Add(new Binding(nameof(MovieRecords.IsExists)));
+                image.SetBinding(Image.SourceProperty, sourceBinding);
+
+                double targetAspect = localH > 0 && slotW > 0
+                    ? slotW / localH
+                    : (def.Thumbnail?.TargetAspect > 0 ? def.Thumbnail.TargetAspect : 16.0 / 9.0);
+                image.SetBinding(Image.StretchProperty, new Binding(nameof(Image.Source))
+                {
+                    RelativeSource = new RelativeSource(RelativeSourceMode.Self),
+                    Converter = WpfSkinHostContext.AspectConverter,
+                    ConverterParameter = targetAspect,
+                });
+                image.Stretch = Stretch.UniformToFill;
+                image.HorizontalAlignment = HorizontalAlignment.Center;
+                image.VerticalAlignment = VerticalAlignment.Center;
+            }
+
+            if (WpfSkinHostContext.ItemContextMenu != null)
+            {
+                image.ContextMenu = WpfSkinHostContext.ItemContextMenu;
+            }
+
+            if (WpfSkinHostContext.ThumbnailRightDown != null)
+            {
+                image.PreviewMouseRightButtonDown += WpfSkinHostContext.ThumbnailRightDown;
+            }
+
+            label.Content = content;
+            return label;
+        }
+
+        private static void SyncSourcesRowHeight(FrameworkElement host, Grid row)
+        {
+            if (host == null || row == null)
+            {
+                return;
+            }
+
+            double maxH = 0;
+            foreach (UIElement child in row.Children)
+            {
+                if (child is FrameworkElement fe)
+                {
+                    double h = fe.ActualHeight > 1 ? fe.ActualHeight : fe.Height;
+                    if (!double.IsNaN(h) && h > maxH)
+                    {
+                        maxH = h;
+                    }
+                }
+            }
+
+            if (maxH < 1)
+            {
+                return;
+            }
+
+            if (double.IsNaN(host.Height) || Math.Abs(host.Height - maxH) > 0.5)
+            {
+                host.Height = maxH;
+            }
+
+            foreach (UIElement child in row.Children)
+            {
+                if (child is FrameworkElement fe
+                    && (double.IsNaN(fe.Height) || Math.Abs(fe.Height - maxH) > 0.5))
+                {
+                    fe.Height = maxH;
+                }
+            }
+        }
+
+        private static void AttachSourcesParentWidthFixedHeight(
+            FrameworkElement host,
+            Grid row,
+            double fixedHeight,
+            int slotCount)
+        {
+            void ApplyFromWidth()
+            {
+                double aw = host.ActualWidth;
+                if (aw < 1 || slotCount < 1)
+                {
+                    return;
+                }
+
+                host.Height = fixedHeight;
+                host.ClearValue(FrameworkElement.WidthProperty);
+                host.HorizontalAlignment = HorizontalAlignment.Stretch;
+
+                double slotW = aw / slotCount;
+                foreach (UIElement child in row.Children)
+                {
+                    if (child is not Label slot)
+                    {
+                        continue;
+                    }
+
+                    slot.Width = slotW;
+                    slot.Height = fixedHeight;
+                    if (FindDescendantImage(slot) is Image img
+                        && slot.Tag as string == WpfSkinThumbnailSources.JacketPlaySlotTag)
+                    {
+                        JacketSlotImageBehavior.SetFrameWidth(img, slotW);
+                        JacketSlotImageBehavior.SetLocalFrameHeight(img, fixedHeight);
+                    }
+                }
+            }
+
+            host.Loaded += (_, _) => ApplyFromWidth();
+            host.SizeChanged += (_, e) =>
+            {
+                if (Math.Abs(e.NewSize.Width - e.PreviousSize.Width) < 0.5)
+                {
+                    return;
+                }
+
+                ApplyFromWidth();
+            };
+        }
+
+        private static void AttachSourcesParentWidthSync(
+            FrameworkElement host,
+            Grid row,
+            WpfSkinThumbnail thumb,
+            int slotCount)
+        {
+            void ApplyFromWidth()
+            {
+                double aw = host.ActualWidth;
+                if (aw < 1 || slotCount < 1)
+                {
+                    return;
+                }
+
+                double newH = WpfSkinThumbnailDisplaySize.CalcDisplayHeight(aw, thumb);
+                if (newH < 1)
+                {
+                    return;
+                }
+
+                if (double.IsNaN(host.Height) || Math.Abs(host.Height - newH) > 0.5)
+                {
+                    host.Height = newH;
+                }
+
+                host.ClearValue(FrameworkElement.WidthProperty);
+                host.HorizontalAlignment = HorizontalAlignment.Stretch;
+
+                double slotW = aw / slotCount;
+                foreach (UIElement child in row.Children)
+                {
+                    if (child is not Label slot)
+                    {
+                        continue;
+                    }
+
+                    slot.Width = slotW;
+                    // 高さは高い方に合わせる: ローカル格子高を基準にしつつ、ジャケ枠は Behavior 側で伸ばし得る
+                    if (slot.Tag as string != WpfSkinThumbnailSources.JacketPlaySlotTag)
+                    {
+                        slot.Height = newH;
+                    }
+
+                    if (FindDescendantImage(slot) is Image img
+                        && slot.Tag as string == WpfSkinThumbnailSources.JacketPlaySlotTag)
+                    {
+                        JacketSlotImageBehavior.SetFrameWidth(img, slotW);
+                        JacketSlotImageBehavior.SetLocalFrameHeight(img, newH);
+                    }
+                }
+
+                // 行全体の高さ = 各スロット高さの max
+                double maxSlotH = newH;
+                foreach (UIElement child in row.Children)
+                {
+                    if (child is FrameworkElement fe && fe.Height > maxSlotH)
+                    {
+                        maxSlotH = fe.Height;
+                    }
+                }
+
+                if (Math.Abs(host.Height - maxSlotH) > 0.5)
+                {
+                    host.Height = maxSlotH;
+                }
+
+                foreach (UIElement child in row.Children)
+                {
+                    if (child is FrameworkElement fe)
+                    {
+                        fe.Height = maxSlotH;
+                    }
+                }
+            }
+
+            host.Loaded += (_, _) => ApplyFromWidth();
+            host.SizeChanged += (_, e) =>
+            {
+                if (Math.Abs(e.NewSize.Width - e.PreviousSize.Width) < 0.5)
+                {
+                    return;
+                }
+
+                ApplyFromWidth();
+            };
+        }
+
+        private static Image FindDescendantImage(DependencyObject root)
+        {
+            if (root is Image image)
+            {
+                return image;
+            }
+
+            int n = System.Windows.Media.VisualTreeHelper.GetChildrenCount(root);
+            for (int i = 0; i < n; i++)
+            {
+                Image found = FindDescendantImage(System.Windows.Media.VisualTreeHelper.GetChild(root, i));
+                if (found != null)
+                {
+                    return found;
+                }
+            }
+
+            return null;
+        }
+
+        private static UIElement BuildThumbnailSingle(WpfSkinNode node, WpfSkinDefinition def, bool preferJacket)
+        {
             bool trackParentWidth = WpfSkinThumbnailDisplaySize.ShouldTrackParentWidth(node);
             bool autoHeight = WpfSkinThumbnailDisplaySize.ShouldAutoHeight(node);
 

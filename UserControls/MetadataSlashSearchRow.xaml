@@ -19,16 +19,19 @@
                 </Trigger>
             </Style.Triggers>
         </Style>
+        <Style x:Key="MetadataSegmentPlainStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{DynamicResource MaterialDesign.Brush.Foreground}" />
+            <Setter Property="Cursor" Value="Arrow" />
+            <Setter Property="TextDecorations" Value="{x:Null}" />
+        </Style>
         <Style x:Key="MetadataSeparatorStyle" TargetType="TextBlock">
             <Setter Property="FontSize" Value="12" />
             <Setter Property="Foreground" Value="{DynamicResource MaterialDesign.Brush.Foreground}" />
             <Setter Property="Text" Value=" / " />
         </Style>
     </UserControl.Resources>
-    <DockPanel
-        LastChildFill="True"
-        PreviewKeyDown="MetadataSlashSearchRow_PreviewKeyDown"
-        PreviewKeyUp="MetadataSlashSearchRow_PreviewKeyUp">
+    <DockPanel LastChildFill="True">
         <TextBlock
             x:Name="LabelText"
             Width="72"

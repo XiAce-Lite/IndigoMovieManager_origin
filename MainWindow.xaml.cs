@@ -5523,6 +5523,16 @@ namespace IndigoMovieManager
             {
                 // DataGridの選択状態を強制的にセット
                 WpfSkinList.SelectedItem = record;
+
+                // sources 同居のジャケ枠は先頭再生（格子ヒットしない）
+                if (label.Tag as string == WpfSkinThumbnailSources.JacketPlaySlotTag)
+                {
+                    lbClickPoint = new System.Windows.Point(0, 0);
+                    _lastClickedThumbImage = null;
+                    _lastThumbClickValid = false;
+                    return;
+                }
+
                 lbClickPoint = e.GetPosition(label);
                 _lastClickedThumbImage = FindDescendant<System.Windows.Controls.Image>(label);
                 if (_lastClickedThumbImage != null)
