@@ -10,8 +10,8 @@
     <ApplicationIcon>Assets\app-icon.ico</ApplicationIcon>
     <Platforms>AnyCPU;x64</Platforms>
     <PlatformTarget>AnyCPU</PlatformTarget>
-    <FileVersion>1.0.0.90</FileVersion>
-    <AssemblyVersion>1.0.0.90</AssemblyVersion>
+    <FileVersion>1.0.0.91</FileVersion>
+    <AssemblyVersion>1.0.0.91</AssemblyVersion>
     <SupportedOSPlatformVersion>7.0</SupportedOSPlatformVersion>
   </PropertyGroup>
 
