@@ -465,6 +465,23 @@ namespace IndigoMovieManager
             JacketPreviewHint.Visibility = Visibility.Collapsed;
         }
 
+        private void JacketPreviewImage_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.ClickCount != 1)
+            {
+                return;
+            }
+
+            ImageSource source = JacketPreviewImage.Source;
+            if (source == null)
+            {
+                return;
+            }
+
+            JacketLightboxWindow.Show(this, source);
+            e.Handled = true;
+        }
+
         private async void PlayButton_Click(object sender, RoutedEventArgs e)
         {
             if (string.IsNullOrWhiteSpace(_record.Movie_Path) || !Path.Exists(_record.Movie_Path))
