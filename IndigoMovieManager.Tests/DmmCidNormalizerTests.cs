@@ -14,6 +14,8 @@ public class DmmCidNormalizerTests
     [InlineData("abcd-123_extra.mp4", "abcd-123", "1abcd00123")]
     [InlineData("abcd-123a.mp4", "abcd-123", "1abcd00123")]
     [InlineData("xxxx-024b.mp4", "xxxx-024", "xxxx024")]
+    [InlineData("529abcd-123.mp4", "abcd-123", "529abcd00123")]
+    [InlineData("118efgh-456", "efgh-456", "118efgh00456")]
     public void ExtractFromFileName_builds_expected_candidates(
         string fileName,
         string expectedProductCode,
@@ -25,6 +27,17 @@ public class DmmCidNormalizerTests
         Assert.Equal(expectedProductCode, result.ProductCode);
         Assert.Contains(expectedCid, result.CidCandidates);
         Assert.Equal(expectedProductCode.Replace('-', ' '), result.SpaceForm);
+    }
+
+    [Fact]
+    public void ExtractFromFileName_keeps_channel_prefix_and_space_form()
+    {
+        DmmCidNormalizer.ExtractResult result = DmmCidNormalizer.ExtractFromFileName("529abcd-123.mp4");
+
+        Assert.Equal("abcd-123", result.ProductCode);
+        Assert.Equal("abcd 123", result.SpaceForm);
+        Assert.Equal("529", result.ChannelPrefix);
+        Assert.Equal("529abcd00123", result.CidCandidates[0]);
     }
 
     [Fact]
@@ -73,7 +86,8 @@ public class DmmCidNormalizerTests
 
     [Theory]
     [InlineData("1abcd000030", "abcd-030", "1abcd000030")]
-    [InlineData("abcd000030", "abcd-000030", "1abcd000030")]
+    [InlineData("abcd000030", "abcd-030", "1abcd000030")]
+    [InlineData("529abcd00123", "abcd-123", "529abcd00123")]
     public void ExtractFromSearchInput_accepts_direct_content_id(
         string searchInput,
         string expectedProductCode,

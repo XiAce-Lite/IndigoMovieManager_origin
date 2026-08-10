@@ -31,10 +31,10 @@ namespace IndigoMovieManager.Tests
         }
 
         [Fact]
-        public void ShouldTrackParentWidth_thumbnail_always_tracks()
+        public void ShouldTrackParentWidth_only_when_width_absent()
         {
             Assert.True(WpfSkinThumbnailDisplaySize.ShouldTrackParentWidth(new WpfSkinNode { Type = "thumbnail" }));
-            Assert.True(WpfSkinThumbnailDisplaySize.ShouldTrackParentWidth(new WpfSkinNode { Type = "thumbnail", Width = 160 }));
+            Assert.False(WpfSkinThumbnailDisplaySize.ShouldTrackParentWidth(new WpfSkinNode { Type = "thumbnail", Width = 160 }));
             Assert.False(WpfSkinThumbnailDisplaySize.ShouldTrackParentWidth(new WpfSkinNode { Type = "text", Width = 160 }));
             Assert.True(WpfSkinThumbnailDisplaySize.ShouldTrackParentWidth(new WpfSkinNode { Type = "text" }));
         }

@@ -8,17 +8,19 @@ namespace IndigoMovieManager.Services.Dmm
     /// </summary>
     internal static partial class DmmCidNormalizer
     {
-        // 英字+区切り+数字（任意で末尾1英字: abcd-123 / abcd-123a / abcd 123）
+        // 任意の配信コード接頭辞(1〜4桁) + 英字メーカー + 区切り + 数字
+        // 例: abcd-123 / abcd-123a / abcd 123 / 529abcd-123
         [GeneratedRegex(
-            @"(?<![A-Za-z0-9])(?<maker>[A-Za-z]{2,10})[-_ ]?(?<num>\d{2,6})(?<branch>[A-Za-z])?(?![A-Za-z0-9])",
+            @"(?<![A-Za-z0-9])(?<prefix>\d{1,4})?(?<maker>[A-Za-z]{2,10})[-_ ]?(?<num>\d{2,6})(?<branch>[A-Za-z])?(?![A-Za-z0-9])",
             RegexOptions.CultureInvariant)]
         private static partial Regex ProductCodeRegex();
 
         [GeneratedRegex(@"([-_]?(cd|part|disc)\d+|[-_][a-z])$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
         private static partial Regex TrailingBranchRegex();
 
+        // 先頭の配信コード(1〜4桁)を許容（従来の任意 1 も含む）
         [GeneratedRegex(
-            @"^1?(?<maker>[A-Za-z]{2,10})(?<num>\d{2,6})(?<branch>[A-Za-z])?$",
+            @"^(?<prefix>\d{1,4})?(?<maker>[A-Za-z]{2,10})(?<num>\d{2,6})(?<branch>[A-Za-z])?$",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
         private static partial Regex DirectContentIdRegex();
 
@@ -29,6 +31,8 @@ namespace IndigoMovieManager.Services.Dmm
             public string SpaceForm { get; init; }
             /// <summary>数字直後の枝番英字（例: a / b）。無いときは null。</summary>
             public string BranchLetter { get; init; }
+            /// <summary>ファイル名先頭などに付く配信コード（例: 529）。無いときは null。</summary>
+            public string ChannelPrefix { get; init; }
             public IReadOnlyList<string> CidCandidates { get; init; }
 
             public bool HasProductCode => !string.IsNullOrEmpty(ProductCode);
@@ -57,62 +61,31 @@ namespace IndigoMovieManager.Services.Dmm
                 return new ExtractResult { ProductCode = null, CidCandidates = [] };
             }
 
-            string maker = match.Groups["maker"].Value.ToLowerInvariant();
-            string num = match.Groups["num"].Value;
-            string branch = match.Groups["branch"].Success
-                ? match.Groups["branch"].Value.ToLowerInvariant()
-                : null;
-            string hyphenForm = $"{maker}-{num}";
-            string spaceForm = $"{maker} {num}";
-
-            return new ExtractResult
-            {
-                ProductCode = hyphenForm,
-                SpaceForm = spaceForm,
-                BranchLetter = branch,
-                CidCandidates = BuildCidCandidates(maker, num),
-            };
+            return BuildExtractResult(match, normalizeNumber: false);
         }
 
         public static ExtractResult ExtractFromSearchInput(string searchInput)
         {
-            ExtractResult extracted = ExtractFromFileName(searchInput);
-            if (extracted.HasProductCode)
-            {
-                return extracted;
-            }
-
             string body = NormalizeBody(searchInput);
             if (string.IsNullOrEmpty(body))
             {
-                return extracted;
+                return new ExtractResult { ProductCode = null, CidCandidates = [] };
             }
 
-            Match match = DirectContentIdRegex().Match(body);
-            if (!match.Success)
+            // コンパクト CID（1abcd000030 / 529abcd00123）は番号を正規化して返す
+            Match direct = DirectContentIdRegex().Match(body);
+            if (direct.Success)
             {
-                return extracted;
+                return BuildExtractResult(direct, normalizeNumber: true);
             }
 
-            string maker = match.Groups["maker"].Value.ToLowerInvariant();
-            string num = match.Groups["num"].Value;
-            string branch = match.Groups["branch"].Success
-                ? match.Groups["branch"].Value.ToLowerInvariant()
-                : null;
-            string productNumber = NormalizeProductNumber(num);
-            string hyphenForm = $"{maker}-{productNumber}";
-            string spaceForm = $"{maker} {productNumber}";
-
-            return new ExtractResult
-            {
-                ProductCode = hyphenForm,
-                SpaceForm = spaceForm,
-                BranchLetter = branch,
-                CidCandidates = BuildCidCandidates(maker, num),
-            };
+            return ExtractFromFileName(searchInput);
         }
 
-        public static IReadOnlyList<string> BuildCidCandidates(string makerLower, string numberDigits)
+        public static IReadOnlyList<string> BuildCidCandidates(
+            string makerLower,
+            string numberDigits,
+            string channelPrefix = null)
         {
             string maker = (makerLower ?? "").Trim().ToLowerInvariant();
             string num = (numberDigits ?? "").Trim();
@@ -124,6 +97,7 @@ namespace IndigoMovieManager.Services.Dmm
             string padded5 = num.PadLeft(5, '0');
             string padded6 = num.PadLeft(6, '0');
             string padded3 = num.Length >= 3 ? num : num.PadLeft(3, '0');
+            string prefix = (channelPrefix ?? "").Trim();
 
             var candidates = new List<string>();
             void Add(string value)
@@ -139,6 +113,14 @@ namespace IndigoMovieManager.Services.Dmm
                 }
             }
 
+            // ファイルから取れた配信コード付きを優先（例: 529abcd00123）
+            if (prefix.Length > 0)
+            {
+                Add(prefix + maker + padded5);
+                Add(prefix + maker + padded6);
+                Add(prefix + maker + num);
+            }
+
             // 実測ベースの優先順（例: maker=abcd / num=123）
             Add("1" + maker + padded5);          // 1abcd00123
             Add(maker + padded5);                // abcd00123
@@ -151,6 +133,31 @@ namespace IndigoMovieManager.Services.Dmm
             Add(maker + "-" + padded6);          // abcd-000123
 
             return candidates;
+        }
+
+        private static ExtractResult BuildExtractResult(Match match, bool normalizeNumber)
+        {
+            string maker = match.Groups["maker"].Value.ToLowerInvariant();
+            string num = match.Groups["num"].Value;
+            string branch = match.Groups["branch"].Success
+                ? match.Groups["branch"].Value.ToLowerInvariant()
+                : null;
+            string prefix = match.Groups["prefix"].Success
+                ? match.Groups["prefix"].Value
+                : null;
+
+            string productNumber = normalizeNumber ? NormalizeProductNumber(num) : num;
+            string hyphenForm = $"{maker}-{productNumber}";
+            string spaceForm = $"{maker} {productNumber}";
+
+            return new ExtractResult
+            {
+                ProductCode = hyphenForm,
+                SpaceForm = spaceForm,
+                BranchLetter = branch,
+                ChannelPrefix = prefix,
+                CidCandidates = BuildCidCandidates(maker, num, prefix),
+            };
         }
 
         private static string NormalizeProductNumber(string digits)

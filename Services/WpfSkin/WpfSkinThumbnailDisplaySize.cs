@@ -41,19 +41,14 @@ namespace IndigoMovieManager.Services.WpfSkin
         }
 
         /// <summary>
-        /// サムネは常に親セル幅に追従する（ノードの width 固定だとスプリッターで縮まないため）。
-        /// その他ノードは明示 Width が無いときだけ追従。
+        /// 明示 Width が無いとき親セル幅に追従する。
+        /// サムネも同様（明示幅は作者指定の枠を優先し、列余白はカード背景のまま残す）。
         /// </summary>
         public static bool ShouldTrackParentWidth(WpfSkinNode node)
         {
             if (node == null)
             {
                 return false;
-            }
-
-            if (string.Equals(node.Type, "thumbnail", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
             }
 
             return !node.Width.HasValue;

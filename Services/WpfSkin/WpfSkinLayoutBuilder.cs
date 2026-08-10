@@ -1204,8 +1204,7 @@ namespace IndigoMovieManager.Services.WpfSkin
             WpfSkinDefinition def,
             IReadOnlyList<string> kinds)
         {
-            bool trackParentWidth = WpfSkinThumbnailDisplaySize.ShouldTrackParentWidth(node)
-                && !node.Width.HasValue;
+            bool trackParentWidth = WpfSkinThumbnailDisplaySize.ShouldTrackParentWidth(node);
             bool autoHeight = WpfSkinThumbnailDisplaySize.ShouldAutoHeight(node);
             int count = Math.Max(1, kinds.Count);
 
@@ -1265,7 +1264,8 @@ namespace IndigoMovieManager.Services.WpfSkin
                 slotSizes[0].W = totalW;
             }
 
-            var row = new Grid { Background = Brushes.Black };
+            Brush slotBackground = trackParentWidth ? Brushes.Transparent : Brushes.Black;
+            var row = new Grid { Background = slotBackground };
             for (int i = 0; i < count; i++)
             {
                 row.ColumnDefinitions.Add(new ColumnDefinition
@@ -1287,7 +1287,8 @@ namespace IndigoMovieManager.Services.WpfSkin
                     slotSizes[i].W,
                     slotSizes[i].H,
                     isJacket,
-                    fallbackLocal);
+                    fallbackLocal,
+                    slotBackground);
                 if (isJacket)
                 {
                     slot.Tag = WpfSkinThumbnailSources.JacketPlaySlotTag;
@@ -1306,7 +1307,7 @@ namespace IndigoMovieManager.Services.WpfSkin
 
             host = new Label
             {
-                Background = Brushes.Black,
+                Background = slotBackground,
                 Padding = new Thickness(0),
                 ClipToBounds = true,
                 HorizontalContentAlignment = HorizontalAlignment.Stretch,
@@ -1348,11 +1349,12 @@ namespace IndigoMovieManager.Services.WpfSkin
             double slotW,
             double localH,
             bool jacketSlot,
-            bool fallbackToLocal)
+            bool fallbackToLocal,
+            Brush background = null)
         {
             var label = new Label
             {
-                Background = Brushes.Black,
+                Background = background ?? Brushes.Black,
                 Padding = new Thickness(0),
                 ClipToBounds = true,
                 HorizontalContentAlignment = HorizontalAlignment.Stretch,
@@ -1664,7 +1666,8 @@ namespace IndigoMovieManager.Services.WpfSkin
 
             var label = new Label
             {
-                Background = Brushes.Black,
+                // 親幅追従時は余白をカード背景に任せる（黒帯に見せない）
+                Background = trackParentWidth ? Brushes.Transparent : Brushes.Black,
                 Padding = new Thickness(0),
                 ClipToBounds = true,
                 HorizontalContentAlignment = HorizontalAlignment.Stretch,
