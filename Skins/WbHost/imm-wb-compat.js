@@ -12,6 +12,7 @@
 
     const DOM_BATCH = 48;
     let appendScheduled = false;
+    let pendingScrollTop = null;
 
     function post(message) {
         if (window.chrome && window.chrome.webview) {
@@ -153,16 +154,52 @@
         let index = 0;
         function step() {
             appendScheduled = false;
-            if (!window.wb || index >= items.length) return;
+            if (!window.wb || index >= items.length) {
+                restorePendingScroll();
+                return;
+            }
             const end = Math.min(index + DOM_BATCH, items.length);
             renderRange(items.slice(index, end), false);
             index = end;
+            restorePendingScroll();
             if (index < items.length) {
                 appendScheduled = true;
                 requestAnimationFrame(step);
             }
         }
         requestAnimationFrame(step);
+    }
+
+    function restorePendingScroll() {
+        if (pendingScrollTop == null) {
+            return;
+        }
+
+        const sc = scrollContainer();
+        if (!sc) {
+            return;
+        }
+
+        sc.scrollTop = pendingScrollTop;
+        ensureFocusedVisible();
+
+        // バッチ描画で高さが足りない間は保持し、到達できたら解除
+        const maxScroll = Math.max(0, sc.scrollHeight - sc.clientHeight);
+        if (maxScroll >= pendingScrollTop - 1) {
+            pendingScrollTop = null;
+        }
+    }
+
+    function ensureFocusedVisible() {
+        const id = state.focusedId;
+        if (!id) {
+            return;
+        }
+
+        const el = document.getElementById(thumId(id));
+        if (el && typeof el.scrollIntoView === "function") {
+            el.scrollIntoView({ block: "nearest", inline: "nearest" });
+        }
     }
 
     function applyHostSelection(ids, focusedId) {
@@ -338,6 +375,11 @@
         if (!msg || !msg.type) return;
 
         if (msg.type === "wbRender") {
+            const sc = scrollContainer();
+            if (msg.reset && sc) {
+                pendingScrollTop = sc.scrollTop;
+            }
+
             const items = msg.items || [];
             if (msg.reset) {
                 storeItems(items, true);
@@ -352,6 +394,7 @@
                 renderRange(items, false);
             }
             if (msg.selectedIds) applyHostSelection(msg.selectedIds, msg.focusedId);
+            requestAnimationFrame(() => restorePendingScroll());
         } else if (msg.type === "wbSelection") {
             applyHostSelection(msg.ids || [], msg.focusedId);
         } else if (msg.type === "wbUpdateThum") {

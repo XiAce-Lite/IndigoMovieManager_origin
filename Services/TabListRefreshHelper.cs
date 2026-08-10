@@ -9,7 +9,7 @@ namespace IndigoMovieManager.Services
             switch (engine)
             {
                 case SkinEngine.Wpf:
-                    views.WpfSkinList.Items.Refresh();
+                    ListScrollPreserver.RefreshListViewPreservingScroll(views.WpfSkinList);
                     break;
                 case SkinEngine.Wb:
                     views.SkinViewGridWb.RenderItems(

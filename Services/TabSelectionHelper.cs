@@ -86,7 +86,7 @@ namespace IndigoMovieManager.Services
         {
             if (views.CurrentSkinEngine == SkinEngine.Wpf)
             {
-                views.WpfSkinList.Items.Refresh();
+                ListScrollPreserver.RefreshListViewPreservingScroll(views.WpfSkinList);
             }
             else
             {
