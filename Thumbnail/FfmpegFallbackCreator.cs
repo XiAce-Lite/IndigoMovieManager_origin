@@ -49,11 +49,9 @@ namespace IndigoMovieManager.Thumbnail
                 }
             }
 
-            ThumbnailCreateResult perPanelResult = await TryCreatePerPanelSeekAsync(
-                ctx,
-                thumbInfo,
-                ffmpegExePath,
-                cts).ConfigureAwait(false);
+            ThumbnailCreateResult perPanelResult = await FfmpegCoarseSeekCreator
+                .TryCreateAsync(ctx, thumbInfo, ffmpegExePath, cts)
+                .ConfigureAwait(false);
 
             if (perPanelResult.Success)
             {
@@ -79,97 +77,6 @@ namespace IndigoMovieManager.Thumbnail
             }
 
             return ThumbnailCreateResult.Failed(reason);
-        }
-
-        /// <summary>
-        /// OpenCV と同様に、各パネル秒へシークして 1 枚ずつ取得し、タイル合成する。
-        /// </summary>
-        private static async Task<ThumbnailCreateResult> TryCreatePerPanelSeekAsync(
-            ThumbnailJobContext ctx,
-            ThumbInfo thumbInfo,
-            string ffmpegExePath,
-            CancellationToken cts
-        )
-        {
-            int panelCount = thumbInfo.ThumbSec.Count;
-            int cols = ctx.TabInfo.Columns;
-            int rows = ctx.TabInfo.Rows;
-            if (panelCount < 1 || cols < 1 || rows < 1)
-            {
-                return ThumbnailCreateResult.Failed("invalid panel configuration");
-            }
-
-            DeleteOldTempPanelFiles(ctx);
-
-            List<string> panelPaths = [];
-            (int targetWidth, int targetHeight) = ResolveTargetSize(ctx);
-            int jpegQuality = ResolveJpegQuality();
-            string vf = BuildAspectFillCropFilter(targetWidth, targetHeight);
-            string lastError = "per-panel extract failed";
-            string decoderLabel = "";
-
-            try
-            {
-                for (int i = 0; i < panelCount; i++)
-                {
-                    string saveFile = Path.Combine(ctx.TempPath, $"tn_{ctx.TempFileBody}{i:D2}.jpg");
-                    if (File.Exists(saveFile))
-                    {
-                        File.Delete(saveFile);
-                    }
-
-                    string seekText = Math.Max(0, thumbInfo.ThumbSec[i])
-                        .ToString("0.###", CultureInfo.InvariantCulture);
-                    (bool ok, string stderr, string panelDecoder) = await RunFfmpegWithHardwareFallbackAsync(
-                            ffmpegExePath,
-                            hwMode => BuildExtractArgs(
-                                hwMode,
-                                seekText,
-                                ctx.MovieFullPath,
-                                jpegQuality,
-                                vf,
-                                saveFile),
-                            PerPanelTimeout,
-                            cts)
-                        .ConfigureAwait(false);
-
-                    if (!ok || !File.Exists(saveFile))
-                    {
-                        lastError = string.IsNullOrWhiteSpace(stderr) ? lastError : stderr;
-                        return ThumbnailCreateResult.Failed(lastError, "FFmpeg", panelDecoder);
-                    }
-
-                    if (string.IsNullOrEmpty(decoderLabel))
-                    {
-                        decoderLabel = panelDecoder;
-                    }
-
-                    panelPaths.Add(saveFile);
-                }
-
-                using Bitmap bmp = ConcatImages(panelPaths, cols, rows);
-                if (bmp == null)
-                {
-                    return ThumbnailCreateResult.Failed("ffmpeg per-panel concat failed");
-                }
-
-                if (File.Exists(ctx.SaveThumbFileName))
-                {
-                    File.Delete(ctx.SaveThumbFileName);
-                }
-
-                bmp.Save(ctx.SaveThumbFileName, ImageFormat.Jpeg);
-                ThumbnailMetadataWriter.AppendMetadata(ctx.SaveThumbFileName, thumbInfo);
-                return ThumbnailCreateResult.Succeeded(panelPaths, "FFmpeg", decoderLabel);
-            }
-            catch (Exception ex)
-            {
-                return ThumbnailCreateResult.Failed(ex.Message);
-            }
-            finally
-            {
-                CleanupTempPanelFiles(ctx);
-            }
         }
 
         /// <summary>
@@ -404,38 +311,6 @@ namespace IndigoMovieManager.Thumbnail
             return
                 $"scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,"
                 + $"crop={width}:{height},setsar=1";
-        }
-
-        private static void DeleteOldTempPanelFiles(ThumbnailJobContext ctx)
-        {
-            string[] oldTempFiles = Directory.GetFiles(
-                ctx.TempPath,
-                $"*{ctx.TempFileBody}*.jpg",
-                SearchOption.TopDirectoryOnly
-            );
-            foreach (string oldFile in oldTempFiles)
-            {
-                if (File.Exists(oldFile))
-                {
-                    File.Delete(oldFile);
-                }
-            }
-        }
-
-        private static void CleanupTempPanelFiles(ThumbnailJobContext ctx)
-        {
-            string[] oldTempFiles = Directory.GetFiles(
-                ctx.TempPath,
-                $"*{ctx.TempFileBody}*.jpg",
-                SearchOption.TopDirectoryOnly
-            );
-            foreach (string oldFile in oldTempFiles)
-            {
-                if (File.Exists(oldFile))
-                {
-                    File.Delete(oldFile);
-                }
-            }
         }
 
         private static int ResolveJpegQuality()

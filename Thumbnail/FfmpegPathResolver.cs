@@ -7,6 +7,10 @@ namespace IndigoMovieManager.Thumbnail
         private const string ExePathEnvName = "IMM_FFMPEG_EXE_PATH";
         private const string ForceFfmpegEnvName = "IMM_FORCE_FFMPEG";
         private const string ThumbEngineEnvName = "IMM_THUMB_ENGINE";
+        private const string AutoEngineEnvName = "IMM_THUMB_AUTO_ENGINE";
+
+        /// <summary>ベンチ結果: DivCount がこの値以下の自動サムネのみ coarse seek を OpenCV より先に試す。</summary>
+        internal const int AutoCoarseSeekMaxDivCount = 4;
 
         public static string GetThumbEngineMode()
         {
@@ -23,6 +27,27 @@ namespace IndigoMovieManager.Thumbnail
         {
             string mode = Environment.GetEnvironmentVariable(ForceFfmpegEnvName)?.Trim() ?? "";
             return mode is "1" or "true" or "on" or "yes";
+        }
+
+        /// <summary>
+        /// 自動サムネで粗い独立 seek（FFmpeg）を OpenCV より先に試すか。
+        /// <paramref name="divCount"/> が <see cref="AutoCoarseSeekMaxDivCount"/> 以下のときのみ true。
+        /// <c>IMM_THUMB_AUTO_ENGINE=opencv</c> で従来どおり OpenCV 優先に戻せる。
+        /// </summary>
+        public static bool IsAutoCoarseSeekPreferred(int divCount)
+        {
+            string mode = Environment.GetEnvironmentVariable(AutoEngineEnvName)?.Trim() ?? "";
+            if (mode is "opencv" or "0" or "off" or "false" or "no")
+            {
+                return false;
+            }
+
+            if (divCount < 1 || divCount > AutoCoarseSeekMaxDivCount)
+            {
+                return false;
+            }
+
+            return IsFallbackEnabled();
         }
 
         public static bool IsFallbackEnabled()
@@ -74,6 +99,12 @@ namespace IndigoMovieManager.Thumbnail
                 }
             }
 
+            if (TryResolveFromPathEnvironment("ffmpeg.exe", out string fromPath))
+            {
+                ffmpegExePath = fromPath;
+                return true;
+            }
+
             return false;
         }
 
@@ -97,6 +128,46 @@ namespace IndigoMovieManager.Thumbnail
                 {
                     ffprobeExePath = candidate;
                     return true;
+                }
+            }
+
+            if (TryResolveFromPathEnvironment("ffprobe.exe", out string fromPath))
+            {
+                ffprobeExePath = fromPath;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryResolveFromPathEnvironment(string fileName, out string resolvedPath)
+        {
+            resolvedPath = "";
+            string pathEnv = Environment.GetEnvironmentVariable("PATH") ?? "";
+            foreach (string dir in pathEnv.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+            {
+                string trimmed = dir.Trim().Trim('"');
+                if (string.IsNullOrEmpty(trimmed))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    string candidate = Path.Combine(trimmed, fileName);
+                    if (File.Exists(candidate))
+                    {
+                        resolvedPath = Path.GetFullPath(candidate);
+                        return true;
+                    }
+                }
+                catch (ArgumentException)
+                {
+                    // PATH 内の不正なディレクトリは無視
+                }
+                catch (IOException)
+                {
+                    // PATH 内の不正なディレクトリは無視
                 }
             }
 

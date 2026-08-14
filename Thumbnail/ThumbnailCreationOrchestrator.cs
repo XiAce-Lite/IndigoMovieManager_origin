@@ -186,6 +186,9 @@ namespace IndigoMovieManager.Thumbnail
 
             bool forceFfmpeg = FfmpegPathResolver.IsForceFfmpegEnabled() && !isManual;
             bool tryOnePassFirst = FfmpegPathResolver.IsOnePassEngineRequested() && !isManual;
+            bool tryAutoCoarseFirst = !isManual
+                && !forceFfmpeg
+                && FfmpegPathResolver.IsAutoCoarseSeekPreferred(ctx.TabInfo.DivCount);
             bool created = false;
             ThumbnailCreateResult lastResult = null;
 
@@ -203,6 +206,25 @@ namespace IndigoMovieManager.Thumbnail
                 {
                     Debug.WriteLine(
                         $"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : [thumb] ffmpeg1pass: {onePassResult.FailureReason}"
+                    );
+                }
+            }
+
+            // 自動: 粗い独立 seek を先に試す（DivCount≤4 のレイアウト向け）。手動はフレーム精度のため OpenCV を維持。
+            if (!created
+                && tryAutoCoarseFirst
+                && FfmpegPathResolver.TryResolve(out string ffmpegCoarsePath))
+            {
+                ThumbnailCreateResult coarseResult = await FfmpegCoarseSeekCreator
+                    .TryCreateAsync(ctx, thumbInfo, ffmpegCoarsePath, cts)
+                    .ConfigureAwait(false);
+
+                lastResult = coarseResult;
+                created = coarseResult.Success;
+                if (!created)
+                {
+                    Debug.WriteLine(
+                        $"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : [thumb] ffmpeg-coarse: {coarseResult.FailureReason}"
                     );
                 }
             }

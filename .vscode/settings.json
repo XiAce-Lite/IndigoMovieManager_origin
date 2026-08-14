@@ -4,5 +4,22 @@
       "fileMatch": ["**/Skins/Wpf/**/skin.json"],
       "url": "./Skins/Wpf/skin.schema.json"
     }
-  ]
+  ],
+  "terminal.integrated.profiles.windows": {
+    "PowerShell (UTF-8)": {
+      "source": "PowerShell",
+      "icon": "terminal-powershell",
+      "args": [
+        "-NoLogo",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        "& { $p = Join-Path '${workspaceFolder}' 'tools/Enable-Utf8Console.ps1'; if (Test-Path -LiteralPath $p) { . $p } }"
+      ]
+    }
+  },
+  "terminal.integrated.defaultProfile.windows": "PowerShell (UTF-8)",
+  "terminal.integrated.env.windows": {
+    "DOTNET_CLI_UI_LANGUAGE": "ja"
+  }
 }

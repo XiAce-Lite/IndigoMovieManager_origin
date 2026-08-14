@@ -1,4 +1,4 @@
-﻿<Window
+<Window
     x:Class="IndigoMovieManager.CommonSettingsWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -232,7 +232,7 @@
                         Margin="5"
                         Content="FFmpegハードウェアデコード"
                         FontSize="14"
-                        ToolTip="OpenCV失敗時のFFmpegフォールバックでのみ有効。ライト版（essentials）FFmpegでは使えません。gyan.dev の full ビルドまたは同梱版を推奨。失敗時は通常デコードに戻ります。" />
+                        ToolTip="自動サムネのFFmpeg経路（粗い独立seek・フォールバック）で有効。ライト版（essentials）FFmpegでは使えません。gyan.dev の full ビルドまたは同梱版を推奨。失敗時は通常デコードに戻ります。" />
                     <ComboBox
                         x:Name="FfmpegHardwareDecodeModeCombo"
                         Width="400"
