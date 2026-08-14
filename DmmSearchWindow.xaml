@@ -7,177 +7,17 @@
     Width="1000"
     Height="760"
     MinWidth="860"
-    MinHeight="640"
+    MinHeight="520"
     ResizeMode="CanResizeWithGrip"
     WindowStartupLocation="CenterOwner">
     <materialDesign:ColorZone
         Padding="12,12,12,0"
         VerticalAlignment="Stretch">
-        <Grid Margin="0,0,0,8">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="*" MinHeight="300" />
-                <RowDefinition Height="180" />
-                <RowDefinition Height="Auto" />
-            </Grid.RowDefinitions>
-
-            <TextBlock
-                Grid.Row="0"
-                Margin="0,0,0,8"
-                FontSize="13"
-                Text="{Binding TargetFileLabel}"
-                TextWrapping="Wrap" />
-
-            <Grid Grid.Row="1" Margin="0,0,0,8">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <TextBox
-                    x:Name="KeywordBox"
-                    Grid.Column="0"
-                    Margin="0,0,8,0"
-                    materialDesign:HintAssist.Hint="検索語（品番表記の揺れは下の候補をクリック）"
-                    materialDesign:TextFieldAssist.HasClearButton="True"
-                    materialDesign:TextFieldAssist.HasOutlinedTextField="True"
-                    FontSize="14"
-                    Style="{StaticResource MaterialDesignOutlinedTextBox}" />
-                <Button
-                    x:Name="SearchButton"
-                    Grid.Column="1"
-                    MinWidth="88"
-                    Margin="0,0,8,0"
-                    Click="SearchButton_Click"
-                    Content="検索(_S)" />
-                <Button
-                    x:Name="PlayButton"
-                    Grid.Column="2"
-                    Margin="0,0,8,0"
-                    MinWidth="88"
-                    Click="PlayButton_Click"
-                    Content="再生(_P)" />
-                <Button
-                    x:Name="TagEditButton"
-                    Grid.Column="3"
-                    MinWidth="88"
-                    Click="TagEditButton_Click"
-                    Content="タグ編集(_T)" />
-            </Grid>
-
-            <StackPanel Grid.Row="2" Margin="0,0,0,8">
-                <TextBlock
-                    FontSize="11"
-                    Foreground="{DynamicResource MaterialDesign.Brush.ForegroundLight}"
-                    Text="品番候補（クリックで検索）:" />
-                <WrapPanel x:Name="VariantChipsPanel" Margin="0,4,0,0" />
-            </StackPanel>
-
-            <TextBlock
-                x:Name="StatusText"
-                Grid.Row="3"
-                Margin="0,0,0,8"
-                Foreground="{DynamicResource MaterialDesign.Brush.ForegroundLight}"
-                Text="候補を読み込み中..."
-                TextWrapping="Wrap" />
-
-            <DataGrid
-                x:Name="CandidatesGrid"
-                Grid.Row="4"
-                AutoGenerateColumns="False"
-                CanUserAddRows="False"
-                CanUserDeleteRows="False"
-                CanUserResizeColumns="True"
-                ColumnWidth="*"
-                HeadersVisibility="Column"
-                IsReadOnly="True"
-                PreviewMouseLeftButtonUp="CandidatesGrid_PreviewMouseLeftButtonUp"
-                ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                ScrollViewer.VerticalScrollBarVisibility="Auto"
-                SelectionChanged="CandidatesGrid_SelectionChanged"
-                SelectionMode="Single"
-                SelectionUnit="FullRow">
-                <DataGrid.Columns>
-                    <DataGridTextColumn
-                        Width="56"
-                        MinWidth="48"
-                        Binding="{Binding JacketLabel}"
-                        Header="ジャケ"
-                        IsReadOnly="True" />
-                    <DataGridTextColumn
-                        Width="2.4*"
-                        MinWidth="140"
-                        Binding="{Binding Title}"
-                        Header="タイトル">
-                        <DataGridTextColumn.ElementStyle>
-                            <Style TargetType="TextBlock">
-                                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-                                <Setter Property="ToolTip" Value="{Binding Title}" />
-                            </Style>
-                        </DataGridTextColumn.ElementStyle>
-                    </DataGridTextColumn>
-                    <DataGridTextColumn
-                        Width="140"
-                        MinWidth="100"
-                        Binding="{Binding ContentId}"
-                        Header="品番">
-                        <DataGridTextColumn.ElementStyle>
-                            <Style TargetType="TextBlock">
-                                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-                                <Setter Property="ToolTip" Value="{Binding ContentId}" />
-                            </Style>
-                        </DataGridTextColumn.ElementStyle>
-                    </DataGridTextColumn>
-                    <DataGridTextColumn
-                        Width="2*"
-                        MinWidth="120"
-                        Binding="{Binding MakerLabelSeries}"
-                        Header="メーカー / レーベル / シリーズ">
-                        <DataGridTextColumn.ElementStyle>
-                            <Style TargetType="TextBlock">
-                                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-                                <Setter Property="ToolTip" Value="{Binding MakerLabelSeries}" />
-                            </Style>
-                        </DataGridTextColumn.ElementStyle>
-                    </DataGridTextColumn>
-                    <DataGridTextColumn
-                        Width="80"
-                        MinWidth="64"
-                        Binding="{Binding FloorLabel}"
-                        Header="floor" />
-                </DataGrid.Columns>
-            </DataGrid>
-
-            <Border
-                Grid.Row="5"
-                Margin="0,8,0,0"
-                Background="#FF121212"
-                BorderBrush="{DynamicResource MaterialDesign.Brush.ForegroundLight}"
-                BorderThickness="1"
-                CornerRadius="2">
-                <Grid>
-                    <TextBlock
-                        x:Name="JacketPreviewHint"
-                        HorizontalAlignment="Center"
-                        VerticalAlignment="Center"
-                        FontSize="12"
-                        Foreground="#FF888888"
-                        Text="選択行のジャケット（pl）を表示します" />
-                    <Image
-                        x:Name="JacketPreviewImage"
-                        Margin="4"
-                        Cursor="Hand"
-                        Stretch="Uniform"
-                        PreviewMouseLeftButtonDown="JacketPreviewImage_PreviewMouseLeftButtonDown"
-                        ToolTip="クリックで拡大表示" />
-                </Grid>
-            </Border>
-
-            <Grid Grid.Row="6" Margin="0,8,0,0">
+        <!-- 下部ボタンを常に確保し、残りを候補＋プレビューが使う -->
+        <DockPanel LastChildFill="True" Margin="0,0,0,8">
+            <Grid
+                DockPanel.Dock="Bottom"
+                Margin="0,8,0,0">
                 <TextBlock
                     VerticalAlignment="Center"
                     FontSize="11"
@@ -208,6 +48,172 @@
                         IsCancel="True" />
                 </StackPanel>
             </Grid>
-        </Grid>
+
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" MinHeight="120" />
+                    <RowDefinition Height="Auto" MaxHeight="180" />
+                </Grid.RowDefinitions>
+
+                <TextBlock
+                    Grid.Row="0"
+                    Margin="0,0,0,8"
+                    FontSize="13"
+                    Text="{Binding TargetFileLabel}"
+                    TextWrapping="Wrap" />
+
+                <Grid Grid.Row="1" Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox
+                        x:Name="KeywordBox"
+                        Grid.Column="0"
+                        Margin="0,0,8,0"
+                        materialDesign:HintAssist.Hint="検索語（品番表記の揺れは下の候補をクリック）"
+                        materialDesign:TextFieldAssist.HasClearButton="True"
+                        materialDesign:TextFieldAssist.HasOutlinedTextField="True"
+                        FontSize="14"
+                        Style="{StaticResource MaterialDesignOutlinedTextBox}" />
+                    <Button
+                        x:Name="SearchButton"
+                        Grid.Column="1"
+                        MinWidth="88"
+                        Margin="0,0,8,0"
+                        Click="SearchButton_Click"
+                        Content="検索(_S)" />
+                    <Button
+                        x:Name="PlayButton"
+                        Grid.Column="2"
+                        Margin="0,0,8,0"
+                        MinWidth="88"
+                        Click="PlayButton_Click"
+                        Content="再生(_P)" />
+                    <Button
+                        x:Name="TagEditButton"
+                        Grid.Column="3"
+                        MinWidth="88"
+                        Click="TagEditButton_Click"
+                        Content="タグ編集(_T)" />
+                </Grid>
+
+                <StackPanel Grid.Row="2" Margin="0,0,0,8">
+                    <TextBlock
+                        FontSize="11"
+                        Foreground="{DynamicResource MaterialDesign.Brush.ForegroundLight}"
+                        Text="品番候補（クリックで検索）:" />
+                    <WrapPanel x:Name="VariantChipsPanel" Margin="0,4,0,0" />
+                </StackPanel>
+
+                <TextBlock
+                    x:Name="StatusText"
+                    Grid.Row="3"
+                    Margin="0,0,0,8"
+                    Foreground="{DynamicResource MaterialDesign.Brush.ForegroundLight}"
+                    Text="候補を読み込み中..."
+                    TextWrapping="Wrap" />
+
+                <DataGrid
+                    x:Name="CandidatesGrid"
+                    Grid.Row="4"
+                    AutoGenerateColumns="False"
+                    CanUserAddRows="False"
+                    CanUserDeleteRows="False"
+                    CanUserResizeColumns="True"
+                    ColumnWidth="*"
+                    HeadersVisibility="Column"
+                    IsReadOnly="True"
+                    PreviewMouseLeftButtonDown="CandidatesGrid_PreviewMouseLeftButtonDown"
+                    PreviewMouseLeftButtonUp="CandidatesGrid_PreviewMouseLeftButtonUp"
+                    ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                    ScrollViewer.VerticalScrollBarVisibility="Auto"
+                    SelectionChanged="CandidatesGrid_SelectionChanged"
+                    SelectionMode="Single"
+                    SelectionUnit="FullRow">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn
+                            Width="56"
+                            MinWidth="48"
+                            Binding="{Binding JacketLabel}"
+                            Header="ジャケ"
+                            IsReadOnly="True" />
+                        <DataGridTextColumn
+                            Width="2.4*"
+                            MinWidth="140"
+                            Binding="{Binding Title}"
+                            Header="タイトル">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                    <Setter Property="ToolTip" Value="{Binding Title}" />
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+                        <DataGridTextColumn
+                            Width="140"
+                            MinWidth="100"
+                            Binding="{Binding ContentId}"
+                            Header="品番">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                    <Setter Property="ToolTip" Value="{Binding ContentId}" />
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+                        <DataGridTextColumn
+                            Width="2*"
+                            MinWidth="120"
+                            Binding="{Binding MakerLabelSeries}"
+                            Header="メーカー / レーベル / シリーズ">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                    <Setter Property="ToolTip" Value="{Binding MakerLabelSeries}" />
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+                        <DataGridTextColumn
+                            Width="80"
+                            MinWidth="64"
+                            Binding="{Binding FloorLabel}"
+                            Header="floor" />
+                    </DataGrid.Columns>
+                </DataGrid>
+
+                <Border
+                    Grid.Row="5"
+                    Height="160"
+                    Margin="0,8,0,0"
+                    Background="#FF121212"
+                    BorderBrush="{DynamicResource MaterialDesign.Brush.ForegroundLight}"
+                    BorderThickness="1"
+                    CornerRadius="2">
+                    <Grid>
+                        <TextBlock
+                            x:Name="JacketPreviewHint"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            FontSize="12"
+                            Foreground="#FF888888"
+                            Text="選択行のジャケット（pl）を表示します" />
+                        <Image
+                            x:Name="JacketPreviewImage"
+                            Margin="4"
+                            Cursor="Hand"
+                            Stretch="Uniform"
+                            PreviewMouseLeftButtonDown="JacketPreviewImage_PreviewMouseLeftButtonDown"
+                            ToolTip="クリックで拡大表示" />
+                    </Grid>
+                </Border>
+            </Grid>
+        </DockPanel>
     </materialDesign:ColorZone>
 </Window>

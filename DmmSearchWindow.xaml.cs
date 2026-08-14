@@ -26,12 +26,14 @@ namespace IndigoMovieManager
         private readonly MovieRecords _record;
         private readonly string _dbPath;
         private readonly long? _pendingId;
+        private readonly bool _openedWithInitialCandidates;
         private readonly ObservableCollection<DmmCandidateRow> _candidates = [];
         private readonly DmmMetadataApplyService _applier = new();
         private DmmMetadataResolveService _resolver;
         private bool _isSearching;
-        /// <summary>親画面のダブルクリック MouseUp がセルクリックに化けるのを抑止する。</summary>
+        /// <summary>親画面のダブルクリック MouseUp/Down がセル操作に化けるのを抑止する。</summary>
         private DateTime _suppressCellClickUntilUtc;
+        private const int SuppressOpenClickMs = 800;
         private int _nextOffset = 1;
         private bool _mayHaveMore;
         private string _lastSearchKeyword = string.Empty;
@@ -51,6 +53,7 @@ namespace IndigoMovieManager
             _record = record ?? throw new ArgumentNullException(nameof(record));
             _dbPath = dbPath ?? string.Empty;
             _pendingId = pendingId;
+            _openedWithInitialCandidates = initialCandidates is { Count: > 0 };
 
             DataContext = new DmmSearchWindowModel
             {
@@ -61,21 +64,32 @@ namespace IndigoMovieManager
             CandidatesGrid.ItemsSource = _candidates;
             PopulateVariantChips();
 
-            if (initialCandidates is { Count: > 0 })
+            if (_openedWithInitialCandidates)
             {
                 SetCandidates(initialCandidates);
                 StatusText.Text = $"{_candidates.Count} 件の候補を表示しています。";
-                // 未確定一覧からのダブルクリック直後に開く場合の誤クリック吸収
-                _suppressCellClickUntilUtc = DateTime.UtcNow.AddMilliseconds(400);
+                ArmOpenClickSuppress();
                 _lastSearchKeyword = (initialKeyword ?? string.Empty).Trim();
                 // 既存候補のあとの「次の30件」は offset=1 から取得し、重複は追記側で除外する。
                 _nextOffset = 1;
                 _mayHaveMore = !string.IsNullOrWhiteSpace(_lastSearchKeyword);
                 UpdateNextPageEnabled();
             }
+            else if (_pendingId.HasValue)
+            {
+                // 候補0件の未確定から開いた場合も、親のダブルクリック MouseUp を吸収する
+                ArmOpenClickSuppress();
+            }
 
             Loaded += DmmSearchWindow_Loaded;
         }
+
+        private void ArmOpenClickSuppress()
+        {
+            _suppressCellClickUntilUtc = DateTime.UtcNow.AddMilliseconds(SuppressOpenClickMs);
+        }
+
+        private bool IsOpenClickSuppressed => DateTime.UtcNow < _suppressCellClickUntilUtc;
 
         private void PopulateVariantChips()
         {
@@ -115,6 +129,12 @@ namespace IndigoMovieManager
 
         private async void DmmSearchWindow_Loaded(object sender, RoutedEventArgs e)
         {
+            // ShowDialog 直後に届く親の MouseUp 用に、表示タイミングでも抑止を延長する
+            if (_openedWithInitialCandidates || _pendingId.HasValue)
+            {
+                ArmOpenClickSuppress();
+            }
+
             if (_candidates.Count > 0)
             {
                 SelectPreferredCandidate();
@@ -216,9 +236,17 @@ namespace IndigoMovieManager
             await RunSearchAsync(keyword, append: true).ConfigureAwait(true);
         }
 
+        private void CandidatesGrid_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (IsOpenClickSuppressed)
+            {
+                e.Handled = true;
+            }
+        }
+
         private void CandidatesGrid_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
         {
-            if (DateTime.UtcNow < _suppressCellClickUntilUtc)
+            if (IsOpenClickSuppressed)
             {
                 e.Handled = true;
                 return;

@@ -121,14 +121,22 @@ namespace IndigoMovieManager
             OpenResolveWindow(row);
         }
 
-        private void PendingGrid_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        private void PendingGrid_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            // ダブルクリック第2撃の MouseUp が直後の候補画面へ届くのを防ぐ
+            if (e.ClickCount >= 2)
+            {
+                e.Handled = true;
+            }
+        }
+
+        private void PendingGrid_PreviewMouseDoubleClick(object sender, MouseButtonEventArgs e)
         {
             if (FindAncestor<DataGridRow>(e.OriginalSource as DependencyObject)?.Item is not DmmPendingRow row)
             {
                 return;
             }
 
-            // ダブルクリックの MouseUp が直後に開く候補画面へ届くのを防ぐ。
             e.Handled = true;
             Dispatcher.BeginInvoke(
                 new Action(() => OpenResolveWindow(row)),

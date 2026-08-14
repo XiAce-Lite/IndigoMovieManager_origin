@@ -34,7 +34,8 @@
                 CanUserDeleteRows="False"
                 HeadersVisibility="Column"
                 IsReadOnly="True"
-                MouseDoubleClick="PendingGrid_MouseDoubleClick"
+                PreviewMouseDoubleClick="PendingGrid_PreviewMouseDoubleClick"
+                PreviewMouseLeftButtonUp="PendingGrid_PreviewMouseLeftButtonUp"
                 SelectionMode="Extended"
                 SelectionUnit="FullRow">
                 <DataGrid.Columns>
