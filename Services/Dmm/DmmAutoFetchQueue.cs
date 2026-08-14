@@ -22,7 +22,7 @@ namespace IndigoMovieManager.Services.Dmm
         private readonly CancellationTokenSource _appCts = new();
         private readonly Task _workerTask;
 
-        private DmmFetchProgressSession _session;
+        private CountedProgressSession _session;
         private int _batchExpectedTotal;
         private int _batchDone;
         private int _batchApplied;
@@ -222,7 +222,7 @@ namespace IndigoMovieManager.Services.Dmm
             int sessionTotal = _batchExpectedTotal;
             await _host.RunOnUiAsync(() =>
             {
-                _session = new DmmFetchProgressSession(sessionTotal);
+                _session = CountedProgressSession.BeginDmmFetch(sessionTotal);
             }).ConfigureAwait(false);
         }
 
@@ -331,7 +331,7 @@ namespace IndigoMovieManager.Services.Dmm
 
         private async Task ReportProgressAsync(int done, string detail)
         {
-            DmmFetchProgressSession session = _session;
+            CountedProgressSession session = _session;
             if (session == null)
             {
                 return;
@@ -454,7 +454,7 @@ namespace IndigoMovieManager.Services.Dmm
 
         private async Task EndSessionAsync()
         {
-            DmmFetchProgressSession session = _session;
+            CountedProgressSession session = _session;
             _session = null;
             if (session == null)
             {

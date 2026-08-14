@@ -1,9 +1,6 @@
 using System.Data;
 using System.Data.SQLite;
 using System.Diagnostics;
-using System.IO;
-using System.Reflection;
-using System.Windows;
 using IndigoMovieManager.Data;
 using IndigoMovieManager.Services;
 
@@ -15,58 +12,27 @@ namespace IndigoMovieManager
         {
             if (!MovieColumnExtensions.TryParseColumnName(columnName, out MovieColumn column))
             {
-                UpdateMovieSingleColumnUnsafe(dbFullPath, movieId, columnName, value);
+                UpdateMovieSingleColumnByName(dbFullPath, movieId, columnName, value);
                 return;
             }
 
             UpdateMovieSingleColumn(dbFullPath, movieId, column, value);
         }
 
-        public static void UpdateMovieSingleColumn(string dbFullPath, long movieId, MovieColumn column, object value)
+        public static void UpdateMovieSingleColumn(string dbFullPath, long movieId, MovieColumn column, object value) =>
+            UpdateMovieSingleColumnByName(dbFullPath, movieId, column.ToColumnName(), value);
+
+        private static void UpdateMovieSingleColumnByName(string dbFullPath, long movieId, string columnName, object value)
         {
-            string columnName = column.ToColumnName();
-            try
+            SqliteDataAccess.ExecuteNonQuery(dbFullPath, (connection, transaction) =>
             {
-                using SQLiteConnection connection = new($"Data Source={dbFullPath}");
-                connection.Open();
-
-                using var transaction = connection.BeginTransaction();
-                using (SQLiteCommand cmd = connection.CreateCommand())
-                {
-                    cmd.CommandText = $"update movie set {columnName} = @value where movie_id = @id";
-                    cmd.Parameters.Add(new SQLiteParameter("@id", movieId));
-                    cmd.Parameters.Add(new SQLiteParameter("@value", value));
-                    cmd.ExecuteNonQuery();
-                }
-                transaction.Commit();
-            }
-            catch (Exception e)
-            {
-                SqliteDataAccess.ReportError(e);
-            }
-        }
-
-        private static void UpdateMovieSingleColumnUnsafe(string dbFullPath, long movieId, string columnName, object value)
-        {
-            try
-            {
-                using SQLiteConnection connection = new($"Data Source={dbFullPath}");
-                connection.Open();
-
-                using var transaction = connection.BeginTransaction();
-                using (SQLiteCommand cmd = connection.CreateCommand())
-                {
-                    cmd.CommandText = $"update movie set {columnName} = @value where movie_id = @id";
-                    cmd.Parameters.Add(new SQLiteParameter("@id", movieId));
-                    cmd.Parameters.Add(new SQLiteParameter("@value", value));
-                    cmd.ExecuteNonQuery();
-                }
-                transaction.Commit();
-            }
-            catch (Exception e)
-            {
-                SqliteDataAccess.ReportError(e);
-            }
+                using SQLiteCommand cmd = connection.CreateCommand();
+                cmd.Transaction = transaction;
+                cmd.CommandText = $"update movie set {columnName} = @value where movie_id = @id";
+                cmd.Parameters.Add(new SQLiteParameter("@id", movieId));
+                cmd.Parameters.Add(new SQLiteParameter("@value", value));
+                cmd.ExecuteNonQuery();
+            });
         }
 
         public static void UpdateMovieFileInfo(
@@ -80,100 +46,65 @@ namespace IndigoMovieManager
                 return;
             }
 
-            try
+            long movieLengthSec = existingMovieLengthSec;
+            if (existingMovieLengthSec < 1 && metadata.MovieLengthSec > 0)
             {
-                long movieLengthSec = existingMovieLengthSec;
+                movieLengthSec = metadata.MovieLengthSec;
+            }
+
+            SqliteDataAccess.ExecuteNonQuery(dbFullPath, (connection, transaction) =>
+            {
+                using SQLiteCommand cmd = connection.CreateCommand();
+                cmd.Transaction = transaction;
                 if (existingMovieLengthSec < 1 && metadata.MovieLengthSec > 0)
                 {
-                    movieLengthSec = metadata.MovieLengthSec;
+                    cmd.CommandText =
+                        "update movie set container = @container, video = @video, audio = @audio, " +
+                        "extra = @extra, movie_length = @movie_length where movie_id = @id";
+                    cmd.Parameters.Add(new SQLiteParameter("@movie_length", movieLengthSec));
                 }
-
-                using SQLiteConnection connection = new($"Data Source={dbFullPath}");
-                connection.Open();
-
-                using var transaction = connection.BeginTransaction();
-                using (SQLiteCommand cmd = connection.CreateCommand())
+                else
                 {
-                    if (existingMovieLengthSec < 1 && metadata.MovieLengthSec > 0)
-                    {
-                        cmd.CommandText =
-                            "update movie set container = @container, video = @video, audio = @audio, " +
-                            "extra = @extra, movie_length = @movie_length where movie_id = @id";
-                        cmd.Parameters.Add(new SQLiteParameter("@movie_length", movieLengthSec));
-                    }
-                    else
-                    {
-                        cmd.CommandText =
-                            "update movie set container = @container, video = @video, audio = @audio, " +
-                            "extra = @extra where movie_id = @id";
-                    }
-
-                    cmd.Parameters.Add(new SQLiteParameter("@id", movieId));
-                    cmd.Parameters.Add(new SQLiteParameter("@container", metadata.Container ?? ""));
-                    cmd.Parameters.Add(new SQLiteParameter("@video", metadata.Video ?? ""));
-                    cmd.Parameters.Add(new SQLiteParameter("@audio", metadata.Audio ?? ""));
-                    cmd.Parameters.Add(new SQLiteParameter("@extra", metadata.Extra ?? ""));
-                    cmd.ExecuteNonQuery();
+                    cmd.CommandText =
+                        "update movie set container = @container, video = @video, audio = @audio, " +
+                        "extra = @extra where movie_id = @id";
                 }
-                transaction.Commit();
-            }
-            catch (Exception e)
-            {
-                var title = $"{Assembly.GetExecutingAssembly().GetName().Name} - {MethodBase.GetCurrentMethod().Name}";
-                UiErrorReporter.ShowError(e.Message, title);
-            }
+
+                cmd.Parameters.Add(new SQLiteParameter("@id", movieId));
+                cmd.Parameters.Add(new SQLiteParameter("@container", metadata.Container ?? ""));
+                cmd.Parameters.Add(new SQLiteParameter("@video", metadata.Video ?? ""));
+                cmd.Parameters.Add(new SQLiteParameter("@audio", metadata.Audio ?? ""));
+                cmd.Parameters.Add(new SQLiteParameter("@extra", metadata.Extra ?? ""));
+                cmd.ExecuteNonQuery();
+            });
         }
 
         public static void UpdateMovieZipInfo(string dbFullPath, long movieId, int imageCount)
         {
-            try
+            SqliteDataAccess.ExecuteNonQuery(dbFullPath, (connection, transaction) =>
             {
-                using SQLiteConnection connection = new($"Data Source={dbFullPath}");
-                connection.Open();
-
-                using var transaction = connection.BeginTransaction();
-                using (SQLiteCommand cmd = connection.CreateCommand())
-                {
-                    cmd.CommandText =
-                        "update movie set container = @container, video = '', audio = '', extra = '', " +
-                        "movie_length = @movie_length where movie_id = @id";
-                    cmd.Parameters.Add(new SQLiteParameter("@id", movieId));
-                    cmd.Parameters.Add(new SQLiteParameter("@container", "zip"));
-                    cmd.Parameters.Add(new SQLiteParameter("@movie_length", imageCount));
-                    cmd.ExecuteNonQuery();
-                }
-                transaction.Commit();
-            }
-            catch (Exception e)
-            {
-                var title = $"{Assembly.GetExecutingAssembly().GetName().Name} - {MethodBase.GetCurrentMethod().Name}";
-                UiErrorReporter.ShowError(e.Message, title);
-            }
+                using SQLiteCommand cmd = connection.CreateCommand();
+                cmd.Transaction = transaction;
+                cmd.CommandText =
+                    "update movie set container = @container, video = '', audio = '', extra = '', " +
+                    "movie_length = @movie_length where movie_id = @id";
+                cmd.Parameters.Add(new SQLiteParameter("@id", movieId));
+                cmd.Parameters.Add(new SQLiteParameter("@container", "zip"));
+                cmd.Parameters.Add(new SQLiteParameter("@movie_length", imageCount));
+                cmd.ExecuteNonQuery();
+            });
         }
 
         public static void DeleteMovieTable(string dbFullPath, long movieId)
         {
-            try
+            SqliteDataAccess.ExecuteNonQuery(dbFullPath, (connection, transaction) =>
             {
-                using SQLiteConnection connection = new($"Data Source={dbFullPath}");
-                connection.Open();
-
-                using var transaction = connection.BeginTransaction();
-                using (SQLiteCommand cmd = connection.CreateCommand())
-                {
-                    cmd.CommandText = $"delete from movie where movie_id = {movieId}";
-                    cmd.ExecuteNonQuery();
-                }
-                transaction.Commit();
-            }
-
-            // 例外が発生した場合
-            catch (Exception e)
-            {
-                // 例外の内容を表示します。
-                var title = $"{Assembly.GetExecutingAssembly().GetName().Name} - {MethodBase.GetCurrentMethod().Name}";
-                UiErrorReporter.ShowError(e.Message, title);
-            }
+                using SQLiteCommand cmd = connection.CreateCommand();
+                cmd.Transaction = transaction;
+                cmd.CommandText = "delete from movie where movie_id = @id";
+                cmd.Parameters.Add(new SQLiteParameter("@id", movieId));
+                cmd.ExecuteNonQuery();
+            });
         }
 
         public static async Task<bool> InsertMovieTable(string dbFullPath, MovieInfo mvi)
@@ -194,7 +125,7 @@ namespace IndigoMovieManager
 
                 DataTable dt = new();
                 da.Fill(dt);
-                if (dt.Rows.Count < 1) 
+                if (dt.Rows.Count < 1)
                 {
                     mvi.MovieId = 1;    //ゼロ行なので、1
                 }
@@ -246,12 +177,12 @@ namespace IndigoMovieManager
                 using var transaction = connection.BeginTransaction();
                 using (SQLiteCommand cmd = connection.CreateCommand())
                 {
-                    cmd.CommandText = 
+                    cmd.CommandText =
                         "insert into movie (" +
                         "   movie_id," +
                         "   movie_name," +
                         "   movie_path," +
-                        "   movie_length," +    
+                        "   movie_length," +
                         "   movie_size," +
                         "   last_date," +
                         "   file_date," +

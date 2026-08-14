@@ -25,4 +25,10 @@ public class ListScrollPreserverTests
         Assert.Equal(1, list.SelectedIndex);
         Assert.Equal(2, list.Items.Count);
     }
+
+    [Fact]
+    public void TryHandleShiftMouseWheel_null_args_return_false()
+    {
+        Assert.False(ListScrollPreserver.TryHandleShiftMouseWheel(null, null));
+    }
 }

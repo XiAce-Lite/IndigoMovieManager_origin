@@ -51,5 +51,21 @@ namespace IndigoMovieManager
                 ? string.Empty
                 : ProgressPathFormatter.Format(detail, StatusBarProgressViewModel.DetailMaxWidth);
         }
+
+        public static CountedProgressSession BeginFileInfo(int total, string statusLabel = null)
+        {
+            StatusBarProgressCoordinator.FileInfoSlotHandle handle =
+                StatusBarProgressHost.Coordinator.BeginFileInfo(total, statusLabel);
+            return new CountedProgressSession(
+                total,
+                handle.Report,
+                handle.Dispose,
+                handle.Cancel,
+                "開始しています…",
+                FormatDetail);
+        }
+
+        public static CountedProgressSession BeginDmmFetch(int total) =>
+            BeginFileInfo(total, "DMM情報取得中");
     }
 }

@@ -1,9 +1,6 @@
 using System.Data;
 using System.Data.SQLite;
-using System.Diagnostics;
-using System.IO;
 using System.Reflection;
-using System.Windows;
 using IndigoMovieManager.Data;
 using IndigoMovieManager.Services;
 
@@ -32,7 +29,7 @@ namespace IndigoMovieManager
 
                 DataTable dt = new();
                 da.Fill(dt);
-                if (dt.Rows.Count < 1) 
+                if (dt.Rows.Count < 1)
                 {
                     mvi.MovieId = 1;    //ゼロ行なので、1
                 }
@@ -98,86 +95,44 @@ namespace IndigoMovieManager
 
         public static void UpdateBookmarkViewCount(string dbFullPath, long movieId)
         {
-            try
+            SqliteDataAccess.ExecuteNonQuery(dbFullPath, (connection, transaction) =>
             {
-                using SQLiteConnection connection = new($"Data Source={dbFullPath}");
-                connection.Open();
-
-                using var transaction = connection.BeginTransaction();
-                using (SQLiteCommand cmd = connection.CreateCommand())
-                {
-                    cmd.CommandText = $"update bookmark set view_count = view_count + 1 where movie_id = @id";
-                    cmd.Parameters.Add(new SQLiteParameter("@id", movieId));
-                    cmd.ExecuteNonQuery();
-                }
-                transaction.Commit();
-            }
-
-            // 例外が発生した場合
-            catch (Exception e)
-            {
-                // 例外の内容を表示します。
-                var title = $"{Assembly.GetExecutingAssembly().GetName().Name} - {MethodBase.GetCurrentMethod().Name}";
-                UiErrorReporter.ShowError(e.Message, title);
-            }
+                using SQLiteCommand cmd = connection.CreateCommand();
+                cmd.Transaction = transaction;
+                cmd.CommandText = "update bookmark set view_count = view_count + 1 where movie_id = @id";
+                cmd.Parameters.Add(new SQLiteParameter("@id", movieId));
+                cmd.ExecuteNonQuery();
+            });
         }
 
         public static void UpdateBookmarkRename(string dbFullPath, string oldName, string newName)
         {
-            try
+            oldName = oldName.ToLower();
+            newName = newName.ToLower();
+
+            SqliteDataAccess.ExecuteNonQuery(dbFullPath, (connection, transaction) =>
             {
-                using SQLiteConnection connection = new($"Data Source={dbFullPath}");
-                connection.Open();
-
-                oldName = oldName.ToLower();
-                newName = newName.ToLower();
-
-                using var transaction = connection.BeginTransaction();
-                using (SQLiteCommand cmd = connection.CreateCommand())
-                {
-                    cmd.CommandText = 
-                        $"update bookmark set " +
-                        $"movie_name = replace(movie_name,'{oldName}', '{newName}'), " +
-                        $"movie_path = replace(movie_path,'{oldName}', '{newName}') " +
-                        $"where lower(movie_name) like '%{oldName}%'";
-                    cmd.ExecuteNonQuery();
-                }
-                transaction.Commit();
-            }
-
-            // 例外が発生した場合
-            catch (Exception e)
-            {
-                // 例外の内容を表示します。
-                var title = $"{Assembly.GetExecutingAssembly().GetName().Name} - {MethodBase.GetCurrentMethod().Name}";
-                UiErrorReporter.ShowError(e.Message, title);
-            }
+                using SQLiteCommand cmd = connection.CreateCommand();
+                cmd.Transaction = transaction;
+                cmd.CommandText =
+                    $"update bookmark set " +
+                    $"movie_name = replace(movie_name,'{oldName}', '{newName}'), " +
+                    $"movie_path = replace(movie_path,'{oldName}', '{newName}') " +
+                    $"where lower(movie_name) like '%{oldName}%'";
+                cmd.ExecuteNonQuery();
+            });
         }
 
         public static void DeleteBookmarkTable(string dbFullPath, long movie_id)
         {
-            try
+            SqliteDataAccess.ExecuteNonQuery(dbFullPath, (connection, transaction) =>
             {
-                using SQLiteConnection connection = new($"Data Source={dbFullPath}");
-                connection.Open();
-
-                using var transaction = connection.BeginTransaction();
-                using (SQLiteCommand cmd = connection.CreateCommand())
-                {
-                    cmd.CommandText =
-                        $"DELETE from bookmark where movie_id = {movie_id}";
-                    cmd.ExecuteNonQuery();
-                }
-                transaction.Commit();
-            }
-
-            // 例外が発生した場合
-            catch (Exception e)
-            {
-                // 例外の内容を表示します。
-                var title = $"{Assembly.GetExecutingAssembly().GetName().Name} - {MethodBase.GetCurrentMethod().Name}";
-                UiErrorReporter.ShowError(e.Message, title);
-            }
+                using SQLiteCommand cmd = connection.CreateCommand();
+                cmd.Transaction = transaction;
+                cmd.CommandText = "DELETE from bookmark where movie_id = @id";
+                cmd.Parameters.Add(new SQLiteParameter("@id", movie_id));
+                cmd.ExecuteNonQuery();
+            });
         }
     }
 }

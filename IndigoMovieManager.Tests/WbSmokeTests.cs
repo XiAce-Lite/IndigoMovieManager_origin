@@ -34,4 +34,19 @@ public class WbSmokeTests
             fixture.Query("select find_text from history").AsEnumerable().Select(row => row[0].ToString()),
             value => value == "abcd-123");
     }
+
+    [Fact]
+    public void DeleteHistoryTable_by_find_text_removes_rows_even_when_ui_would_have_zero_id()
+    {
+        using var fixture = new WbSmokeFixture();
+        SQLite.CreateDatabase(fixture.DbPath);
+
+        SQLite.InsertHistoryTable(fixture.DbPath, "abcd-123");
+        Assert.Equal(1, fixture.Query("select count(*) from history where find_text = 'abcd-123'").Rows[0].Field<long>(0));
+
+        // UI が Find_Id=0 のままでも使う削除経路（text 基準）
+        SQLite.DeleteHistoryTable(fixture.DbPath, "abcd-123");
+
+        Assert.Equal(0, fixture.Query("select count(*) from history where find_text = 'abcd-123'").Rows[0].Field<long>(0));
+    }
 }

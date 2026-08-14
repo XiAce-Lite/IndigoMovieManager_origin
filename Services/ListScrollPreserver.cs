@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 
@@ -45,7 +46,44 @@ namespace IndigoMovieManager.Services
             listView.Dispatcher.BeginInvoke(Restore, DispatcherPriority.ContextIdle);
         }
 
-        private static ScrollViewer FindScrollViewer(DependencyObject parent)
+        /// <summary>
+        /// Shift+マウスホイールを横スクロールとして扱う。処理したら true（e.Handled 済み）。
+        /// 横にスクロール余地が無い／Shift 未押下なら false。
+        /// </summary>
+        public static bool TryHandleShiftMouseWheel(ListView listView, MouseWheelEventArgs e)
+        {
+            if (listView == null || e == null || e.Delta == 0)
+            {
+                return false;
+            }
+
+            if ((Keyboard.Modifiers & ModifierKeys.Shift) != ModifierKeys.Shift)
+            {
+                return false;
+            }
+
+            ScrollViewer scrollViewer = FindScrollViewer(listView);
+            if (scrollViewer == null || scrollViewer.ScrollableWidth <= 0)
+            {
+                return false;
+            }
+
+            double next = scrollViewer.HorizontalOffset - e.Delta;
+            if (next < 0)
+            {
+                next = 0;
+            }
+            else if (next > scrollViewer.ScrollableWidth)
+            {
+                next = scrollViewer.ScrollableWidth;
+            }
+
+            scrollViewer.ScrollToHorizontalOffset(next);
+            e.Handled = true;
+            return true;
+        }
+
+        internal static ScrollViewer FindScrollViewer(DependencyObject parent)
         {
             if (parent == null)
             {

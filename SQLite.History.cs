@@ -1,9 +1,5 @@
-using System.Data;
 using System.Data.SQLite;
-using System.Diagnostics;
-using System.IO;
 using System.Reflection;
-using System.Windows;
 using IndigoMovieManager.Data;
 using IndigoMovieManager.Services;
 
@@ -13,28 +9,27 @@ namespace IndigoMovieManager
     {
         private static readonly object HistoryInsertLock = new();
 
-        public static void DeleteHistoryTable(string dbFullPath, long findId)
+        /// <summary>
+        /// 同一 find_text の履歴行をすべて削除する。
+        /// UI 側が Find_Id=0（INSERT 未フィードバック）でも消せるように text 基準。
+        /// </summary>
+        public static void DeleteHistoryTable(string dbFullPath, string findText)
         {
-            try
+            if (string.IsNullOrEmpty(dbFullPath) || string.IsNullOrEmpty(findText))
             {
-                using SQLiteConnection connection = new($"Data Source={dbFullPath}");
-                connection.Open();
-
-                using var transaction = connection.BeginTransaction();
-                using (SQLiteCommand cmd = connection.CreateCommand())
-                {
-                    cmd.CommandText = $"delete from history where find_id = {findId}";
-                    cmd.ExecuteNonQuery();
-                }
-                transaction.Commit();
+                return;
             }
 
-            // 例外が発生した場合
-            catch (Exception e)
+            lock (HistoryInsertLock)
             {
-                // 例外の内容を表示します。
-                var title = $"{Assembly.GetExecutingAssembly().GetName().Name} - {MethodBase.GetCurrentMethod().Name}";
-                UiErrorReporter.ShowError(e.Message, title);
+                SqliteDataAccess.ExecuteNonQuery(dbFullPath, (connection, transaction) =>
+                {
+                    using SQLiteCommand cmd = connection.CreateCommand();
+                    cmd.Transaction = transaction;
+                    cmd.CommandText = "delete from history where find_text = @find_text";
+                    cmd.Parameters.Add(new SQLiteParameter("@find_text", findText));
+                    cmd.ExecuteNonQuery();
+                });
             }
         }
 
@@ -106,31 +101,17 @@ namespace IndigoMovieManager
 
         public static void DeleteHistoryTable(string dbFullPath, int keepHistoryCount)
         {
-            try
+            SqliteDataAccess.ExecuteNonQuery(dbFullPath, (connection, transaction) =>
             {
-                using SQLiteConnection connection = new($"Data Source={dbFullPath}");
-                connection.Open();
-
-                using var transaction = connection.BeginTransaction();
-                using (SQLiteCommand cmd = connection.CreateCommand())
-                {
-                    cmd.CommandText = 
-                        $"DELETE from history where find_id < " +
-                        $"(select find_id from " +
-                        $"  (select find_id from history order by find_id desc LIMIT {keepHistoryCount}) " +
-                        $" order by find_id limit 1)";
-                    cmd.ExecuteNonQuery();
-                }
-                transaction.Commit();
-            }
-
-            // 例外が発生した場合
-            catch (Exception e)
-            {
-                // 例外の内容を表示します。
-                var title = $"{Assembly.GetExecutingAssembly().GetName().Name} - {MethodBase.GetCurrentMethod().Name}";
-                UiErrorReporter.ShowError(e.Message, title);
-            }
+                using SQLiteCommand cmd = connection.CreateCommand();
+                cmd.Transaction = transaction;
+                cmd.CommandText =
+                    $"DELETE from history where find_id < " +
+                    $"(select find_id from " +
+                    $"  (select find_id from history order by find_id desc LIMIT {keepHistoryCount}) " +
+                    $" order by find_id limit 1)";
+                cmd.ExecuteNonQuery();
+            });
         }
     }
 }

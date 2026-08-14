@@ -186,11 +186,8 @@ namespace IndigoMovieManager
             }
 
             EnsureTagBarTable(dbFullPath);
-            try
+            SqliteDataAccess.ExecuteNonQuery(dbFullPath, (connection, transaction) =>
             {
-                using SQLiteConnection connection = new($"Data Source={dbFullPath}");
-                connection.Open();
-                using var transaction = connection.BeginTransaction();
                 using (SQLiteCommand selectCmd = connection.CreateCommand())
                 {
                     selectCmd.Transaction = transaction;
@@ -208,23 +205,15 @@ namespace IndigoMovieManager
                     }
                 }
 
-                using (SQLiteCommand cmd = connection.CreateCommand())
-                {
-                    cmd.CommandText =
-                        "update tagbar set title = @title, contents = @contents where item_id = @item_id";
-                    cmd.Parameters.Add(new SQLiteParameter("@title", title ?? ""));
-                    cmd.Parameters.Add(new SQLiteParameter("@contents", contents ?? ""));
-                    cmd.Parameters.Add(new SQLiteParameter("@item_id", itemId));
-                    cmd.ExecuteNonQuery();
-                }
-
-                transaction.Commit();
-            }
-            catch (Exception e)
-            {
-                var dialogTitle = $"{Assembly.GetExecutingAssembly().GetName().Name} - {MethodBase.GetCurrentMethod().Name}";
-                UiErrorReporter.ShowError(e.Message, dialogTitle);
-            }
+                using SQLiteCommand cmd = connection.CreateCommand();
+                cmd.Transaction = transaction;
+                cmd.CommandText =
+                    "update tagbar set title = @title, contents = @contents where item_id = @item_id";
+                cmd.Parameters.Add(new SQLiteParameter("@title", title ?? ""));
+                cmd.Parameters.Add(new SQLiteParameter("@contents", contents ?? ""));
+                cmd.Parameters.Add(new SQLiteParameter("@item_id", itemId));
+                cmd.ExecuteNonQuery();
+            });
         }
 
         public static void DeleteTagBarItem(string dbFullPath, long itemId)
@@ -235,11 +224,8 @@ namespace IndigoMovieManager
             }
 
             EnsureTagBarTable(dbFullPath);
-            try
+            SqliteDataAccess.ExecuteNonQuery(dbFullPath, (connection, transaction) =>
             {
-                using SQLiteConnection connection = new($"Data Source={dbFullPath}");
-                connection.Open();
-                using var transaction = connection.BeginTransaction();
                 using (SQLiteCommand selectCmd = connection.CreateCommand())
                 {
                     selectCmd.Transaction = transaction;
@@ -257,20 +243,12 @@ namespace IndigoMovieManager
                     }
                 }
 
-                using (SQLiteCommand cmd = connection.CreateCommand())
-                {
-                    cmd.CommandText = "delete from tagbar where item_id = @item_id";
-                    cmd.Parameters.Add(new SQLiteParameter("@item_id", itemId));
-                    cmd.ExecuteNonQuery();
-                }
-
-                transaction.Commit();
-            }
-            catch (Exception e)
-            {
-                var dialogTitle = $"{Assembly.GetExecutingAssembly().GetName().Name} - {MethodBase.GetCurrentMethod().Name}";
-                UiErrorReporter.ShowError(e.Message, dialogTitle);
-            }
+                using SQLiteCommand cmd = connection.CreateCommand();
+                cmd.Transaction = transaction;
+                cmd.CommandText = "delete from tagbar where item_id = @item_id";
+                cmd.Parameters.Add(new SQLiteParameter("@item_id", itemId));
+                cmd.ExecuteNonQuery();
+            });
         }
     }
 }
