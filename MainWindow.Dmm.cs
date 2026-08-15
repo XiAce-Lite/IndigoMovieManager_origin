@@ -460,13 +460,35 @@ namespace IndigoMovieManager
                         TabListRefreshHelper.RefreshActiveList(_currentSkinEngine, this);
                         RefreshDmmPendingMenuBadge();
                     });
-                })
+                },
+                ShowPendingMovieInSkinAsync)
             {
                 Owner = this,
                 WindowStartupLocation = WindowStartupLocation.CenterOwner,
             };
             pendingWindow.ShowDialog();
             RefreshDmmPendingMenuBadge();
+        }
+
+        /// <summary>
+        /// 未確定候補から対象を現在スキンへ表示。検索履歴には残さない。
+        /// </summary>
+        private async Task ShowPendingMovieInSkinAsync(MovieRecords record)
+        {
+            if (record == null)
+            {
+                return;
+            }
+
+            string body = string.IsNullOrWhiteSpace(record.Movie_Body)
+                ? Path.GetFileNameWithoutExtension(record.Movie_Name ?? "")
+                : record.Movie_Body;
+            string keyword = string.IsNullOrWhiteSpace(body)
+                ? $"\"{record.Movie_Name}\""
+                : $"\"{body}\"";
+
+            await SearchByKeywordAsync(keyword, addToHistory: false).ConfigureAwait(true);
+            SelectMovieRecord(record);
         }
 
         private sealed class MainWindowDmmAutoFetchHost : IDmmAutoFetchHost

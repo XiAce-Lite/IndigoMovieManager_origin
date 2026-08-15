@@ -325,5 +325,17 @@ namespace IndigoMovieManager.Properties {
                 this["DmmTagExcludePatterns"] = value;
             }
         }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool DmmPendingShowInSkin {
+            get {
+                return ((bool)(this["DmmPendingShowInSkin"]));
+            }
+            set {
+                this["DmmPendingShowInSkin"] = value;
+            }
+        }
     }
 }

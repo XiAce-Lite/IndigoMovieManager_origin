@@ -50,7 +50,7 @@ namespace IndigoMovieManager.Services.Dmm
         }
 
         /// <summary>
-        /// 手動検索ウィンドウ向けの1ページ取得（CID digital/dvd + キーワード、同一 offset/hits）。
+        /// 手動検索ウィンドウ向けの1ページ取得（CID videoa/videoc/dvd + キーワード、同一 offset/hits）。
         /// 既定 hits=30 は SearchManualAsync のキーワード件数と揃える。
         /// </summary>
         public async Task<DmmKeywordSearchResult> SearchPageAsync(
@@ -93,6 +93,22 @@ namespace IndigoMovieManager.Services.Dmm
                     {
                         AppendSearchHits(merged, digital);
                         mayHaveMore |= (digital.Items?.Count ?? 0) >= pageHits;
+                    }
+
+                    await DelayAsync(cancellationToken).ConfigureAwait(false);
+
+                    DmmSearchResult amateur = await _client
+                        .SearchByCidAmateurAsync(cid, cancellationToken, pageHits, pageOffset)
+                        .ConfigureAwait(false);
+                    if (amateur.Status == DmmSearchStatus.NotConfigured)
+                    {
+                        return DmmKeywordSearchResult.NotConfigured(trimmed);
+                    }
+
+                    if (amateur.Status != DmmSearchStatus.HttpError)
+                    {
+                        AppendSearchHits(merged, amateur);
+                        mayHaveMore |= (amateur.Items?.Count ?? 0) >= pageHits;
                     }
 
                     await DelayAsync(cancellationToken).ConfigureAwait(false);
@@ -241,6 +257,26 @@ namespace IndigoMovieManager.Services.Dmm
 
                     await DelayAsync(cancellationToken).ConfigureAwait(false);
 
+                    DmmSearchResult amateur = await _client
+                        .SearchByCidAmateurAsync(cid, cancellationToken)
+                        .ConfigureAwait(false);
+                    if (amateur.Status == DmmSearchStatus.NotConfigured)
+                    {
+                        return DmmKeywordSearchResult.NotConfigured(trimmed);
+                    }
+
+                    if (amateur.Status != DmmSearchStatus.HttpError)
+                    {
+                        AppendSearchHits(merged, amateur);
+                    }
+
+                    if (ShouldStopManualSearch(merged, extracted))
+                    {
+                        return DmmKeywordSearchResult.FromItems(trimmed, merged);
+                    }
+
+                    await DelayAsync(cancellationToken).ConfigureAwait(false);
+
                     DmmSearchResult dvd = await _client
                         .SearchByCidDvdAsync(cid, cancellationToken)
                         .ConfigureAwait(false);
@@ -306,6 +342,22 @@ namespace IndigoMovieManager.Services.Dmm
                 if (digitalResult != null)
                 {
                     return digitalResult;
+                }
+
+                await DelayAsync(cancellationToken).ConfigureAwait(false);
+
+                DmmSearchResult amateur = await _client
+                    .SearchByCidAmateurAsync(cid, cancellationToken)
+                    .ConfigureAwait(false);
+                DmmResolveResult amateurResult = InterpretWithJacketPolicy(
+                    amateur,
+                    productCode,
+                    candidates,
+                    ref sawHttpError,
+                    ref lastHttpError);
+                if (amateurResult != null)
+                {
+                    return amateurResult;
                 }
 
                 await DelayAsync(cancellationToken).ConfigureAwait(false);

@@ -48,35 +48,126 @@ namespace IndigoMovieManager
         private readonly string _dbPath;
         private readonly Func<long, MovieRecords> _findMovie;
         private readonly Action _onResolved;
+        private readonly Func<MovieRecords, Task> _showInSkinAsync;
+        private readonly List<DmmPendingRow> _allRows = [];
         private readonly ObservableCollection<DmmPendingRow> _rows = [];
+        private bool _imeComposing;
 
         internal DmmPendingCandidatesWindow(
             string dbPath,
             Func<long, MovieRecords> findMovie,
-            Action onResolved = null)
+            Action onResolved = null,
+            Func<MovieRecords, Task> showInSkinAsync = null)
         {
             InitializeComponent();
 
             _dbPath = dbPath ?? string.Empty;
             _findMovie = findMovie ?? (_ => null);
             _onResolved = onResolved;
+            _showInSkinAsync = showInSkinAsync;
+
+            TextCompositionManager.AddPreviewTextInputHandler(FilterBox, OnFilterPreviewTextInput);
+            TextCompositionManager.AddPreviewTextInputStartHandler(FilterBox, OnFilterPreviewTextInputStart);
+            TextCompositionManager.AddPreviewTextInputUpdateHandler(FilterBox, OnFilterPreviewTextInputUpdate);
 
             PendingGrid.ItemsSource = _rows;
+            ShowInSkinCheckBox.IsChecked = Properties.Settings.Default.DmmPendingShowInSkin;
             Reload();
         }
 
         private void Reload()
         {
+            _allRows.Clear();
+            if (!string.IsNullOrEmpty(_dbPath))
+            {
+                foreach (DmmPendingCandidateRecord record in DmmPendingCandidateStore.List(_dbPath))
+                {
+                    _allRows.Add(DmmPendingRow.FromRecord(record));
+                }
+            }
+
+            ApplyFilter();
+        }
+
+        private void ApplyFilter()
+        {
+            string query = FilterBox?.Text ?? "";
             _rows.Clear();
-            if (string.IsNullOrEmpty(_dbPath))
+            foreach (DmmPendingRow row in _allRows)
+            {
+                if (DmmPendingFileNameFilter.Matches(row.MovieName, query))
+                {
+                    _rows.Add(row);
+                }
+            }
+
+            UpdateFilterCount();
+        }
+
+        private void UpdateFilterCount()
+        {
+            if (FilterCountText == null)
             {
                 return;
             }
 
-            foreach (DmmPendingCandidateRecord record in DmmPendingCandidateStore.List(_dbPath))
+            if (_allRows.Count == 0)
             {
-                _rows.Add(DmmPendingRow.FromRecord(record));
+                FilterCountText.Text = "0 件";
+                return;
             }
+
+            FilterCountText.Text = DmmPendingFileNameFilter.IsBroadQuery(FilterBox?.Text)
+                ? $"{_allRows.Count} 件"
+                : $"{_rows.Count} / {_allRows.Count} 件";
+        }
+
+        private void FilterBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (_imeComposing)
+            {
+                return;
+            }
+
+            ApplyFilter();
+        }
+
+        private void OnFilterPreviewTextInput(object sender, TextCompositionEventArgs e)
+        {
+            _imeComposing = false;
+            ApplyFilter();
+        }
+
+        private void OnFilterPreviewTextInputStart(object sender, TextCompositionEventArgs e)
+        {
+            _imeComposing = true;
+        }
+
+        private void OnFilterPreviewTextInputUpdate(object sender, TextCompositionEventArgs e)
+        {
+            if (e.TextComposition.CompositionText.Length == 0)
+            {
+                _imeComposing = false;
+                ApplyFilter();
+            }
+        }
+
+        private void ShowInSkinCheckBox_Changed(object sender, RoutedEventArgs e)
+        {
+            Properties.Settings.Default.DmmPendingShowInSkin = ShowInSkinCheckBox.IsChecked == true;
+            Properties.Settings.Default.Save();
+        }
+
+        private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key != Key.F || Keyboard.Modifiers != ModifierKeys.Control)
+            {
+                return;
+            }
+
+            e.Handled = true;
+            FilterBox.Focus();
+            FilterBox.SelectAll();
         }
 
         private DmmPendingRow GetSelectedRow()
@@ -118,7 +209,7 @@ namespace IndigoMovieManager
                 return;
             }
 
-            OpenResolveWindow(row);
+            _ = OpenResolveWindowAsync(row);
         }
 
         private void PendingGrid_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
@@ -139,11 +230,11 @@ namespace IndigoMovieManager
 
             e.Handled = true;
             Dispatcher.BeginInvoke(
-                new Action(() => OpenResolveWindow(row)),
+                new Action(() => _ = OpenResolveWindowAsync(row)),
                 DispatcherPriority.ApplicationIdle);
         }
 
-        private void OpenResolveWindow(DmmPendingRow row)
+        private async Task OpenResolveWindowAsync(DmmPendingRow row)
         {
             if (row == null)
             {
@@ -160,6 +251,23 @@ namespace IndigoMovieManager
                     MessageBoxButton.OK,
                     MessageBoxImage.Warning);
                 return;
+            }
+
+            if (ShowInSkinCheckBox.IsChecked == true && _showInSkinAsync != null)
+            {
+                try
+                {
+                    await _showInSkinAsync(record).ConfigureAwait(true);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(
+                        this,
+                        $"スキン表示に失敗しました。\n{ex.Message}",
+                        Title,
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                }
             }
 
             var searchWindow = new DmmSearchWindow(

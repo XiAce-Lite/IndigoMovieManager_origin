@@ -97,6 +97,14 @@ namespace IndigoMovieManager.Services.Dmm
             int offset = 1) =>
             SearchByCidAsync(cid, "digital", "videoa", cancellationToken, hits, offset);
 
+        /// <summary>素人（Web の /amateur/ 相当）。service=digital / floor=videoc。</summary>
+        public Task<DmmSearchResult> SearchByCidAmateurAsync(
+            string cid,
+            CancellationToken cancellationToken = default,
+            int hits = 10,
+            int offset = 1) =>
+            SearchByCidAsync(cid, "digital", "videoc", cancellationToken, hits, offset);
+
         public Task<DmmSearchResult> SearchByCidDvdAsync(
             string cid,
             CancellationToken cancellationToken = default,

@@ -28,6 +28,21 @@
                     HorizontalAlignment="Right"
                     Orientation="Horizontal">
                     <Button
+                        x:Name="JacketRescueButton"
+                        MinWidth="108"
+                        Margin="0,0,8,0"
+                        Click="JacketRescueButton_Click"
+                        Content="ジャケ救済(_J)"
+                        ToolTip="検索語をそのまま CID として CDN URL を生成します（Comment1 のみ採用可）" />
+                    <Button
+                        x:Name="AdoptJacketButton"
+                        MinWidth="108"
+                        Margin="0,0,8,0"
+                        Click="AdoptJacketButton_Click"
+                        Content="ジャケ採用(_U)"
+                        IsEnabled="False"
+                        ToolTip="選択中の推定ジャケ URL を Comment1 に保存します" />
+                    <Button
                         x:Name="NextPageButton"
                         MinWidth="108"
                         Margin="0,0,8,0"
@@ -59,16 +74,41 @@
                     <RowDefinition Height="Auto" MaxHeight="180" />
                 </Grid.RowDefinitions>
 
-                <TextBlock
-                    Grid.Row="0"
-                    Margin="0,0,0,8"
-                    FontSize="13"
-                    Text="{Binding TargetFileLabel}"
-                    TextWrapping="Wrap" />
+                <DockPanel Grid.Row="0" Margin="0,0,0,8" LastChildFill="True">
+                    <TextBlock
+                        DockPanel.Dock="Left"
+                        Margin="0,0,4,0"
+                        VerticalAlignment="Center"
+                        FontSize="13"
+                        Text="対象:" />
+                    <TextBox
+                        x:Name="TargetFileNameBox"
+                        VerticalAlignment="Center"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        CaretBrush="{DynamicResource MaterialDesign.Brush.Foreground}"
+                        FontSize="13"
+                        IsReadOnly="True"
+                        IsReadOnlyCaretVisible="True"
+                        Padding="0"
+                        Text="{Binding TargetFileName, Mode=OneWay}"
+                        TextWrapping="Wrap"
+                        ToolTip="ファイル名を選択してコピーできます"
+                        materialDesign:TextFieldAssist.DecorationVisibility="Collapsed">
+                        <TextBox.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem
+                                    Command="ApplicationCommands.Copy"
+                                    Header="コピー(_C)" />
+                            </ContextMenu>
+                        </TextBox.ContextMenu>
+                    </TextBox>
+                </DockPanel>
 
                 <Grid Grid.Row="1" Margin="0,0,0,8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
@@ -85,7 +125,7 @@
                     <Button
                         x:Name="SearchButton"
                         Grid.Column="1"
-                        MinWidth="88"
+                        MinWidth="72"
                         Margin="0,0,8,0"
                         Click="SearchButton_Click"
                         Content="検索(_S)" />
@@ -93,15 +133,23 @@
                         x:Name="PlayButton"
                         Grid.Column="2"
                         Margin="0,0,8,0"
-                        MinWidth="88"
+                        MinWidth="72"
                         Click="PlayButton_Click"
                         Content="再生(_P)" />
                     <Button
                         x:Name="TagEditButton"
                         Grid.Column="3"
                         MinWidth="88"
+                        Margin="0,0,8,0"
                         Click="TagEditButton_Click"
                         Content="タグ編集(_T)" />
+                    <Button
+                        x:Name="MetadataEditButton"
+                        Grid.Column="4"
+                        MinWidth="88"
+                        Click="MetadataEditButton_Click"
+                        Content="メタ情報(_M)"
+                        ToolTip="タイトル・コメント・メーカー・ジャンルを編集します" />
                 </Grid>
 
                 <StackPanel Grid.Row="2" Margin="0,0,0,8">
@@ -112,13 +160,19 @@
                     <WrapPanel x:Name="VariantChipsPanel" Margin="0,4,0,0" />
                 </StackPanel>
 
-                <TextBlock
-                    x:Name="StatusText"
-                    Grid.Row="3"
-                    Margin="0,0,0,8"
-                    Foreground="{DynamicResource MaterialDesign.Brush.ForegroundLight}"
-                    Text="候補を読み込み中..."
-                    TextWrapping="Wrap" />
+                <StackPanel Grid.Row="3" Margin="0,0,0,8">
+                    <TextBlock
+                        x:Name="ModeLabelText"
+                        Margin="0,0,0,4"
+                        FontSize="12"
+                        FontWeight="SemiBold"
+                        Text="表示: DMM 候補" />
+                    <TextBlock
+                        x:Name="StatusText"
+                        Foreground="{DynamicResource MaterialDesign.Brush.ForegroundLight}"
+                        Text="候補を読み込み中..."
+                        TextWrapping="Wrap" />
+                </StackPanel>
 
                 <DataGrid
                     x:Name="CandidatesGrid"
@@ -136,57 +190,7 @@
                     ScrollViewer.VerticalScrollBarVisibility="Auto"
                     SelectionChanged="CandidatesGrid_SelectionChanged"
                     SelectionMode="Single"
-                    SelectionUnit="FullRow">
-                    <DataGrid.Columns>
-                        <DataGridTextColumn
-                            Width="56"
-                            MinWidth="48"
-                            Binding="{Binding JacketLabel}"
-                            Header="ジャケ"
-                            IsReadOnly="True" />
-                        <DataGridTextColumn
-                            Width="2.4*"
-                            MinWidth="140"
-                            Binding="{Binding Title}"
-                            Header="タイトル">
-                            <DataGridTextColumn.ElementStyle>
-                                <Style TargetType="TextBlock">
-                                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-                                    <Setter Property="ToolTip" Value="{Binding Title}" />
-                                </Style>
-                            </DataGridTextColumn.ElementStyle>
-                        </DataGridTextColumn>
-                        <DataGridTextColumn
-                            Width="140"
-                            MinWidth="100"
-                            Binding="{Binding ContentId}"
-                            Header="品番">
-                            <DataGridTextColumn.ElementStyle>
-                                <Style TargetType="TextBlock">
-                                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-                                    <Setter Property="ToolTip" Value="{Binding ContentId}" />
-                                </Style>
-                            </DataGridTextColumn.ElementStyle>
-                        </DataGridTextColumn>
-                        <DataGridTextColumn
-                            Width="2*"
-                            MinWidth="120"
-                            Binding="{Binding MakerLabelSeries}"
-                            Header="メーカー / レーベル / シリーズ">
-                            <DataGridTextColumn.ElementStyle>
-                                <Style TargetType="TextBlock">
-                                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-                                    <Setter Property="ToolTip" Value="{Binding MakerLabelSeries}" />
-                                </Style>
-                            </DataGridTextColumn.ElementStyle>
-                        </DataGridTextColumn>
-                        <DataGridTextColumn
-                            Width="80"
-                            MinWidth="64"
-                            Binding="{Binding FloorLabel}"
-                            Header="floor" />
-                    </DataGrid.Columns>
-                </DataGrid>
+                    SelectionUnit="FullRow" />
 
                 <Border
                     Grid.Row="5"

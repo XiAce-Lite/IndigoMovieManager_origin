@@ -2,17 +2,21 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using IndigoMovieManager.Data;
 using IndigoMovieManager.Services;
 using IndigoMovieManager.Services.Dmm;
+using MaterialDesignThemes.Wpf;
+using WpfDataGridTextColumn = System.Windows.Controls.DataGridTextColumn;
 
 namespace IndigoMovieManager
 {
     public sealed class DmmSearchWindowModel
     {
-        public string TargetFileLabel { get; set; }
+        public string TargetFileName { get; set; }
     }
 
     /// <summary>
@@ -20,6 +24,15 @@ namespace IndigoMovieManager
     /// </summary>
     public partial class DmmSearchWindow : Window
     {
+        private enum GridListMode
+        {
+            Candidates,
+            RescueUrls,
+        }
+
+        private const string KeywordHintCandidates = "検索語（品番表記の揺れは下の候補をクリック）";
+        private const string KeywordHintRescue = "CID をそのまま入力（例: abcd00123 / h_000abcd00123）。直して再度ジャケ救済";
+
         /// <summary>手動検索の1ページ件数（0620c02 以降の候補30件方針に合わせる）。</summary>
         private const int PageHits = 30;
 
@@ -28,9 +41,12 @@ namespace IndigoMovieManager
         private readonly long? _pendingId;
         private readonly bool _openedWithInitialCandidates;
         private readonly ObservableCollection<DmmCandidateRow> _candidates = [];
+        private readonly ObservableCollection<DmmJacketGuessRow> _rescueRows = [];
         private readonly DmmMetadataApplyService _applier = new();
         private DmmMetadataResolveService _resolver;
         private bool _isSearching;
+        private GridListMode _listMode = GridListMode.Candidates;
+        private string _rescueJacketUrl;
         /// <summary>親画面のダブルクリック MouseUp/Down がセル操作に化けるのを抑止する。</summary>
         private DateTime _suppressCellClickUntilUtc;
         private const int SuppressOpenClickMs = 800;
@@ -57,11 +73,11 @@ namespace IndigoMovieManager
 
             DataContext = new DmmSearchWindowModel
             {
-                TargetFileLabel = $"対象: {record.Movie_Name ?? record.Movie_Path ?? "(不明)"}",
+                TargetFileName = record.Movie_Name ?? record.Movie_Path ?? "(不明)",
             };
 
             KeywordBox.Text = initialKeyword ?? string.Empty;
-            CandidatesGrid.ItemsSource = _candidates;
+            ApplyListMode(GridListMode.Candidates, clearRescueSelection: true);
             PopulateVariantChips();
 
             if (_openedWithInitialCandidates)
@@ -77,8 +93,10 @@ namespace IndigoMovieManager
             }
             else if (_pendingId.HasValue)
             {
-                // 候補0件の未確定から開いた場合も、親のダブルクリック MouseUp を吸収する
+                // 候補0件の未確定から開いた場合も、親のダブルクリック MouseUp を吸収する。
+                // 保存時ゼロ件の再検索はしない（別語検索／ジャケ救済はユーザー起点）。
                 ArmOpenClickSuppress();
+                StatusText.Text = "保存時は候補 0 件です。別キーワードで検索するか、ジャケ救済を使ってください。";
             }
 
             Loaded += DmmSearchWindow_Loaded;
@@ -142,7 +160,187 @@ namespace IndigoMovieManager
                 return;
             }
 
+            // 未確定（候補0件）は一括／初回検索の結果を尊重し、開いた瞬間の再検索をしない。
+            if (_pendingId.HasValue)
+            {
+                return;
+            }
+
             await RunSearchAsync(KeywordBox.Text, append: false).ConfigureAwait(true);
+        }
+
+        private void ApplyListMode(GridListMode mode, bool clearRescueSelection)
+        {
+            _listMode = mode;
+            if (clearRescueSelection)
+            {
+                _rescueJacketUrl = null;
+            }
+
+            CandidatesGrid.Columns.Clear();
+            if (mode == GridListMode.Candidates)
+            {
+                ModeLabelText.Text = "表示: DMM 候補";
+                HintAssist.SetHint(KeywordBox, KeywordHintCandidates);
+                CandidatesGrid.IsReadOnly = true;
+                CandidatesGrid.BeginningEdit -= CandidatesGrid_BeginningEdit;
+                CandidatesGrid.CellEditEnding -= CandidatesGrid_CellEditEnding;
+                AddCandidateColumns();
+                CandidatesGrid.ItemsSource = _candidates;
+            }
+            else
+            {
+                ModeLabelText.Text = "表示: ジャケ推定 URL（URL 列は編集可）";
+                HintAssist.SetHint(KeywordBox, KeywordHintRescue);
+                CandidatesGrid.IsReadOnly = false;
+                CandidatesGrid.BeginningEdit -= CandidatesGrid_BeginningEdit;
+                CandidatesGrid.CellEditEnding -= CandidatesGrid_CellEditEnding;
+                CandidatesGrid.BeginningEdit += CandidatesGrid_BeginningEdit;
+                CandidatesGrid.CellEditEnding += CandidatesGrid_CellEditEnding;
+                AddRescueColumns();
+                CandidatesGrid.ItemsSource = _rescueRows;
+            }
+
+            UpdateModeDependentButtons();
+        }
+
+        private void AddCandidateColumns()
+        {
+            CandidatesGrid.Columns.Add(new WpfDataGridTextColumn
+            {
+                Header = "ジャケ",
+                Binding = new Binding(nameof(DmmCandidateRow.JacketLabel)),
+                Width = new DataGridLength(56),
+                MinWidth = 48,
+                IsReadOnly = true,
+            });
+            CandidatesGrid.Columns.Add(CreateEllipsisColumn(
+                "タイトル",
+                nameof(DmmCandidateRow.Title),
+                new DataGridLength(2.4, DataGridLengthUnitType.Star),
+                140));
+            CandidatesGrid.Columns.Add(CreateEllipsisColumn(
+                "品番",
+                nameof(DmmCandidateRow.ContentId),
+                new DataGridLength(140),
+                100));
+            CandidatesGrid.Columns.Add(CreateEllipsisColumn(
+                "メーカー / レーベル / シリーズ",
+                nameof(DmmCandidateRow.MakerLabelSeries),
+                new DataGridLength(2, DataGridLengthUnitType.Star),
+                120));
+            CandidatesGrid.Columns.Add(new WpfDataGridTextColumn
+            {
+                Header = "floor",
+                Binding = new Binding(nameof(DmmCandidateRow.FloorLabel)),
+                Width = new DataGridLength(80),
+                MinWidth = 64,
+                IsReadOnly = true,
+            });
+        }
+
+        private void AddRescueColumns()
+        {
+            CandidatesGrid.Columns.Add(new WpfDataGridTextColumn
+            {
+                Header = "CID",
+                Binding = new Binding(nameof(DmmJacketGuessRow.Cid)),
+                Width = new DataGridLength(140),
+                MinWidth = 100,
+                IsReadOnly = true,
+            });
+            CandidatesGrid.Columns.Add(new WpfDataGridTextColumn
+            {
+                Header = "種別",
+                Binding = new Binding(nameof(DmmJacketGuessRow.HostLabel)),
+                Width = new DataGridLength(96),
+                MinWidth = 80,
+                IsReadOnly = true,
+            });
+            var urlColumn = CreateEllipsisColumn(
+                "URL",
+                nameof(DmmJacketGuessRow.Url),
+                new DataGridLength(1, DataGridLengthUnitType.Star),
+                200,
+                isReadOnly: false);
+            urlColumn.Binding = new Binding(nameof(DmmJacketGuessRow.Url))
+            {
+                Mode = BindingMode.TwoWay,
+                UpdateSourceTrigger = UpdateSourceTrigger.LostFocus,
+            };
+            CandidatesGrid.Columns.Add(urlColumn);
+        }
+
+        private static WpfDataGridTextColumn CreateEllipsisColumn(
+            string header,
+            string path,
+            DataGridLength width,
+            double minWidth,
+            bool isReadOnly = true)
+        {
+            var column = new WpfDataGridTextColumn
+            {
+                Header = header,
+                Binding = new Binding(path),
+                Width = width,
+                MinWidth = minWidth,
+                IsReadOnly = isReadOnly,
+            };
+            var style = new Style(typeof(TextBlock));
+            style.Setters.Add(new Setter(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis));
+            style.Setters.Add(new Setter(FrameworkElement.ToolTipProperty, new Binding(path)));
+            column.ElementStyle = style;
+            return column;
+        }
+
+        private void CandidatesGrid_BeginningEdit(object sender, DataGridBeginningEditEventArgs e)
+        {
+            if (_listMode != GridListMode.RescueUrls)
+            {
+                e.Cancel = true;
+                return;
+            }
+
+            // URL 列以外は編集不可
+            if (e.Column is WpfDataGridTextColumn textColumn
+                && textColumn.Binding is Binding binding
+                && binding.Path?.Path == nameof(DmmJacketGuessRow.Url))
+            {
+                return;
+            }
+
+            e.Cancel = true;
+        }
+
+        private async void CandidatesGrid_CellEditEnding(object sender, DataGridCellEditEndingEventArgs e)
+        {
+            if (_listMode != GridListMode.RescueUrls
+                || e.EditAction != DataGridEditAction.Commit
+                || e.Row?.Item is not DmmJacketGuessRow row)
+            {
+                return;
+            }
+
+            if (e.EditingElement is TextBox edited)
+            {
+                row.Url = edited.Text?.Trim() ?? string.Empty;
+            }
+
+            CandidatesGrid.SelectedItem = row;
+            await ShowRescueJacketAsync(row.Url).ConfigureAwait(true);
+        }
+
+        private void UpdateModeDependentButtons()
+        {
+            bool candidates = _listMode == GridListMode.Candidates;
+            ApplyButton.IsEnabled = !_isSearching && candidates;
+            NextPageButton.IsEnabled = !_isSearching
+                && candidates
+                && _mayHaveMore
+                && !string.IsNullOrWhiteSpace(_lastSearchKeyword);
+            AdoptJacketButton.IsEnabled = !_isSearching
+                && _listMode == GridListMode.RescueUrls
+                && DmmJacketUrls.IsHttpUrl(_rescueJacketUrl);
         }
 
         private void SetCandidates(IReadOnlyList<DmmCandidateEntry> entries)
@@ -230,6 +428,11 @@ namespace IndigoMovieManager
 
         private async void NextPageButton_Click(object sender, RoutedEventArgs e)
         {
+            if (_listMode != GridListMode.Candidates)
+            {
+                return;
+            }
+
             string keyword = string.IsNullOrWhiteSpace(KeywordBox.Text)
                 ? _lastSearchKeyword
                 : KeywordBox.Text;
@@ -258,39 +461,92 @@ namespace IndigoMovieManager
             }
 
             DataGridCell cell = FindVisualParent<DataGridCell>(source);
-            if (cell?.Column == null || cell.DataContext is not DmmCandidateRow row)
+            if (cell?.Column == null)
+            {
+                return;
+            }
+
+            if (_listMode == GridListMode.RescueUrls)
+            {
+                if (cell.DataContext is not DmmJacketGuessRow guess)
+                {
+                    return;
+                }
+
+                // URL 列は編集用。CID クリック時だけ検索語へ反映する
+                if (cell.Column is WpfDataGridTextColumn textColumn
+                    && textColumn.Binding is Binding binding
+                    && binding.Path?.Path == nameof(DmmJacketGuessRow.Url))
+                {
+                    return;
+                }
+
+                string value = GetRescueCellDisplayText(guess, cell.Column);
+                if (string.IsNullOrWhiteSpace(value)
+                    || string.Equals(value, guess.Url, StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+
+                KeywordBox.Text = value.Trim();
+                KeywordBox.Focus();
+                KeywordBox.CaretIndex = KeywordBox.Text.Length;
+                return;
+            }
+
+            if (cell.DataContext is not DmmCandidateRow row)
             {
                 return;
             }
 
             // ジャケ列は検索語に載せない。○ ならプレビューへフォーカス。
-            if (ReferenceEquals(cell.Column, CandidatesGrid.Columns[0]))
+            if (CandidatesGrid.Columns.Count > 0
+                && ReferenceEquals(cell.Column, CandidatesGrid.Columns[0]))
             {
                 CandidatesGrid.SelectedItem = row;
                 JacketPreviewImage.Focus();
                 return;
             }
 
-            string value = GetCellDisplayText(row, cell.Column);
-            if (string.IsNullOrWhiteSpace(value))
+            string candidateValue = GetCandidateCellDisplayText(row, cell.Column);
+            if (string.IsNullOrWhiteSpace(candidateValue))
             {
                 return;
             }
 
-            KeywordBox.Text = value.Trim();
+            KeywordBox.Text = candidateValue.Trim();
             KeywordBox.Focus();
             KeywordBox.CaretIndex = KeywordBox.Text.Length;
         }
 
         private async void CandidatesGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
+            if (_listMode == GridListMode.RescueUrls)
+            {
+                DmmJacketGuessRow guess = GetSelectedRescueRow();
+                if (guess != null)
+                {
+                    await ShowRescueJacketAsync(guess.Url).ConfigureAwait(true);
+                }
+                else
+                {
+                    _rescueJacketUrl = null;
+                    UpdateModeDependentButtons();
+                    ClearJacketPreview();
+                }
+
+                return;
+            }
+
+            _rescueJacketUrl = null;
+            UpdateModeDependentButtons();
             await UpdateJacketPreviewAsync(GetSelectedCandidateRow()).ConfigureAwait(true);
         }
 
-        private static string GetCellDisplayText(DmmCandidateRow row, DataGridColumn column)
+        private static string GetCandidateCellDisplayText(DmmCandidateRow row, DataGridColumn column)
         {
-            if (column is not DataGridTextColumn textColumn
-                || textColumn.Binding is not System.Windows.Data.Binding binding
+            if (column is not WpfDataGridTextColumn textColumn
+                || textColumn.Binding is not Binding binding
                 || string.IsNullOrEmpty(binding.Path?.Path))
             {
                 return string.Empty;
@@ -302,6 +558,24 @@ namespace IndigoMovieManager
                 nameof(DmmCandidateRow.ContentId) => row.ContentId,
                 nameof(DmmCandidateRow.MakerLabelSeries) => row.MakerLabelSeries,
                 nameof(DmmCandidateRow.FloorLabel) => row.FloorLabel,
+                _ => string.Empty,
+            };
+        }
+
+        private static string GetRescueCellDisplayText(DmmJacketGuessRow row, DataGridColumn column)
+        {
+            if (column is not WpfDataGridTextColumn textColumn
+                || textColumn.Binding is not Binding binding
+                || string.IsNullOrEmpty(binding.Path?.Path))
+            {
+                return string.Empty;
+            }
+
+            return binding.Path.Path switch
+            {
+                nameof(DmmJacketGuessRow.Cid) => row.Cid,
+                nameof(DmmJacketGuessRow.HostLabel) => row.HostLabel,
+                nameof(DmmJacketGuessRow.Url) => row.Url,
                 _ => string.Empty,
             };
         }
@@ -339,6 +613,15 @@ namespace IndigoMovieManager
             if (!options.IsConfigured)
             {
                 StatusText.Text = "DMM API ID / アフィリエイトID（API用）が未設定です。";
+                return;
+            }
+
+            if (!append)
+            {
+                ApplyListMode(GridListMode.Candidates, clearRescueSelection: true);
+            }
+            else if (_listMode != GridListMode.Candidates)
+            {
                 return;
             }
 
@@ -424,17 +707,17 @@ namespace IndigoMovieManager
             }
         }
 
-        private void UpdateNextPageEnabled()
-        {
-            NextPageButton.IsEnabled = !_isSearching && _mayHaveMore && !string.IsNullOrWhiteSpace(_lastSearchKeyword);
-        }
+        private void UpdateNextPageEnabled() => UpdateModeDependentButtons();
 
         private void SetSearchEnabled(bool enabled)
         {
             SearchButton.IsEnabled = enabled;
-            ApplyButton.IsEnabled = enabled;
             KeywordBox.IsEnabled = enabled;
-            UpdateNextPageEnabled();
+            PlayButton.IsEnabled = enabled;
+            TagEditButton.IsEnabled = enabled;
+            MetadataEditButton.IsEnabled = enabled;
+            JacketRescueButton.IsEnabled = enabled;
+            UpdateModeDependentButtons();
             foreach (object child in VariantChipsPanel.Children)
             {
                 if (child is Button chip)
@@ -449,7 +732,9 @@ namespace IndigoMovieManager
             _previewGeneration++;
             JacketPreviewImage.Source = null;
             JacketPreviewHint.Visibility = Visibility.Visible;
-            JacketPreviewHint.Text = "選択行のジャケット（pl）を表示します";
+            JacketPreviewHint.Text = _listMode == GridListMode.RescueUrls
+                ? "選択行の推定 URL をプレビューします"
+                : "選択行のジャケット（pl）を表示します";
         }
 
         private async Task UpdateJacketPreviewAsync(DmmCandidateRow row)
@@ -508,6 +793,99 @@ namespace IndigoMovieManager
 
             JacketLightboxWindow.Show(this, source);
             e.Handled = true;
+        }
+
+        private async void JacketRescueButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_isSearching)
+            {
+                return;
+            }
+
+            IReadOnlyList<DmmJacketGuessRow> rows = DmmJacketUrlGuess.BuildRowsFromKeyword(KeywordBox.Text);
+            ApplyListMode(GridListMode.RescueUrls, clearRescueSelection: true);
+            _rescueRows.Clear();
+            ClearJacketPreview();
+
+            if (rows.Count == 0)
+            {
+                StatusText.Text =
+                    "ジャケ救済: 検索語を CDN 用 CID として使えません。英数字とアンダースコアのみ（例: h_000abcd00123）を入れて再度実行してください。";
+                return;
+            }
+
+            foreach (DmmJacketGuessRow row in rows)
+            {
+                _rescueRows.Add(row);
+            }
+
+            StatusText.Text =
+                $"ジャケ救済: 推定 URL を {_rescueRows.Count} 件生成しました。行を選んでプレビューし、良ければ「ジャケ採用」してください。";
+            CandidatesGrid.SelectedItem = _rescueRows[0];
+            CandidatesGrid.ScrollIntoView(_rescueRows[0]);
+            await ShowRescueJacketAsync(_rescueRows[0].Url).ConfigureAwait(true);
+        }
+
+        private async Task ShowRescueJacketAsync(string url)
+        {
+            if (!DmmJacketUrls.IsHttpUrl(url))
+            {
+                _rescueJacketUrl = null;
+                UpdateModeDependentButtons();
+                return;
+            }
+
+            _rescueJacketUrl = url.Trim();
+            UpdateModeDependentButtons();
+
+            int generation = ++_previewGeneration;
+            JacketPreviewHint.Text = "読み込み中...";
+            JacketPreviewHint.Visibility = Visibility.Visible;
+
+            BitmapSource image = await DmmRemoteImageLoader.LoadAsync(_rescueJacketUrl, Dispatcher)
+                .ConfigureAwait(true);
+            if (generation != _previewGeneration)
+            {
+                return;
+            }
+
+            if (image == null)
+            {
+                JacketPreviewImage.Source = null;
+                JacketPreviewHint.Text = "画像を取得できませんでした（未存在・now_printing 等）";
+                JacketPreviewHint.Visibility = Visibility.Visible;
+                return;
+            }
+
+            if (Uri.TryCreate(_rescueJacketUrl, UriKind.Absolute, out Uri checkUri)
+                && DmmJacketUrls.IsPlaceholderJacketUri(checkUri))
+            {
+                JacketPreviewImage.Source = image;
+                JacketPreviewHint.Text = "プレースホルダ画像の可能性があります";
+                JacketPreviewHint.Visibility = Visibility.Visible;
+                return;
+            }
+
+            JacketPreviewImage.Source = image;
+            JacketPreviewHint.Visibility = Visibility.Collapsed;
+        }
+
+        private void AdoptJacketButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_listMode != GridListMode.RescueUrls || !DmmJacketUrls.IsHttpUrl(_rescueJacketUrl))
+            {
+                StatusText.Text = "採用する推定ジャケがありません。";
+                return;
+            }
+
+            string url = _rescueJacketUrl.Trim();
+            _record.Comment1 = url;
+            if (!string.IsNullOrWhiteSpace(_dbPath))
+            {
+                SQLite.UpdateMovieSingleColumn(_dbPath, _record.Movie_Id, MovieColumn.Comment1, url);
+            }
+
+            StatusText.Text = "推定ジャケ URL を Comment1 に保存しました。";
         }
 
         private async void PlayButton_Click(object sender, RoutedEventArgs e)
@@ -571,8 +949,44 @@ namespace IndigoMovieManager
             StatusText.Text = "タグを更新しました。";
         }
 
+        private void MetadataEditButton_Click(object sender, RoutedEventArgs e)
+        {
+            var editModel = MetadataEditModel.FromMovie(_record);
+            var window = new MetadataEditWindow
+            {
+                Owner = this,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                DataContext = editModel,
+            };
+            window.ShowDialog();
+
+            if (window.CloseStatus() != MessageBoxResult.OK)
+            {
+                return;
+            }
+
+            editModel.ApplyTo(_record);
+            if (!string.IsNullOrWhiteSpace(_dbPath))
+            {
+                SQLite.UpdateMovieSingleColumn(_dbPath, _record.Movie_Id, MovieColumn.Title, _record.Title);
+                SQLite.UpdateMovieSingleColumn(_dbPath, _record.Movie_Id, MovieColumn.Comment1, _record.Comment1);
+                SQLite.UpdateMovieSingleColumn(_dbPath, _record.Movie_Id, MovieColumn.Comment2, _record.Comment2);
+                SQLite.UpdateMovieSingleColumn(_dbPath, _record.Movie_Id, MovieColumn.Comment3, _record.Comment3);
+                SQLite.UpdateMovieSingleColumn(_dbPath, _record.Movie_Id, MovieColumn.Artist, _record.Artist);
+                SQLite.UpdateMovieSingleColumn(_dbPath, _record.Movie_Id, MovieColumn.Genre, _record.Genre);
+            }
+
+            StatusText.Text = "メタ情報を更新しました。";
+        }
+
         private void ApplyButton_Click(object sender, RoutedEventArgs e)
         {
+            if (_listMode != GridListMode.Candidates)
+            {
+                StatusText.Text = "候補一覧に戻してから適用してください（検索ボタン）。";
+                return;
+            }
+
             DmmCandidateRow selected = GetSelectedCandidateRow();
             if (selected?.Item == null)
             {
@@ -612,6 +1026,27 @@ namespace IndigoMovieManager
 
             if (CandidatesGrid.SelectedCells.Count > 0
                 && CandidatesGrid.SelectedCells[0].Item is DmmCandidateRow cellRow)
+            {
+                return cellRow;
+            }
+
+            return null;
+        }
+
+        private DmmJacketGuessRow GetSelectedRescueRow()
+        {
+            if (CandidatesGrid.SelectedItem is DmmJacketGuessRow row)
+            {
+                return row;
+            }
+
+            if (CandidatesGrid.CurrentItem is DmmJacketGuessRow current)
+            {
+                return current;
+            }
+
+            if (CandidatesGrid.SelectedCells.Count > 0
+                && CandidatesGrid.SelectedCells[0].Item is DmmJacketGuessRow cellRow)
             {
                 return cellRow;
             }

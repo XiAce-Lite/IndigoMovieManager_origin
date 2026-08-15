@@ -9,12 +9,14 @@
     MinWidth="720"
     MinHeight="360"
     ResizeMode="CanResizeWithGrip"
-    WindowStartupLocation="CenterOwner">
+    WindowStartupLocation="CenterOwner"
+    PreviewKeyDown="Window_PreviewKeyDown">
     <materialDesign:ColorZone
         Padding="12,12,12,0"
         VerticalAlignment="Stretch">
         <Grid Margin="0,0,0,8">
             <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
@@ -26,9 +28,45 @@
                 Text="複数候補のため保留されたレコードです。選択して候補を確定してください。ダブルクリックでも候補選択を開けます。Ctrl+クリック／Shift+クリックで複数選択できます。"
                 TextWrapping="Wrap" />
 
+            <Grid Grid.Row="1" Margin="0,0,0,8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBox
+                    x:Name="FilterBox"
+                    Grid.Column="0"
+                    Margin="0,0,8,0"
+                    materialDesign:HintAssist.Hint="ファイル名（&quot;で囲むと直接、それ以外は曖昧）"
+                    materialDesign:HintAssist.IsFloating="False"
+                    materialDesign:TextFieldAssist.HasClearButton="True"
+                    materialDesign:TextFieldAssist.HasOutlinedTextField="True"
+                    FontSize="14"
+                    Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                    TextChanged="FilterBox_TextChanged" />
+                <CheckBox
+                    x:Name="ShowInSkinCheckBox"
+                    Grid.Column="1"
+                    Margin="0,0,12,0"
+                    VerticalAlignment="Center"
+                    Content="スキンに表示"
+                    ToolTip="候補を開くとき、メイン画面の現在スキンで対象ファイルを表示します（検索履歴には残しません）"
+                    Checked="ShowInSkinCheckBox_Changed"
+                    Unchecked="ShowInSkinCheckBox_Changed" />
+                <TextBlock
+                    x:Name="FilterCountText"
+                    Grid.Column="2"
+                    MinWidth="88"
+                    VerticalAlignment="Center"
+                    FontSize="12"
+                    TextAlignment="Right"
+                    Foreground="{DynamicResource MaterialDesign.Brush.ForegroundLight}" />
+            </Grid>
+
             <DataGrid
                 x:Name="PendingGrid"
-                Grid.Row="1"
+                Grid.Row="2"
                 AutoGenerateColumns="False"
                 CanUserAddRows="False"
                 CanUserDeleteRows="False"
@@ -62,7 +100,7 @@
                 </DataGrid.Columns>
             </DataGrid>
 
-            <Grid Grid.Row="2" Margin="0,8,0,0">
+            <Grid Grid.Row="3" Margin="0,8,0,0">
                 <TextBlock
                     VerticalAlignment="Center"
                     FontSize="11"
@@ -78,7 +116,7 @@
                         Margin="0,0,8,0"
                         Click="SelectAllButton_Click"
                         Content="全選択(_A)"
-                        ToolTip="一覧の未確定候補をすべて選択します" />
+                        ToolTip="表示中の未確定候補をすべて選択します" />
                     <Button
                         x:Name="CleanupOrphansButton"
                         MinWidth="120"

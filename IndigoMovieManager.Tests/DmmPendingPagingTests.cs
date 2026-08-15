@@ -100,6 +100,23 @@ public class DmmItemListClientQueryTests
         Assert.Contains("service=digital", query, StringComparison.Ordinal);
         Assert.Contains("floor=videoa", query, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void BuildCidSearchQuery_supports_amateur_videoc_floor()
+    {
+        string query = DmmItemListClient.BuildCidSearchQuery(
+            "api",
+            "aff-990",
+            "abcd418",
+            "digital",
+            "videoc",
+            hits: 10,
+            offset: 1);
+
+        Assert.Contains("service=digital", query, StringComparison.Ordinal);
+        Assert.Contains("floor=videoc", query, StringComparison.Ordinal);
+        Assert.Contains("cid=abcd418", query, StringComparison.Ordinal);
+    }
 }
 
 public class DmmPendingNotFoundStoreTests : IDisposable
