@@ -1,0 +1,13 @@
+#!/bin/sh
+# Block commits that introduce real-looking DMM product codes.
+REPO_ROOT=$(git rev-parse --show-toplevel) || exit 1
+if command -v pwsh >/dev/null 2>&1; then
+  pwsh -NoProfile -File "$REPO_ROOT/tools/Check-NoRealDmmIdentifiers.ps1" -RepoRoot "$REPO_ROOT"
+  exit $?
+fi
+if command -v powershell.exe >/dev/null 2>&1; then
+  powershell.exe -NoProfile -File "$REPO_ROOT/tools/Check-NoRealDmmIdentifiers.ps1" -RepoRoot "$REPO_ROOT"
+  exit $?
+fi
+echo "pre-commit: pwsh/powershell not found; cannot run Check-NoRealDmmIdentifiers.ps1" >&2
+exit 1

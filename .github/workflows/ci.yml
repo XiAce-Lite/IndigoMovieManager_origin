@@ -11,6 +11,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Scan for real DMM identifiers
+        shell: pwsh
+        run: ./tools/Check-NoRealDmmIdentifiers.ps1
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
