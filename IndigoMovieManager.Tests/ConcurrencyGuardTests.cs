@@ -493,7 +493,8 @@ public class ThumbnailJobCoordinatorTests
                 buildEpoch).ConfigureAwait(true);
 
             Assert.Single(scheduler.Queue);
-            Assert.Equal(1, scheduler.Queue[0].MovieId);
+            Assert.True(scheduler.Queue.TryPeek(out QueueObj queued));
+            Assert.Equal(1, queued.MovieId);
         }
         finally
         {
