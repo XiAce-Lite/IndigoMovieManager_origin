@@ -453,7 +453,7 @@ public class ThumbnailJobCoordinatorTests
     }
 
     [Fact]
-    public async Task StartTabSwitchJobAsync_skips_when_thumbnail_file_exists_even_if_not_composite()
+    public async Task StartTabSwitchJobAsync_reenqueues_when_existing_thumb_looks_like_error_placeholder()
     {
         var scheduler = new ThumbnailQueueScheduler();
         string thumbRoot = Path.Combine(Path.GetTempPath(), $"imm-tab-exists-{Guid.NewGuid():N}");
@@ -480,6 +480,7 @@ public class ThumbnailJobCoordinatorTests
             string body = ThumbnailMovieNaming.GetMovieBody(records[0]);
             string thumbPath = cache.GetExpectedThumbPath(ListLayout, body, records[0].Hash);
             Directory.CreateDirectory(Path.GetDirectoryName(thumbPath)!);
+            // 極小の非複合ファイルは error プレースホルダ扱いで再投入される
             await File.WriteAllTextAsync(thumbPath, "not-a-composite");
 
             int buildEpoch = scheduler.TabSwitchBuildGeneration;
@@ -491,7 +492,8 @@ public class ThumbnailJobCoordinatorTests
                 workGeneration: 1,
                 buildEpoch).ConfigureAwait(true);
 
-            Assert.Empty(scheduler.Queue);
+            Assert.Single(scheduler.Queue);
+            Assert.Equal(1, scheduler.Queue[0].MovieId);
         }
         finally
         {
