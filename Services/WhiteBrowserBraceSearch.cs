@@ -175,7 +175,7 @@ namespace IndigoMovieManager.Services
 
         /// <summary>
         /// ファイル名ボディの重複判定キー。
-        /// exact=false: 末尾1文字・cd/part 等を吸収する緩いモード。
+        /// exact=false: 末尾1文字・区切り付き cd/part/u/uc 等を吸収する緩いモード。
         /// exact=true: ゼロ埋めと区切りのみ統一し、シリーズ文字（A/B）や cd1/part1 は残す。
         /// </summary>
         internal static string NormalizeDuplicateNameKey(string body, bool exact = false)
@@ -191,8 +191,16 @@ namespace IndigoMovieManager.Services
 
             if (!exact)
             {
-                normalized = Regex.Replace(normalized, @"(?:-|_)?(?:cd|dvd|disc|part|pt)\d+$", "");
-                normalized = Regex.Replace(normalized, @"(?:-|_)?(?:uncensored|4k|sample)$", "");
+                // 区切り必須（xxdvd100 のような略号内 dvd を誤って剥がさない）。長い接尾辞を先に。
+                normalized = Regex.Replace(normalized, @"-(?:cd|dvd|disc|part|pt)\d+$", "");
+                normalized = Regex.Replace(normalized, @"-(?:uncensored|4k|sample|uc|u)$", "");
+                normalized = normalized.Trim('-');
+
+                // 区切りなし品番（xxdvd100）は英字と数字の境界で分割する
+                normalized = Regex.Replace(
+                    normalized,
+                    @"([a-z]+)(\d{2,7})([a-z]?)$",
+                    "$1-$2$3");
             }
 
             Match m = Regex.Match(

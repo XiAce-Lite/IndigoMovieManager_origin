@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using IndigoMovieManager.Services;
 using IndigoMovieManager.Services.WpfSkin;
 using IndigoMovieManager.Services.WpfSkin.Design;
 
@@ -17,6 +18,7 @@ namespace IndigoMovieManager
         public WpfSkinTemplatePickWindow(Window owner)
         {
             InitializeComponent();
+            OwnedModalWindowHelper.ExcludeFromAltTab(this);
             Owner = owner;
 
             // 既存スキン一覧

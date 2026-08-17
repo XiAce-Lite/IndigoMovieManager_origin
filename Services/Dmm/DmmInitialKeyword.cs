@@ -42,6 +42,8 @@ namespace IndigoMovieManager.Services.Dmm
                 // 枝番付き（xxxx-024a）→ 除去形を先に、元表記も残す
                 Add(extracted.ProductCode);
                 Add(extracted.SpaceForm);
+                Add(extracted.StrippedProductCode);
+                Add(extracted.StrippedSpaceForm);
                 if (!string.IsNullOrEmpty(extracted.BranchLetter))
                 {
                     Add(extracted.ProductCodeWithBranch);

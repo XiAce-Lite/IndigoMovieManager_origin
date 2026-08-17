@@ -14,6 +14,7 @@ namespace IndigoMovieManager
         public DmmTagExcludeWindow()
         {
             InitializeComponent();
+            OwnedModalWindowHelper.ExcludeFromAltTab(this);
             PatternEditBox.Text = Properties.Settings.Default.DmmTagExcludePatterns ?? "";
             ContentRendered += (_, _) =>
             {

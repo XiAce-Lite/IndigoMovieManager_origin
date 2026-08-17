@@ -7,10 +7,10 @@ namespace IndigoMovieManager.Services.Dmm
     /// </summary>
     internal static partial class DmmProductCodeMatcher
     {
-        // DMM content_id 形式: 任意の配信コード(1〜4桁) + メーカー + 数字
-        // 例: 1abcd00107 / abcd00107 / 529abcd00123
+        // DMM content_id 形式: 任意の h_ + 配信コード(1〜4桁) + メーカー + 数字
+        // 例: 1abcd00107 / abcd00107 / 529abcd00123 / h_000abcd00123
         [GeneratedRegex(
-            @"^(?<prefix>\d{1,4})?(?<maker>[A-Za-z]{2,10})(?<num>\d{2,6})(?<branch>[A-Za-z])?$",
+            @"^(?<h>h_)?(?<prefix>\d{1,4})?(?<maker>[A-Za-z]{2,10})(?<num>\d{2,6})(?<branch>[A-Za-z])?$",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
         private static partial Regex ContentIdRegex();
 

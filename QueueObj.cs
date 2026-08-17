@@ -10,11 +10,21 @@
         private int? _thumbPanelPos = null;
         private int? _thumbTimePos = null;
         private bool _isManual;
+        private bool _retainAcrossLayoutSwitch;
         private Thumbnail.ThumbnailLayoutSpec _thumbnailLayout;
         private string _lastThumbProgressDetail = "";
 
         public int JobId { get { return _jobId; } set { _jobId = value; } }
         public bool IsManual { get { return _isManual; } set { _isManual = value; } }
+        /// <summary>
+        /// true のときスキン切替のキュー破棄（Abandon / ClearSilent）でも残す。
+        /// 新規追加時の他スキン先作り用。
+        /// </summary>
+        public bool RetainAcrossLayoutSwitch
+        {
+            get => _retainAcrossLayoutSwitch;
+            set => _retainAcrossLayoutSwitch = value;
+        }
         public long MovieId { get { return _movieId; } set { _movieId = value; } }
         public string MovieFullPath { get { return _movieFullPath; } set { _movieFullPath = value; } }
         public string DbFullPath { get { return _dbFullPath; } set { _dbFullPath = value; } }

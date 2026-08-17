@@ -155,6 +155,45 @@ public class ThumbnailJobCoordinatorTests
     }
 
     [Fact]
+    public void ClearSilentQueue_and_Abandon_preserve_retained_pregen_items()
+    {
+        var scheduler = new ThumbnailQueueScheduler();
+        var otherLayout = new ThumbnailLayoutSpec(200, 150, 2, 2);
+        var visible = new QueueObj { MovieId = 1, ThumbnailLayout = ListLayout, DbFullPath = @"C:\a\db.sqlite" };
+        var retained = new QueueObj
+        {
+            MovieId = 1,
+            ThumbnailLayout = otherLayout,
+            DbFullPath = @"C:\a\db.sqlite",
+            RetainAcrossLayoutSwitch = true,
+        };
+        var plainSilent = new QueueObj
+        {
+            MovieId = 2,
+            ThumbnailLayout = ListLayout,
+            DbFullPath = @"C:\a\db.sqlite",
+        };
+
+        scheduler.EnqueueWork(visible, ListLayout.Key, beginNewJob: true);
+        scheduler.EnqueueSilentWork(retained);
+        scheduler.EnqueueSilentWork(plainSilent);
+
+        scheduler.ClearSilentQueue();
+        Assert.Equal(2, scheduler.Queue.Count);
+        Assert.Contains(scheduler.Queue, q => q.RetainAcrossLayoutSwitch);
+        Assert.DoesNotContain(scheduler.Queue, q => q.MovieId == 2);
+
+        scheduler.AbandonAndClearQueue(otherLayout.Key, preserveRetainedWork: true);
+        Assert.Single(scheduler.Queue);
+        Assert.True(scheduler.Queue.TryPeek(out QueueObj kept));
+        Assert.True(kept.RetainAcrossLayoutSwitch);
+        Assert.True(scheduler.JobCoordinator.ShouldProcess(kept));
+
+        scheduler.AbandonAndClearQueue(ListLayout.Key, preserveRetainedWork: false);
+        Assert.Empty(scheduler.Queue);
+    }
+
+    [Fact]
     public async Task StartTabSwitchJobAsync_enqueues_all_pending_items()
     {
         var scheduler = new ThumbnailQueueScheduler();

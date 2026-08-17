@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using System.Text;
 using System.Xml.Linq;
 
 namespace IndigoMovieManager
@@ -17,6 +18,7 @@ namespace IndigoMovieManager
     internal static class SinkuMetadataFetcher
     {
         private static readonly string[] RequiredFiles = ["sinku.exe", "Sinku.dll", "format.ini", "codecs.ini"];
+        private static readonly object FetchGate = new();
 
         public static bool IsAvailable => RequiredFiles.All(name =>
             File.Exists(Path.Combine(AppContext.BaseDirectory, name)));
@@ -30,12 +32,27 @@ namespace IndigoMovieManager
                 return false;
             }
 
+            if (!IsAvailable)
+            {
+                return false;
+            }
+
             string sinkuExe = ResolveSinkuExePath();
             if (!File.Exists(sinkuExe))
             {
                 return false;
             }
 
+            // sinku / Sinku.dll は同時実行に弱いため直列化する
+            lock (FetchGate)
+            {
+                return TryFetchCore(sinkuExe, moviePath, out metadata);
+            }
+        }
+
+        private static bool TryFetchCore(string sinkuExe, string moviePath, out SinkuMetadata metadata)
+        {
+            metadata = null;
             try
             {
                 using Process process = new();
@@ -44,48 +61,92 @@ namespace IndigoMovieManager
                 process.StartInfo.WorkingDirectory = AppContext.BaseDirectory;
                 process.StartInfo.CreateNoWindow = true;
                 process.StartInfo.RedirectStandardOutput = true;
+                process.StartInfo.RedirectStandardError = true;
                 process.StartInfo.UseShellExecute = false;
 
+                var stdout = new StringBuilder();
+                var stderr = new StringBuilder();
+                process.OutputDataReceived += (_, e) =>
+                {
+                    if (e.Data != null)
+                    {
+                        stdout.AppendLine(e.Data);
+                    }
+                };
+                process.ErrorDataReceived += (_, e) =>
+                {
+                    if (e.Data != null)
+                    {
+                        stderr.AppendLine(e.Data);
+                    }
+                };
+
                 process.Start();
+                process.BeginOutputReadLine();
+                process.BeginErrorReadLine();
+                if (!process.WaitForExit(120_000))
+                {
+                    try
+                    {
+                        process.Kill(entireProcessTree: true);
+                    }
+                    catch
+                    {
+                        // ignore
+                    }
+
+                    Debug.WriteLine(
+                        $"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : [sinku] timeout: {moviePath}");
+                    return false;
+                }
+
+                // 非同期読取の完了を待つ
                 process.WaitForExit();
 
-                string output = process.StandardOutput.ReadToEnd();
+                string output = stdout.ToString();
                 if (string.IsNullOrWhiteSpace(output))
                 {
+                    Debug.WriteLine(
+                        $"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : [sinku] empty stdout (exit={process.ExitCode}): {moviePath}"
+                        + (stderr.Length > 0 ? $" stderr={stderr}" : ""));
                     return false;
                 }
 
                 XDocument doc = XDocument.Parse(output);
-                IEnumerable<XElement> infos = from item in doc.Elements("fields") select item;
-                foreach (XElement info in infos)
+                XElement fields = doc.Root?.Name.LocalName == "fields"
+                    ? doc.Root
+                    : doc.Root?.Element("fields") ?? doc.Element("fields");
+                if (fields == null)
                 {
-                    long movieLengthSec = 0;
-                    string lengthText = info.Element("movie_length")?.Value;
-                    if (!string.IsNullOrEmpty(lengthText))
-                    {
-                        _ = long.TryParse(lengthText, out movieLengthSec);
-                    }
-
-                    metadata = new SinkuMetadata(
-                        info.Element("container")?.Value ?? "",
-                        info.Element("video")?.Value ?? "",
-                        info.Element("audio")?.Value ?? "",
-                        info.Element("extra")?.Value ?? "",
-                        movieLengthSec);
-                    return true;
+                    Debug.WriteLine(
+                        $"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : [sinku] no <fields>: {moviePath}");
+                    return false;
                 }
+
+                long movieLengthSec = 0;
+                string lengthText = fields.Element("movie_length")?.Value;
+                if (!string.IsNullOrEmpty(lengthText))
+                {
+                    _ = long.TryParse(lengthText, out movieLengthSec);
+                }
+
+                metadata = new SinkuMetadata(
+                    fields.Element("container")?.Value ?? "",
+                    fields.Element("video")?.Value ?? "",
+                    fields.Element("audio")?.Value ?? "",
+                    fields.Element("extra")?.Value ?? "",
+                    movieLengthSec);
+                return true;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                Debug.WriteLine(
+                    $"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : [sinku] failed: {moviePath} : {ex.Message}");
                 return false;
             }
-
-            return false;
         }
 
-        private static string ResolveSinkuExePath()
-        {
-            return Path.Combine(AppContext.BaseDirectory, "sinku.exe");
-        }
+        private static string ResolveSinkuExePath() =>
+            Path.Combine(AppContext.BaseDirectory, "sinku.exe");
     }
 }

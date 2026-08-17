@@ -1,6 +1,7 @@
 ﻿using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
+using IndigoMovieManager.Services;
 
 namespace IndigoMovieManager
 {
@@ -14,6 +15,7 @@ namespace IndigoMovieManager
         public RenameFile()
         {
             InitializeComponent();
+            OwnedModalWindowHelper.ExcludeFromAltTab(this);
             Closing += RenameFile_Closing;
             ContentRendered += RenameFile_ContentRendered;
         }

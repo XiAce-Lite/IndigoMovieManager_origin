@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Windows;
+using IndigoMovieManager.Services;
 
 namespace IndigoMovieManager
 {
@@ -11,6 +12,7 @@ namespace IndigoMovieManager
         public WpfSkinPickWindow(Window owner, string title, string message, IReadOnlyList<string> names)
         {
             InitializeComponent();
+            OwnedModalWindowHelper.ExcludeFromAltTab(this);
             Owner = owner;
             Title = title;
             MessageText.Text = message;

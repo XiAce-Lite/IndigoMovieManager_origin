@@ -13,6 +13,33 @@ namespace IndigoMovieManager.Thumbnail
             ThumbnailLayoutResolver.ResolveThumbPathsForEngine(records, cache, engine);
         }
 
+        /// <summary>
+        /// 一覧／詳細の完了を今の画面に反映してよいか。
+        /// 他スキン事前生成などはディスク作成のみ行い、ここが false なら UI パスを触らない。
+        /// </summary>
+        public static bool ShouldApplyToVisibleUi(QueueObj queueObj, string activeListLayoutKey)
+        {
+            if (queueObj?.ThumbnailLayout == null)
+            {
+                return false;
+            }
+
+            if (queueObj.ThumbnailLayout.Equals(ThumbnailLayoutSpec.DetailPaneLayout))
+            {
+                return true;
+            }
+
+            if (string.IsNullOrWhiteSpace(activeListLayoutKey))
+            {
+                return false;
+            }
+
+            return string.Equals(
+                queueObj.ThumbnailLayout.Key,
+                activeListLayoutKey,
+                StringComparison.OrdinalIgnoreCase);
+        }
+
         public static void ApplyThumbPaths(
             IEnumerable<MovieRecords> records,
             QueueObj queueObj,

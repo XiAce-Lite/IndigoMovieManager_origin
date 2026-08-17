@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using IndigoMovieManager.Services;
 
 namespace IndigoMovieManager
 {
@@ -14,6 +15,7 @@ namespace IndigoMovieManager
         public JacketLightboxWindow(ImageSource source)
         {
             InitializeComponent();
+            OwnedModalWindowHelper.ExcludeFromAltTab(this);
             JacketImage.Source = source;
             ApplyNativeSizeCap(source);
         }

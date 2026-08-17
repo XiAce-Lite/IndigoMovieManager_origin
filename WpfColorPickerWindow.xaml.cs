@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using IndigoMovieManager.Services;
 
 namespace IndigoMovieManager
 {
@@ -20,6 +21,7 @@ namespace IndigoMovieManager
         public WpfColorPickerWindow(Window owner, string initialHex)
         {
             InitializeComponent();
+            OwnedModalWindowHelper.ExcludeFromAltTab(this);
             Owner = owner;
             BuildSwatches();
 

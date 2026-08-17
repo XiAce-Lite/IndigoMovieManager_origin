@@ -888,7 +888,8 @@ namespace IndigoMovieManager
             ThumbnailQueueProcessor.RequestDismissProgress();
             _thumbnailWorkScope.CancelBatch();
             string layoutKey = GetActiveListLayoutKey();
-            _thumbnailScheduler.AbandonAndClearQueue(layoutKey);
+            // DB 切替・全取消: 他スキン先作りも含めて破棄
+            _thumbnailScheduler.AbandonAndClearQueue(layoutKey, preserveRetainedWork: false);
             _thumbnailScheduler.ClearTrackingForLayoutKey(layoutKey);
             _sessionState.BumpThumbnailWorkGeneration();
         }
@@ -1075,6 +1076,104 @@ namespace IndigoMovieManager
             {
                 item.ThumbnailLayout = layout;
             }
+        }
+
+        /// <summary>
+        /// 新規登録バッチ向け。選んだ他スキン用レイアウトを retained silent で投入する。
+        /// 可視ジョブに載せるとスキン切替の Abandon で一緒に捨てられるため、切替耐性のある silent にする。
+        /// アクティブレイアウトは通常ジョブ側。既存ライブラリの穴埋めはしない。
+        /// </summary>
+        private void EnqueueExtraSkinThumbsForNewMovies(IReadOnlyList<QueueObj> newlyAdded)
+        {
+            if (newlyAdded == null
+                || newlyAdded.Count == 0
+                || !MainVM.DbInfo.PreGenThumbsOnNewMovies)
+            {
+                return;
+            }
+
+            string activeKey = GetActiveListLayoutKey();
+            if (string.IsNullOrWhiteSpace(activeKey))
+            {
+                return;
+            }
+
+            HashSet<string> selectedKeys = PreGenThumbSkinSelection.FilterExistingSelectedKeys(
+                PreGenThumbSkinSelection.ParseStoredKeys(MainVM.DbInfo.PreGenThumbSkinKeys));
+            if (selectedKeys.Count == 0)
+            {
+                return;
+            }
+
+            IReadOnlyList<ThumbnailLayoutSpec> layouts =
+                PreGenThumbSkinSelection.ResolveUniqueLayouts(selectedKeys)
+                    .Where(layout => layout != null
+                        && !string.Equals(layout.Key, activeKey, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+            if (layouts.Count == 0)
+            {
+                return;
+            }
+
+            var extras = new List<QueueObj>();
+            foreach (QueueObj source in newlyAdded)
+            {
+                if (source == null || source.MovieId <= 0 || string.IsNullOrWhiteSpace(source.MovieFullPath))
+                {
+                    continue;
+                }
+
+                if (!File.Exists(source.MovieFullPath))
+                {
+                    continue;
+                }
+
+                MovieRecords record = MainVM.MovieRecs?.FirstOrDefault(r => r.Movie_Id == source.MovieId);
+                string hash = record?.Hash?.Trim() ?? string.Empty;
+                if (string.IsNullOrEmpty(hash))
+                {
+                    hash = GetHashCRC32(source.MovieFullPath) ?? string.Empty;
+                }
+
+                if (string.IsNullOrEmpty(hash))
+                {
+                    continue;
+                }
+
+                string fileBody = Path.GetFileNameWithoutExtension(source.MovieFullPath).ToLowerInvariant();
+                string dbFullPath = source.DbFullPath ?? MainVM.DbInfo.DBFullPath;
+
+                foreach (ThumbnailLayoutSpec layout in layouts)
+                {
+                    string expectedPath = _thumbLayoutCache.GetExpectedThumbPath(layout, fileBody, hash);
+                    if (!string.IsNullOrWhiteSpace(expectedPath) && File.Exists(expectedPath))
+                    {
+                        // error プレースホルダだけ作り直す
+                        if (!ThumbnailHashSync.IsLikelyErrorPlaceholder(expectedPath, _thumbLayoutCache))
+                        {
+                            continue;
+                        }
+                    }
+
+                    extras.Add(new QueueObj
+                    {
+                        MovieId = source.MovieId,
+                        MovieFullPath = source.MovieFullPath,
+                        DbFullPath = dbFullPath,
+                        ThumbnailLayout = layout,
+                        RetainAcrossLayoutSwitch = true,
+                    });
+                }
+            }
+
+            if (extras.Count == 0)
+            {
+                return;
+            }
+
+            // スキン切替の Abandon / ClearSilent でも残る silent として投入（進捗バー外）
+            StampQueueDbContext(extras);
+            _thumbnailScheduler.EnqueueSilentWork(extras);
         }
 
         private string GetActiveListLayoutKey() =>
@@ -1832,12 +1931,15 @@ namespace IndigoMovieManager
             if (mv.Tags == null) { return; }
             if (mv.Tags.Length == 0) { return; }
 
-            Clipboard.SetData(DataFormats.Text, mv.Tags);
+            _ = ClipboardAccess.TrySetText(mv.Tags);
         }
 
         private void TagPaste_Click(object sender, RoutedEventArgs e)
         {
-            if (!Clipboard.ContainsText(TextDataFormat.Text)) { return; }
+            if (!ClipboardAccess.TryGetText(out string clipboardText) || string.IsNullOrEmpty(clipboardText))
+            {
+                return;
+            }
 
             List<MovieRecords> mv;
             mv = GetSelectedMovies();
@@ -1845,7 +1947,7 @@ namespace IndigoMovieManager
 
             foreach (var rec in mv)
             {
-                TagMutationService.ApplyPaste(rec, Clipboard.GetText(TextDataFormat.Text));
+                TagMutationService.ApplyPaste(rec, clipboardText);
                 UpdateMovieSingleColumn(MainVM.DbInfo.DBFullPath, rec.Movie_Id, "tag", rec.Tags);
             }
 
@@ -1959,6 +2061,47 @@ namespace IndigoMovieManager
         }
 
         private void MetadataEdit_Click(object sender, RoutedEventArgs e) => OpenMetadataEdit();
+
+        private void MetadataCopy_Click(object sender, RoutedEventArgs e)
+        {
+            MovieRecords mv = GetSelectedMovie();
+            if (mv == null)
+            {
+                return;
+            }
+
+            _ = ClipboardAccess.TrySetText(MetadataClipboard.Serialize(MetadataEditModel.FromMovie(mv)));
+        }
+
+        private void MetadataPaste_Click(object sender, RoutedEventArgs e)
+        {
+            if (!ClipboardAccess.TryGetText(out string clipboardText) ||
+                !MetadataClipboard.TryDeserialize(clipboardText, out MetadataEditModel model))
+            {
+                return;
+            }
+
+            List<MovieRecords> mv = GetSelectedMovies();
+            if (mv == null)
+            {
+                return;
+            }
+
+            string dbPath = MainVM.DbInfo.DBFullPath;
+            foreach (MovieRecords rec in mv)
+            {
+                model.ApplyTo(rec);
+                UpdateMovieSingleColumn(dbPath, rec.Movie_Id, MovieColumn.Title, rec.Title);
+                UpdateMovieSingleColumn(dbPath, rec.Movie_Id, MovieColumn.Comment1, rec.Comment1);
+                UpdateMovieSingleColumn(dbPath, rec.Movie_Id, MovieColumn.Comment2, rec.Comment2);
+                UpdateMovieSingleColumn(dbPath, rec.Movie_Id, MovieColumn.Comment3, rec.Comment3);
+                UpdateMovieSingleColumn(dbPath, rec.Movie_Id, MovieColumn.Artist, rec.Artist);
+                UpdateMovieSingleColumn(dbPath, rec.Movie_Id, MovieColumn.Genre, rec.Genre);
+            }
+
+            Refresh();
+            viewExtDetail.Refresh();
+        }
 
         private void OpenMetadataEdit()
         {
@@ -2303,18 +2446,7 @@ namespace IndigoMovieManager
 
         private async void DeleteMovieRecord_Click(object sender, RoutedEventArgs e)
         {
-            string keyName = "";
-            if (sender is not MenuItem menuItem)
-            {
-                if (e is KeyEventArgs keyEvent)
-                {
-                    keyName = keyEvent.Key.ToString();
-                }
-            }
-            else
-            {
-                keyName = menuItem.Name;
-            }
+            string keyName = ResolveDeleteKeyName(sender, e);
 
             if (!(keyName.ToLower() is "delete" or "deletemovie" or "deletefile"))
             {
@@ -2403,6 +2535,26 @@ namespace IndigoMovieManager
             RefreshDmmPendingMenuBadge();
         }
 
+        private static string ResolveDeleteKeyName(object sender, RoutedEventArgs e)
+        {
+            if (sender is MenuItem menuItem)
+            {
+                return menuItem.Name ?? string.Empty;
+            }
+
+            if (e is KeyEventArgs)
+            {
+                // Shift+Delete → ファイル削除ダイアログ。Delete 単体は登録削除のまま。
+                if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0)
+                {
+                    return "DeleteFile";
+                }
+
+                return "Delete";
+            }
+
+            return string.Empty;
+        }
 
         private static string AppTitle =>
             Assembly.GetExecutingAssembly().GetName().Name;
@@ -2571,6 +2723,75 @@ namespace IndigoMovieManager
         private void RefreshFileInfoCore(string dbPath, MovieRecords rec) =>
             FileInfoRefreshService.RefreshCore(dbPath, rec, action => RunOnUi(action));
 
+        /// <summary>
+        /// 新規登録直後に sinku が空振りした場合の補完。既に video/container がある行は触らない。
+        /// </summary>
+        private void EnqueueSinkuRefreshForDiscovered(IReadOnlyList<QueueObj> items)
+        {
+            if (!SinkuMetadataFetcher.IsAvailable || items == null || items.Count == 0)
+            {
+                return;
+            }
+
+            string dbPath = MainVM.DbInfo.DBFullPath;
+            if (string.IsNullOrEmpty(dbPath))
+            {
+                return;
+            }
+
+            List<(long MovieId, string MoviePath)> targets = items
+                .Where(item => item != null
+                    && item.MovieId > 0
+                    && !string.IsNullOrWhiteSpace(item.MovieFullPath)
+                    && !ZipMediaKind.IsZipPath(item.MovieFullPath))
+                .Select(item => (item.MovieId, item.MovieFullPath))
+                .ToList();
+            if (targets.Count == 0)
+            {
+                return;
+            }
+
+            _ = Task.Run(() =>
+            {
+                foreach ((long movieId, string moviePath) in targets)
+                {
+                    if (!_sessionState.IsActiveDb(dbPath))
+                    {
+                        return;
+                    }
+
+                    MovieRecords rec = null;
+                    RunOnUi(() =>
+                    {
+                        rec = MainVM.MovieRecs?.FirstOrDefault(r => r.Movie_Id == movieId);
+                    });
+
+                    if (rec == null)
+                    {
+                        rec = new MovieRecords
+                        {
+                            Movie_Id = movieId,
+                            Movie_Path = moviePath,
+                        };
+                    }
+                    else if (!string.IsNullOrWhiteSpace(rec.Video)
+                        && !string.IsNullOrWhiteSpace(rec.Container))
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        RefreshFileInfoCore(dbPath, rec);
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine(
+                            $"{DateTime.Now:yyyy/MM/dd HH:mm:ss} : [sinku-refresh] {moviePath} : {ex.Message}");
+                    }
+                }
+            });
+        }
 
         private void RequestApplicationExit() => Close();
 
@@ -2800,6 +3021,7 @@ namespace IndigoMovieManager
                     };
                     settingsWindow.ShowDialog();
 
+                    settingsWindow.CommitPreGenThumbSelection();
                     UpsertSystemTable(MainVM.DbInfo.DBFullPath, "thum", settingsWindow.ThumbFolder.Text);
                     UpsertSystemTable(MainVM.DbInfo.DBFullPath, "bookmark", settingsWindow.BookmarkFolder.Text);
                     UpsertSystemTable(MainVM.DbInfo.DBFullPath, "keepHistory", settingsWindow.KeepHistory.Text);
@@ -2810,6 +3032,17 @@ namespace IndigoMovieManager
                         MainVM.DbInfo.DBFullPath,
                         "excludeExt",
                         MediaExtensionSettings.NormalizeListForStorage(settingsWindow.ExcludeExt.Text));
+                    UpsertSystemTable(
+                        MainVM.DbInfo.DBFullPath,
+                        PreGenThumbSkinSelection.SystemAttrEnabled,
+                        PreGenThumbSkinSelection.FormatEnabled(
+                            settingsWindow.DataContext is DatabaseSettings ds && ds.PreGenThumbsOnNewMovies));
+                    UpsertSystemTable(
+                        MainVM.DbInfo.DBFullPath,
+                        PreGenThumbSkinSelection.SystemAttrSkinKeys,
+                        settingsWindow.DataContext is DatabaseSettings dsKeys
+                            ? dsKeys.PreGenThumbSkinKeys
+                            : string.Empty);
 
                     GetSystemTable(MainVM.DbInfo.DBFullPath);
                     break;
@@ -4296,17 +4529,29 @@ namespace IndigoMovieManager
                     PlayMovie_Click(sender, e); break;
                 case Key.F6:                            //タグ編集
                     TagEdit_Click(sender, e); break;
-                case Key.C:                             //タグのコピー
+                case Key.C:                             //タグのコピー（Ctrl/Alt 併用時は OS 側に任せる）
+                    if ((Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Alt)) != 0)
+                    {
+                        return;
+                    }
+
                     TagCopy_Click(sender, e);
+                    e.Handled = true;
                     break;
                 case Key.V:                             //タグの貼り付け
+                    if ((Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Alt)) != 0)
+                    {
+                        return;
+                    }
+
                     TagPaste_Click(sender, e);
+                    e.Handled = true;
                     break;
                 case Key.Add:                           //スコアプラス
                 case Key.Subtract:                      //スコアマイナス
                     MenuScore_Click(sender, e);
                     break;
-                case Key.Delete:                        //登録の削除
+                case Key.Delete:                        //登録の削除 / Shift+Delete でファイル削除
                     DeleteMovieRecord_Click(sender, e);
                     break;
                 case Key.F2:                            //名前の変更
@@ -4525,7 +4770,9 @@ namespace IndigoMovieManager
                     EnqueueThumbnailWork(
                         addFiles,
                         beginNewJob: ShouldBeginNewDiscoveredThumbnailJob());
+                    EnqueueExtraSkinThumbsForNewMovies(addFiles);
                     EnqueueAutoDmmFetchForDiscovered(addFiles);
+                    EnqueueSinkuRefreshForDiscovered(addFiles);
                 }
             }).Task.Unwrap().ConfigureAwait(false);
         }
@@ -4678,6 +4925,12 @@ namespace IndigoMovieManager
 
         private void ApplyThumbPaths(QueueObj queueObj, string saveThumbFileName)
         {
+            // 他スキン事前生成などの完了をカレント一覧の ThumbPath* に流し込まない
+            if (!ThumbPathHelper.ShouldApplyToVisibleUi(queueObj, GetActiveListLayoutKey()))
+            {
+                return;
+            }
+
             ThumbPathHelper.ApplyThumbPaths(MainVM.MovieRecs, queueObj, saveThumbFileName, _currentSkinEngine);
 
             if (queueObj.ThumbnailLayout != null

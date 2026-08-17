@@ -41,6 +41,7 @@ namespace IndigoMovieManager.Services
 
         /// <summary>
         /// タブ切替用。進捗表示付きジョブは残し、サイレントキューのみ破棄する。
+        /// RetainAcrossLayoutSwitch の先作りは残す。
         /// </summary>
         public void ClearSilentQueue()
         {
@@ -55,7 +56,8 @@ namespace IndigoMovieManager.Services
                         continue;
                     }
 
-                    if (obj.JobId == ThumbnailJobCoordinator.SilentJobId)
+                    if (obj.JobId == ThumbnailJobCoordinator.SilentJobId
+                        && !obj.RetainAcrossLayoutSwitch)
                     {
                         removed.Add(obj);
                     }
@@ -75,9 +77,11 @@ namespace IndigoMovieManager.Services
         }
 
         /// <summary>
-        /// DB 切替などで進行中ジョブを破棄し、キューを空にする。
+        /// スキン切替などで進行中の可視ジョブを破棄する。
+        /// <paramref name="preserveRetainedWork"/> が true のとき、他スキン先作り（RetainAcrossLayoutSwitch）は残す。
+        /// DB 切替では false にして全破棄する。
         /// </summary>
-        public void AbandonAndClearQueue(string primaryLayoutKey)
+        public void AbandonAndClearQueue(string primaryLayoutKey, bool preserveRetainedWork = true)
         {
             Interlocked.Increment(ref _tabSwitchBuildGeneration);
             ThumbnailQueueProcessor.RequestDismissProgress();
@@ -85,12 +89,27 @@ namespace IndigoMovieManager.Services
             lock (_sync)
             {
                 List<QueueObj> removed = [];
+                List<QueueObj> retained = [];
                 while (_queue.TryDequeue(out QueueObj obj))
                 {
-                    if (obj != null)
+                    if (obj == null)
+                    {
+                        continue;
+                    }
+
+                    if (preserveRetainedWork && obj.RetainAcrossLayoutSwitch)
+                    {
+                        retained.Add(obj);
+                    }
+                    else
                     {
                         removed.Add(obj);
                     }
+                }
+
+                foreach (QueueObj item in retained)
+                {
+                    _queue.Enqueue(item);
                 }
 
                 _jobCoordinator.CancelQueued(removed);
@@ -146,6 +165,32 @@ namespace IndigoMovieManager.Services
                 }
 
                 _queue.Enqueue(item);
+            }
+        }
+
+        public void EnqueueSilentWork(IReadOnlyList<QueueObj> items)
+        {
+            if (items == null || items.Count == 0)
+            {
+                return;
+            }
+
+            lock (_sync)
+            {
+                foreach (QueueObj item in items)
+                {
+                    if (item == null)
+                    {
+                        continue;
+                    }
+
+                    if (!_jobCoordinator.TryRegisterSilentWork(item))
+                    {
+                        continue;
+                    }
+
+                    _queue.Enqueue(item);
+                }
             }
         }
 

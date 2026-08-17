@@ -80,16 +80,30 @@ namespace IndigoMovieManager.Services
 
             try
             {
-                using SQLiteConnection connection = new($"Data Source={dbFullPath}");
-                connection.Open();
+                long? movieId;
+                using (SQLiteConnection lookup = new($"Data Source={dbFullPath}"))
+                {
+                    lookup.Open();
+                    movieId = FindRevivableMovieId(lookup, movieInfo);
+                }
 
-                long? movieId = FindRevivableMovieId(connection, movieInfo);
                 if (movieId == null)
                 {
                     return false;
                 }
 
-                using SQLiteCommand cmd = connection.CreateCommand();
+                // sinku は接続外で取得（復活時も詳細パネル用メタを埋める）
+                ResolveInsertMediaFields(
+                    movieInfo,
+                    out string container,
+                    out string video,
+                    out string audio,
+                    out string extra,
+                    out long movieLengthLong);
+
+                using SQLiteConnection update = new($"Data Source={dbFullPath}");
+                update.Open();
+                using SQLiteCommand cmd = update.CreateCommand();
                 cmd.CommandText =
                     "UPDATE movie SET " +
                     "movie_path = @movie_path, " +
@@ -97,16 +111,28 @@ namespace IndigoMovieManager.Services
                     "file_date = @file_date, " +
                     "hash = @hash, " +
                     "movie_length = @movie_length, " +
-                    "container = @container " +
+                    "container = @container, " +
+                    "video = @video, " +
+                    "audio = @audio, " +
+                    "extra = @extra " +
                     "WHERE movie_id = @movie_id";
                 cmd.Parameters.AddWithValue("@movie_path", movieInfo.MoviePath);
                 cmd.Parameters.AddWithValue("@movie_size", movieInfo.MovieSize / 1024);
                 cmd.Parameters.AddWithValue("@file_date", movieInfo.FileDate.ToLocalTime());
                 cmd.Parameters.AddWithValue("@hash", movieInfo.Hash ?? "");
-                cmd.Parameters.AddWithValue("@movie_length", movieInfo.MovieLength);
-                cmd.Parameters.AddWithValue("@container", movieInfo.Container ?? "");
+                cmd.Parameters.AddWithValue("@movie_length", movieLengthLong);
+                cmd.Parameters.AddWithValue("@container", container ?? "");
+                cmd.Parameters.AddWithValue("@video", video ?? "");
+                cmd.Parameters.AddWithValue("@audio", audio ?? "");
+                cmd.Parameters.AddWithValue("@extra", extra ?? "");
                 cmd.Parameters.AddWithValue("@movie_id", movieId.Value);
-                return cmd.ExecuteNonQuery() > 0;
+                if (cmd.ExecuteNonQuery() <= 0)
+                {
+                    return false;
+                }
+
+                movieInfo.MovieId = movieId.Value;
+                return true;
             }
             catch (Exception ex)
             {

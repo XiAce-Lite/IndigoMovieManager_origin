@@ -168,6 +168,69 @@
                         ToolTip="カンマ区切り。例: .jpg,.zip（. は省略可）" />
                 </StackPanel>
 
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <Label
+                            Width="170"
+                            Margin="5"
+                            VerticalAlignment="Top"
+                            Content="新規追加時に他スキン用サムネも作成"
+                            FontSize="14"
+                            ToolTip="この管理ファイルで、監視・フォルダ確認により新規登録されたレコードだけを対象に、下で選んだスキンの未作成サムネを先に作ります。既存ライブラリの穴埋めはしません。既定はオフです。" />
+                        <CheckBox
+                            x:Name="PreGenThumbsOnNewMoviesCheck"
+                            Width="Auto"
+                            Margin="5,8,5,5"
+                            VerticalAlignment="Top"
+                            FontSize="14"
+                            Checked="PreGenThumbsOnNewMoviesCheck_Changed"
+                            Unchecked="PreGenThumbsOnNewMoviesCheck_Changed" />
+                    </StackPanel>
+                    <StackPanel Margin="175,0,5,5">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                            <Button
+                                x:Name="PreGenThumbSelectAllButton"
+                                Margin="0,0,8,0"
+                                Padding="8,2"
+                                Click="PreGenThumbSelectAllButton_Click"
+                                Content="すべて選択"
+                                FontSize="12"
+                                Style="{StaticResource MaterialDesignOutlinedButton}" />
+                            <Button
+                                x:Name="PreGenThumbClearButton"
+                                Padding="8,2"
+                                Click="PreGenThumbClearButton_Click"
+                                Content="選択解除"
+                                FontSize="12"
+                                Style="{StaticResource MaterialDesignOutlinedButton}" />
+                        </StackPanel>
+                        <ListBox
+                            x:Name="PreGenThumbSkinList"
+                            MaxHeight="160"
+                            MinHeight="80"
+                            Padding="4"
+                            BorderThickness="1"
+                            FontSize="13"
+                            ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                            ScrollViewer.VerticalScrollBarVisibility="Auto">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <CheckBox
+                                        Content="{Binding DisplayName}"
+                                        Focusable="False"
+                                        IsChecked="{Binding IsChecked, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        <TextBlock
+                            Margin="0,4,0,0"
+                            FontSize="11"
+                            Opacity="0.75"
+                            Text="この管理ファイル専用です。消したスキンは一覧に出ません。同じサイズのスキンは1回の生成で共有されます。"
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+                </StackPanel>
+
             </StackPanel>
             </ScrollViewer>
 

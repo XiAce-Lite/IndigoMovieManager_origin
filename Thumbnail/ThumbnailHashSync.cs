@@ -105,12 +105,17 @@ namespace IndigoMovieManager.Thumbnail
 
         /// <summary>
         /// ShouldEnqueueTabSwitchWork と同じ判定（hash 同期後）。
+        /// 欠落は投入。error プレースホルダも再投入（長さ一致＋非複合の軽い判定）。
         /// </summary>
+        /// <param name="ignorePreferJacket">
+        /// true のとき、アクティブ WPF のジャケ優先設定を無視する（他スキン用の先作り向け）。
+        /// </param>
         internal static bool ShouldEnqueueAfterHashSync(
             MovieRecords item,
             ThumbnailLayoutSpec layout,
             ThumbnailLayoutCache cache,
-            ThumbnailHashSyncContext context)
+            ThumbnailHashSyncContext context,
+            bool ignorePreferJacket = false)
         {
             if (item == null
                 || layout == null
@@ -122,12 +127,14 @@ namespace IndigoMovieManager.Thumbnail
             }
 
             // ジャケ写優先スキンで URL がある場合はローカルサムネを作らない
-            if (WpfSkinSettings.PreferJacket
+            if (!ignorePreferJacket
+                && WpfSkinSettings.PreferJacket
                 && !string.IsNullOrEmpty(DmmJacketUrls.GetFrontUrl(item)))
             {
                 return false;
             }
 
+            // ExistsOnly: 既存サムネがあるだけで CRC を回さない（スキン切替の走査を軽く保つ）
             ResolveHashForThumbnail(
                 item,
                 layout,
@@ -142,7 +149,52 @@ namespace IndigoMovieManager.Thumbnail
 
             string fileBody = ThumbnailMovieNaming.GetMovieBody(item);
             string expectedPath = cache.GetExpectedThumbPath(layout, fileBody, item.Hash);
-            return string.IsNullOrWhiteSpace(expectedPath) || !File.Exists(expectedPath);
+            if (string.IsNullOrWhiteSpace(expectedPath) || !File.Exists(expectedPath))
+            {
+                return true;
+            }
+
+            // 全バイト比較はしない。error っぽい既存ファイルだけ再投入。
+            return IsLikelyErrorPlaceholder(expectedPath, cache);
+        }
+
+        /// <summary>
+        /// error プレースホルダらしいか（全ファイル読込なし）。noFile は再投入しない。
+        /// </summary>
+        internal static bool IsLikelyErrorPlaceholder(string thumbPath, ThumbnailLayoutCache cache)
+        {
+            if (string.IsNullOrWhiteSpace(thumbPath) || !File.Exists(thumbPath) || cache == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                long length = new FileInfo(thumbPath).Length;
+                string noFileTemplate = cache.GetNoFilePath(2);
+                if (!string.IsNullOrWhiteSpace(noFileTemplate)
+                    && File.Exists(noFileTemplate)
+                    && length == new FileInfo(noFileTemplate).Length)
+                {
+                    return false;
+                }
+
+                string errorTemplate = cache.GetErrorPath(2);
+                if (!string.IsNullOrWhiteSpace(errorTemplate)
+                    && File.Exists(errorTemplate)
+                    && length == new FileInfo(errorTemplate).Length
+                    && !ThumbnailValidityHelper.LooksLikeCompositeThumbnail(thumbPath))
+                {
+                    return true;
+                }
+
+                // テンプレパスが取れない環境向け: 極端に小さい非複合ファイル
+                return length < 4096 && !ThumbnailValidityHelper.LooksLikeCompositeThumbnail(thumbPath);
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         internal static void ClearFileHashCache() => FileHashCache.Clear();

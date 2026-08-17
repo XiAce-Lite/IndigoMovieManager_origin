@@ -1,6 +1,7 @@
 ﻿using MaterialDesignThemes.Wpf;
 using System.Windows;
 using System.Windows.Controls;
+using IndigoMovieManager.Services;
 
 namespace IndigoMovieManager
 {
@@ -29,6 +30,7 @@ namespace IndigoMovieManager
         public MessageBoxEx(Window owner)
         {
             InitializeComponent();
+            OwnedModalWindowHelper.ExcludeFromAltTab(this);
             Owner = owner;
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
             ContentRendered += DialogWindowEx_ContentRendered;

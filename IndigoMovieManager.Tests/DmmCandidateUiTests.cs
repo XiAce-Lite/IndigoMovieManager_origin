@@ -26,6 +26,7 @@ public class DmmInitialKeywordTests
 
         Assert.Contains("xxxx-024", variants);
         Assert.Contains("xxxx 024", variants);
+        Assert.Contains("xxxx-24", variants);
         Assert.Contains("xxxx024", variants);
         Assert.True(variants.Count >= 2);
     }

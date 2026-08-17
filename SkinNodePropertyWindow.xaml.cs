@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using IndigoMovieManager.Controls;
+using IndigoMovieManager.Services;
 using IndigoMovieManager.Services.WpfSkin;
 using IndigoMovieManager.Services.WpfSkin.Design;
 using MaterialDesignThemes.Wpf;
@@ -38,6 +39,7 @@ namespace IndigoMovieManager
             SizeToContent = SizeToContent.Height;
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
             ResizeMode = ResizeMode.NoResize;
+            OwnedModalWindowHelper.ExcludeFromAltTab(this);
             Background = TryFindResource("MaterialDesign.Brush.Background") as Brush
                 ?? SystemColors.WindowBrush;
 

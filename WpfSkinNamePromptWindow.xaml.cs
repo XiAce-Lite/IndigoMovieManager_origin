@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Input;
+using IndigoMovieManager.Services;
 
 namespace IndigoMovieManager
 {
@@ -11,6 +12,7 @@ namespace IndigoMovieManager
         public WpfSkinNamePromptWindow(Window owner, string title, string initialName)
         {
             InitializeComponent();
+            OwnedModalWindowHelper.ExcludeFromAltTab(this);
             Owner = owner;
             Title = title;
             NameBox.Text = initialName ?? "";

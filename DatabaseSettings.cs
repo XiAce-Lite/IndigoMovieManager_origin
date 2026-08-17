@@ -15,6 +15,8 @@ namespace IndigoMovieManager
         private string _playerPrg = "";
         private string _playerParam = "";
         private string _excludeExt = "";
+        private bool _preGenThumbsOnNewMovies;
+        private string _preGenThumbSkinKeys = "";
         private bool _thumbExists;
         private bool _bookmarkExists;
         private bool _keepHistoryExists;
@@ -24,7 +26,8 @@ namespace IndigoMovieManager
 
         public DatabaseSettings(string dbFullPath)
         {
-            const string keys = "'thum','bookmark','keepHistory','playerPrg','playerParam','excludeExt'";
+            const string keys =
+                "'thum','bookmark','keepHistory','playerPrg','playerParam','excludeExt','preGenThumbs','preGenThumbSkins'";
             DataTable systemTable = SqliteDataAccess.Query(dbFullPath, $"select * from system where attr in ({keys})");
 
             if (systemTable == null || systemTable.Rows.Count == 0)
@@ -60,6 +63,12 @@ namespace IndigoMovieManager
                         _excludeExt = row[1].ToString();
                         _excludeExtExists = true;
                         break;
+                    case "preGenThumbs":
+                        _preGenThumbsOnNewMovies = Services.PreGenThumbSkinSelection.ParseEnabled(row[1]?.ToString());
+                        break;
+                    case "preGenThumbSkins":
+                        _preGenThumbSkinKeys = row[1]?.ToString() ?? "";
+                        break;
                 }
             }
         }
@@ -69,6 +78,16 @@ namespace IndigoMovieManager
         public string PlayerPrg { get => _playerPrg; set => _playerPrg = value; }
         public string PlayerParam { get => _playerParam; set => _playerParam = value; }
         public string ExcludeExt { get => _excludeExt; set => _excludeExt = value ?? ""; }
+        public bool PreGenThumbsOnNewMovies
+        {
+            get => _preGenThumbsOnNewMovies;
+            set => _preGenThumbsOnNewMovies = value;
+        }
+        public string PreGenThumbSkinKeys
+        {
+            get => _preGenThumbSkinKeys;
+            set => _preGenThumbSkinKeys = value ?? "";
+        }
         public int KeepHistory { get => _keepHistory; set => _keepHistory = value; }
 
         public bool ThumbExists { get => _thumbExists; set => _thumbExists = value; }

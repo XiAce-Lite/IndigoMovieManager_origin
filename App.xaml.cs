@@ -75,6 +75,12 @@ namespace IndigoMovieManager
         private static void App_DispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
         {
             AppFileLogger.LogError(e.Exception, "Application.DispatcherUnhandledException");
+
+            // クリップボード占有による一時失敗はアプリ終了にしない
+            if (ClipboardAccess.IsClipboardBusyException(e.Exception))
+            {
+                e.Handled = true;
+            }
         }
     }
 }

@@ -86,17 +86,82 @@ public class DmmCidNormalizerTests
 
     [Theory]
     [InlineData("1abcd000030", "abcd-030", "1abcd000030")]
-    [InlineData("abcd000030", "abcd-030", "1abcd000030")]
+    [InlineData("abcd000030", "abcd-030", "abcd000030")]
     [InlineData("529abcd00123", "abcd-123", "529abcd00123")]
+    [InlineData("h_000abcd00123", "abcd-123", "h_000abcd00123")]
+    [InlineData("h_491abcd00022", "abcd-022", "h_491abcd00022")]
     public void ExtractFromSearchInput_accepts_direct_content_id(
         string searchInput,
         string expectedProductCode,
-        string expectedCid)
+        string expectedFirstCid)
     {
         DmmCidNormalizer.ExtractResult result = DmmCidNormalizer.ExtractFromSearchInput(searchInput);
 
         Assert.True(result.HasProductCode);
         Assert.Equal(expectedProductCode, result.ProductCode);
-        Assert.Contains(expectedCid, result.CidCandidates);
+        Assert.Equal(expectedFirstCid, result.CidCandidates[0]);
+        Assert.Contains(expectedFirstCid, result.CidCandidates);
+    }
+
+    [Theory]
+    [InlineData("https://video.dmm.co.jp/av/content/?id=h_491abcd00022", "h_491abcd00022", "abcd-022")]
+    [InlineData("https://www.dmm.co.jp/digital/videoa/-/detail/=/cid=h_000abcd00123/", "h_000abcd00123", "abcd-123")]
+    [InlineData("id=h_000abcd00123", "h_000abcd00123", "abcd-123")]
+    public void ExtractFromSearchInput_extracts_cid_from_url(
+        string input,
+        string expectedLiteralCid,
+        string expectedProductCode)
+    {
+        DmmCidNormalizer.ExtractResult result = DmmCidNormalizer.ExtractFromSearchInput(input);
+
+        Assert.True(result.HasProductCode);
+        Assert.Equal(expectedProductCode, result.ProductCode);
+        Assert.Equal(expectedLiteralCid, result.LiteralCid);
+        Assert.Equal(expectedLiteralCid, result.CidCandidates[0]);
+        Assert.True(result.HasHUnderscorePrefix);
+    }
+
+    [Fact]
+    public void ExtractFromFileName_builds_stripped_keyword_for_leading_zeros()
+    {
+        DmmCidNormalizer.ExtractResult result = DmmCidNormalizer.ExtractFromFileName("abcd-022.mp4");
+
+        Assert.Equal("abcd-022", result.ProductCode);
+        Assert.Equal("abcd-22", result.StrippedProductCode);
+        Assert.Equal("abcd 22", result.StrippedSpaceForm);
+        Assert.Contains("abcd22", result.CidCandidates);
+        Assert.Contains(
+            "abcd-22",
+            DmmCidNormalizer.BuildExtraKeywordVariants(result));
+    }
+
+    [Fact]
+    public void ExtractFromFileName_accepts_h_underscore_content_id_file()
+    {
+        DmmCidNormalizer.ExtractResult result =
+            DmmCidNormalizer.ExtractFromFileName("h_491abcd00022.mp4");
+
+        Assert.Equal("abcd-022", result.ProductCode);
+        Assert.Equal("h_491abcd00022", result.CidCandidates[0]);
+        Assert.True(result.HasHUnderscorePrefix);
+        Assert.Equal("491", result.ChannelPrefix);
+    }
+
+    [Fact]
+    public void BuildCidCandidates_includes_h_underscore_when_requested()
+    {
+        IReadOnlyList<string> candidates =
+            DmmCidNormalizer.BuildCidCandidates("abcd", "022", "491", includeHUnderscore: true);
+
+        Assert.Equal("h_491abcd00022", candidates[0]);
+        Assert.Contains("491abcd00022", candidates);
+    }
+
+    [Fact]
+    public void StripLeadingZeros_does_not_repad()
+    {
+        Assert.Equal("22", DmmCidNormalizer.StripLeadingZeros("022"));
+        Assert.Equal("22", DmmCidNormalizer.StripLeadingZeros("00022"));
+        Assert.Equal("0", DmmCidNormalizer.StripLeadingZeros("000"));
     }
 }

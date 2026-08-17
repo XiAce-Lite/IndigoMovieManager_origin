@@ -112,6 +112,16 @@ namespace IndigoMovieManager
             try
             {
                 mvi.MoviePath = MediaPathNormalizer.Normalize(mvi.MoviePath);
+
+                // sinku は数秒かかることがある。SQLite 接続を開いたまま待たない。
+                ResolveInsertMediaFields(
+                    mvi,
+                    out string container,
+                    out string video,
+                    out string audio,
+                    out string extra,
+                    out long movieLengthLong);
+
                 using SQLiteConnection connection = new($"Data Source={dbFullPath}");
                 connection.Open();
 
@@ -139,38 +149,6 @@ namespace IndigoMovieManager
                     {
                         //ここ、通らない気がする。
                         mvi.MovieId = 1;    //ゼロ行なので、1
-                    }
-                }
-
-                string container = "";
-                string video = "";
-                string extra = "";
-                string audio = "";
-                long movieLengthLong = mvi.MovieLength;
-
-                if (SinkuMetadataFetcher.TryFetch(mvi.MoviePath, out SinkuMetadata metadata))
-                {
-                    if (string.IsNullOrEmpty(container))
-                    {
-                        container = metadata.Container;
-                    }
-
-                    video = metadata.Video;
-                    audio = metadata.Audio;
-                    extra = metadata.Extra;
-                    if (movieLengthLong < 1 && metadata.MovieLengthSec > 0)
-                    {
-                        movieLengthLong = metadata.MovieLengthSec;
-                    }
-                }
-
-                if (!string.IsNullOrEmpty(mvi.Container))
-                {
-                    container = mvi.Container;
-                    if (string.Equals(container, "zip", StringComparison.OrdinalIgnoreCase)
-                        && mvi.MovieLength > 0)
-                    {
-                        movieLengthLong = mvi.MovieLength;
                     }
                 }
 
@@ -237,6 +215,58 @@ namespace IndigoMovieManager
             finally
             {
                 await Task.Delay(5).ConfigureAwait(false);
+            }
+        }
+
+        /// <summary>
+        /// 登録／復活時の container/video/audio/extra/length を解決する（DB 非接続）。
+        /// </summary>
+        internal static void ResolveInsertMediaFields(
+            MovieInfo mvi,
+            out string container,
+            out string video,
+            out string audio,
+            out string extra,
+            out long movieLengthLong)
+        {
+            container = "";
+            video = "";
+            audio = "";
+            extra = "";
+            movieLengthLong = mvi?.MovieLength ?? 0;
+
+            if (mvi == null || string.IsNullOrWhiteSpace(mvi.MoviePath))
+            {
+                return;
+            }
+
+            if (!string.IsNullOrEmpty(mvi.Container)
+                && string.Equals(mvi.Container, "zip", StringComparison.OrdinalIgnoreCase))
+            {
+                container = "zip";
+                if (mvi.MovieLength > 0)
+                {
+                    movieLengthLong = mvi.MovieLength;
+                }
+
+                return;
+            }
+
+            if (SinkuMetadataFetcher.TryFetch(mvi.MoviePath, out SinkuMetadata metadata))
+            {
+                container = metadata.Container ?? "";
+                video = metadata.Video ?? "";
+                audio = metadata.Audio ?? "";
+                extra = metadata.Extra ?? "";
+                if (movieLengthLong < 1 && metadata.MovieLengthSec > 0)
+                {
+                    movieLengthLong = metadata.MovieLengthSec;
+                }
+            }
+
+            if (!string.IsNullOrEmpty(mvi.Container))
+            {
+                container = mvi.Container;
             }
         }
     }

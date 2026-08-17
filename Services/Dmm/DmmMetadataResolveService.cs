@@ -24,11 +24,7 @@ namespace IndigoMovieManager.Services.Dmm
                     DmmInitialKeyword.FromMovieName(movieName)));
             }
 
-            return ResolveByProductCodeAsync(
-                extracted.ProductCode,
-                extracted.SpaceForm,
-                extracted.CidCandidates,
-                cancellationToken);
+            return ResolveByProductCodeAsync(extracted, cancellationToken);
         }
 
         public async Task<DmmKeywordSearchResult> SearchKeywordAsync(
@@ -150,6 +146,33 @@ namespace IndigoMovieManager.Services.Dmm
                 mayHaveMore |= (keywordResult.Items?.Count ?? 0) >= pageHits;
             }
 
+            // 1ページ目のみ、ゼロ落とし等の追加キーワードもマージ（ページング対象外）
+            if (pageOffset == 1)
+            {
+                foreach (string extraKeyword in DmmCidNormalizer.BuildExtraKeywordVariants(extracted))
+                {
+                    if (string.Equals(extraKeyword, trimmed, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    await DelayAsync(cancellationToken).ConfigureAwait(false);
+
+                    DmmSearchResult extra = await _client
+                        .SearchByKeywordSiteAsync(extraKeyword, cancellationToken, pageHits, 1)
+                        .ConfigureAwait(false);
+                    if (extra.Status == DmmSearchStatus.NotConfigured)
+                    {
+                        return DmmKeywordSearchResult.NotConfigured(trimmed);
+                    }
+
+                    if (extra.Status != DmmSearchStatus.HttpError)
+                    {
+                        AppendSearchHits(merged, extra);
+                    }
+                }
+            }
+
             return DmmKeywordSearchResult.FromItems(trimmed, merged, mayHaveMore);
         }
 
@@ -181,33 +204,32 @@ namespace IndigoMovieManager.Services.Dmm
                 return phase1;
             }
 
-            // 一致ジャケなし → スペース表記を1回だけ追加
-            string spaceForm = extracted.SpaceForm;
-            if (!string.IsNullOrWhiteSpace(spaceForm)
-                && !string.Equals(spaceForm, trimmed, StringComparison.OrdinalIgnoreCase))
+            // 一致ジャケなし → スペース／ゼロ落とし／5桁埋めキーワードを追加
+            foreach (string extraKeyword in DmmCidNormalizer.BuildExtraKeywordVariants(extracted))
             {
-                DmmKeywordSearchResult spaceResult = await SearchKeywordAsync(spaceForm, cancellationToken, hits: 30)
+                if (string.Equals(extraKeyword, trimmed, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                DmmKeywordSearchResult extraResult = await SearchKeywordAsync(extraKeyword, cancellationToken, hits: 30)
                     .ConfigureAwait(false);
-                if (!spaceResult.IsConfigured)
+                if (!extraResult.IsConfigured)
                 {
-                    return spaceResult;
+                    return extraResult;
                 }
 
-                if (!string.IsNullOrWhiteSpace(spaceResult.ErrorMessage) && merged.Count == 0)
+                if (!string.IsNullOrWhiteSpace(extraResult.ErrorMessage) && merged.Count == 0)
                 {
-                    return spaceResult;
+                    return extraResult;
                 }
 
-                MergeCandidates(merged, spaceResult.Candidates);
+                MergeCandidates(merged, extraResult.Candidates);
                 if (ShouldStopManualSearch(merged, extracted))
                 {
                     return DmmKeywordSearchResult.FromItems(trimmed, merged);
                 }
             }
-
-            // まだ一致ジャケなし → maker+5桁ゼロ埋めを1回
-            await TryAppendPadded5KeywordAsync(trimmed, extracted, merged, cancellationToken)
-                .ConfigureAwait(false);
 
             if (merged.Count == 0)
             {
@@ -317,11 +339,11 @@ namespace IndigoMovieManager.Services.Dmm
         }
 
         private async Task<DmmResolveResult> ResolveByProductCodeAsync(
-            string productCode,
-            string spaceForm,
-            IReadOnlyList<string> cidCandidates,
+            DmmCidNormalizer.ExtractResult extracted,
             CancellationToken cancellationToken)
         {
+            string productCode = extracted.ProductCode;
+            IReadOnlyList<string> cidCandidates = extracted.CidCandidates;
             bool sawHttpError = false;
             string lastHttpError = null;
             List<DmmCandidateEntry> candidates = [];
@@ -394,47 +416,23 @@ namespace IndigoMovieManager.Services.Dmm
                 return hyphenResult;
             }
 
-            // 一致ジャケなし → スペース表記を1回だけ
-            if (!string.IsNullOrWhiteSpace(spaceForm)
-                && !string.Equals(spaceForm, productCode, StringComparison.OrdinalIgnoreCase))
+            // スペース／ゼロ落とし／5桁埋め
+            foreach (string extraKeyword in DmmCidNormalizer.BuildExtraKeywordVariants(extracted))
             {
                 await DelayAsync(cancellationToken).ConfigureAwait(false);
 
-                DmmSearchResult spaceKeyword = await _client
-                    .SearchByKeywordSiteAsync(spaceForm, cancellationToken)
+                DmmSearchResult extra = await _client
+                    .SearchByKeywordSiteAsync(extraKeyword, cancellationToken)
                     .ConfigureAwait(false);
-                DmmResolveResult spaceResult = InterpretWithJacketPolicy(
-                    spaceKeyword,
+                DmmResolveResult extraResult = InterpretWithJacketPolicy(
+                    extra,
                     productCode,
                     candidates,
                     ref sawHttpError,
                     ref lastHttpError);
-                if (spaceResult != null)
+                if (extraResult != null)
                 {
-                    return spaceResult;
-                }
-            }
-
-            // まだ一致ジャケなし → maker+5桁ゼロ埋めキーワードを1回
-            string padded5 = DmmProductCodeMatcher.BuildPadded5Keyword(productCode);
-            if (!string.IsNullOrWhiteSpace(padded5)
-                && !string.Equals(padded5, productCode, StringComparison.OrdinalIgnoreCase)
-                && !string.Equals(padded5, spaceForm, StringComparison.OrdinalIgnoreCase))
-            {
-                await DelayAsync(cancellationToken).ConfigureAwait(false);
-
-                DmmSearchResult paddedKeyword = await _client
-                    .SearchByKeywordSiteAsync(padded5, cancellationToken)
-                    .ConfigureAwait(false);
-                DmmResolveResult paddedResult = InterpretWithJacketPolicy(
-                    paddedKeyword,
-                    productCode,
-                    candidates,
-                    ref sawHttpError,
-                    ref lastHttpError);
-                if (paddedResult != null)
-                {
-                    return paddedResult;
+                    return extraResult;
                 }
             }
 
@@ -455,47 +453,53 @@ namespace IndigoMovieManager.Services.Dmm
             return DmmResolveResult.Skip(DmmResolveOutcome.NotFound, "未ヒット", productCode);
         }
 
-        private async Task TryAppendPadded5KeywordAsync(
-            string trimmed,
-            DmmCidNormalizer.ExtractResult extracted,
-            List<DmmCandidateEntry> merged,
-            CancellationToken cancellationToken)
-        {
-            if (!extracted.HasProductCode || ShouldStopManualSearch(merged, extracted))
-            {
-                return;
-            }
-
-            string padded5 = DmmProductCodeMatcher.BuildPadded5Keyword(extracted.ProductCode);
-            if (string.IsNullOrWhiteSpace(padded5)
-                || string.Equals(padded5, trimmed, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(padded5, extracted.SpaceForm, StringComparison.OrdinalIgnoreCase))
-            {
-                return;
-            }
-
-            await DelayAsync(cancellationToken).ConfigureAwait(false);
-
-            DmmKeywordSearchResult paddedResult = await SearchKeywordAsync(padded5, cancellationToken, hits: 30)
-                .ConfigureAwait(false);
-            if (!paddedResult.IsConfigured || !string.IsNullOrWhiteSpace(paddedResult.ErrorMessage))
-            {
-                return;
-            }
-
-            MergeCandidates(merged, paddedResult.Candidates);
-        }
-
         private static bool ShouldStopManualSearch(
             List<DmmCandidateEntry> merged,
             DmmCidNormalizer.ExtractResult extracted)
         {
+            if (!string.IsNullOrEmpty(extracted?.LiteralCid)
+                && HasLiteralCidWithUsableJacket(merged, extracted.LiteralCid))
+            {
+                return true;
+            }
+
             if (extracted.HasProductCode)
             {
                 return DmmJacketHitEvaluator.HasProductMatchingUsableJacket(merged, extracted.ProductCode);
             }
 
             return DmmJacketHitEvaluator.HasAnyUsableJacket(merged);
+        }
+
+        private static bool HasLiteralCidWithUsableJacket(
+            List<DmmCandidateEntry> merged,
+            string literalCid)
+        {
+            if (merged == null || string.IsNullOrEmpty(literalCid))
+            {
+                return false;
+            }
+
+            foreach (DmmCandidateEntry entry in merged)
+            {
+                if (entry?.Item == null)
+                {
+                    continue;
+                }
+
+                if (!string.Equals(entry.Item.ContentId, literalCid, StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(entry.Item.ProductId, literalCid, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (DmmCandidateDisplay.HasUsableJacket(entry.Item))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static DmmResolveResult InterpretWithJacketPolicy(

@@ -14,6 +14,8 @@ namespace IndigoMovieManager
         private string thumbFolder = "";
         private string bookmarkFolder = "";
         private string excludeExt = "";
+        private bool preGenThumbsOnNewMovies;
+        private string preGenThumbSkinKeys = "";
         private int searchCount = 0;
         private SkinEngine currentSkinEngine = SkinEngine.Wpf;
 
@@ -63,6 +65,20 @@ namespace IndigoMovieManager
         {
             get => excludeExt;
             set { excludeExt = value ?? ""; OnPropertyChanged(nameof(ExcludeExt)); }
+        }
+
+        /// <summary>新規登録時に他スキン用サムネも作る（既定 false）。</summary>
+        public bool PreGenThumbsOnNewMovies
+        {
+            get => preGenThumbsOnNewMovies;
+            set { preGenThumbsOnNewMovies = value; OnPropertyChanged(nameof(PreGenThumbsOnNewMovies)); }
+        }
+
+        /// <summary>対象スキンキー（<c>Wpf:名|Wb:名</c>）。</summary>
+        public string PreGenThumbSkinKeys
+        {
+            get => preGenThumbSkinKeys;
+            set { preGenThumbSkinKeys = value ?? ""; OnPropertyChanged(nameof(PreGenThumbSkinKeys)); }
         }
 
         public string SearchKeyword

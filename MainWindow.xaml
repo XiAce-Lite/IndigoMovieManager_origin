@@ -364,6 +364,28 @@
                 </MenuItem.Style>
             </MenuItem>
             <MenuItem
+                x:Name="MetadataCopy"
+                Click="MetadataCopy_Click"
+                Header="メタデータコピー(_Y)"
+                Icon="{materialDesign:PackIcon Kind=ContentCopy}">
+                <MenuItem.Style>
+                    <Style TargetType="MenuItem">
+                        <Setter Property="Padding" Value="1" />
+                    </Style>
+                </MenuItem.Style>
+            </MenuItem>
+            <MenuItem
+                x:Name="MetadataPaste"
+                Click="MetadataPaste_Click"
+                Header="メタデータ貼り付け(_P)"
+                Icon="{materialDesign:PackIcon Kind=ContentPaste}">
+                <MenuItem.Style>
+                    <Style TargetType="MenuItem">
+                        <Setter Property="Padding" Value="1" />
+                    </Style>
+                </MenuItem.Style>
+            </MenuItem>
+            <MenuItem
                 x:Name="TagAdd"
                 Click="TagAdd_Click"
                 Header="タグ追加(_A)"
@@ -492,62 +514,71 @@
             </MenuItem>
             <Separator />
             <MenuItem
-                x:Name="DeleteMovie"
-                Click="DeleteMovieRecord_Click"
-                Header="登録から削除(_D)"
-                Icon="{materialDesign:PackIcon Kind=Delete}"
-                InputGestureText="DELETE">
-
+                Header="ファイル操作(_O)"
+                Icon="{materialDesign:PackIcon Kind=FileDocumentOutline}">
                 <MenuItem.Style>
                     <Style TargetType="MenuItem">
                         <Setter Property="Padding" Value="1" />
                     </Style>
                 </MenuItem.Style>
-            </MenuItem>
-            <MenuItem
-                x:Name="FileCopy"
-                Click="MenuCopyAndMove_Click"
-                Header="ファイルをコピー(_C)"
-                Icon="{materialDesign:PackIcon Kind=ContentCopy}">
-                <MenuItem.Style>
-                    <Style TargetType="MenuItem">
-                        <Setter Property="Padding" Value="1" />
-                    </Style>
-                </MenuItem.Style>
-            </MenuItem>
-            <MenuItem
-                x:Name="FileMove"
-                Click="MenuCopyAndMove_Click"
-                Header="ファイルを移動(_M)"
-                Icon="{materialDesign:PackIcon Kind=MoveToInbox}">
-                <MenuItem.Style>
-                    <Style TargetType="MenuItem">
-                        <Setter Property="Padding" Value="1" />
-                    </Style>
-                </MenuItem.Style>
-            </MenuItem>
-            <MenuItem
-                x:Name="DeleteFile"
-                Click="DeleteMovieRecord_Click"
-                Header="ファイルを削除(_L)"
-                Icon="{materialDesign:PackIcon Kind=RemoveCircle}">
-                <MenuItem.Style>
-                    <Style TargetType="MenuItem">
-                        <Setter Property="Padding" Value="1" />
-                    </Style>
-                </MenuItem.Style>
-            </MenuItem>
-            <MenuItem
-                x:Name="RenameFile"
-                Click="RenameFile_Click"
-                Header="ファイル名変更(_N)"
-                Icon="{materialDesign:PackIcon Kind=Rename}"
-                InputGestureText="F2">
-                <MenuItem.Style>
-                    <Style TargetType="MenuItem">
-                        <Setter Property="Padding" Value="1" />
-                    </Style>
-                </MenuItem.Style>
+                <MenuItem
+                    x:Name="DeleteMovie"
+                    Click="DeleteMovieRecord_Click"
+                    Header="登録から削除(_D)"
+                    Icon="{materialDesign:PackIcon Kind=Delete}"
+                    InputGestureText="DELETE">
+                    <MenuItem.Style>
+                        <Style TargetType="MenuItem">
+                            <Setter Property="Padding" Value="1" />
+                        </Style>
+                    </MenuItem.Style>
+                </MenuItem>
+                <MenuItem
+                    x:Name="FileCopy"
+                    Click="MenuCopyAndMove_Click"
+                    Header="ファイルをコピー(_C)"
+                    Icon="{materialDesign:PackIcon Kind=ContentCopy}">
+                    <MenuItem.Style>
+                        <Style TargetType="MenuItem">
+                            <Setter Property="Padding" Value="1" />
+                        </Style>
+                    </MenuItem.Style>
+                </MenuItem>
+                <MenuItem
+                    x:Name="FileMove"
+                    Click="MenuCopyAndMove_Click"
+                    Header="ファイルを移動(_M)"
+                    Icon="{materialDesign:PackIcon Kind=MoveToInbox}">
+                    <MenuItem.Style>
+                        <Style TargetType="MenuItem">
+                            <Setter Property="Padding" Value="1" />
+                        </Style>
+                    </MenuItem.Style>
+                </MenuItem>
+                <MenuItem
+                    x:Name="DeleteFile"
+                    Click="DeleteMovieRecord_Click"
+                    Header="ファイルを削除(_L)"
+                    Icon="{materialDesign:PackIcon Kind=RemoveCircle}"
+                    InputGestureText="Shift+DELETE">
+                    <MenuItem.Style>
+                        <Style TargetType="MenuItem">
+                            <Setter Property="Padding" Value="1" />
+                        </Style>
+                    </MenuItem.Style>
+                </MenuItem>
+                <MenuItem
+                    x:Name="RenameFile"
+                    Click="RenameFile_Click"
+                    Header="ファイル名変更(_N)"
+                    Icon="{materialDesign:PackIcon Kind=Rename}"
+                    InputGestureText="F2">
+                    <MenuItem.Style>
+                        <Style TargetType="MenuItem">
+                            <Setter Property="Padding" Value="1" />
+                        </Style>
+                    </MenuItem.Style>
+                </MenuItem>
             </MenuItem>
             <Separator />
             <MenuItem

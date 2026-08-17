@@ -10,6 +10,7 @@ namespace IndigoMovieManager
         public TagBarEditWindow()
         {
             InitializeComponent();
+            OwnedModalWindowHelper.ExcludeFromAltTab(this);
             ContentRendered += TagBarEditWindow_ContentRendered;
         }
 

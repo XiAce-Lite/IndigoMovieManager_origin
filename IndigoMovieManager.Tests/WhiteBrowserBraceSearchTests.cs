@@ -139,9 +139,40 @@ public class WhiteBrowserBraceSearchTests
     [InlineData("zz-ppv-001234", "zz-ppv-1234")]
     [InlineData("efgh-003a", "efgh-3")]
     [InlineData("title-cd1", "title")]
+    [InlineData("title-dvd2", "title")]
+    [InlineData("title-u", "title")]
+    [InlineData("title-uc", "title")]
+    [InlineData("abc-123-u", "abc-123")]
+    [InlineData("abc-123-uc", "abc-123")]
+    [InlineData("xxdvd100", "xxdvd-100")]
+    [InlineData("xxdvd200", "xxdvd-200")]
+    [InlineData("xxdvd-100", "xxdvd-100")]
     public void NormalizeDuplicateNameKey_fuzzy_absorbs_common_variations(string body, string expected)
     {
         Assert.Equal(expected, WhiteBrowserBraceSearch.NormalizeDuplicateNameKey(body, exact: false));
+    }
+
+    [Fact]
+    public void TryApply_special_namedup_does_not_collapse_maker_codes_containing_dvd()
+    {
+        var source = new[]
+        {
+            CreateRecord(1, "xxdvd100.avi", @"C:\xxdvd100.avi", hash: "h1"),
+            CreateRecord(2, "xxdvd200.avi", @"C:\xxdvd200.avi", hash: "h2"),
+            CreateRecord(3, "abc-123.mp4", @"C:\abc-123.mp4", hash: "h3"),
+            CreateRecord(4, "abc-0123.mp4", @"C:\abc-0123.mp4", hash: "h4"),
+        };
+
+        bool applied = WhiteBrowserBraceSearch.TryApply(
+            source,
+            "::namedup",
+            new MovieListFilterContext(),
+            out IReadOnlyList<MovieRecords> filtered,
+            out _);
+
+        Assert.True(applied);
+        Assert.Equal(2, filtered.Count);
+        Assert.All(filtered, x => Assert.StartsWith("abc-", x.Movie_Name, StringComparison.OrdinalIgnoreCase));
     }
 
     [Theory]

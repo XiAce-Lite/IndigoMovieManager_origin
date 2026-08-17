@@ -14,6 +14,8 @@ namespace IndigoMovieManager.Services
                 return;
             }
 
+            TryRefreshMovieSize(dbPath, rec, runOnUi);
+
             if (ZipMediaKind.IsZipRecord(rec) || ZipMediaKind.IsZipPath(rec.Movie_Path))
             {
                 RefreshZipCore(dbPath, rec, runOnUi);
@@ -48,6 +50,20 @@ namespace IndigoMovieManager.Services
 
             SQLite.UpdateMovieZipInfo(dbPath, rec.Movie_Id, imageCount);
             runOnUi(() => MovieFileInfoHelper.ApplyZipInfoToRecord(rec, imageCount));
+        }
+
+        private static void TryRefreshMovieSize(
+            string dbPath,
+            MovieRecords rec,
+            Action<Action> runOnUi)
+        {
+            if (!MovieFileInfoHelper.TryGetMovieSizeKb(rec.Movie_Path, out long sizeKb))
+            {
+                return;
+            }
+
+            SQLite.UpdateMovieSingleColumn(dbPath, rec.Movie_Id, "movie_size", sizeKb);
+            runOnUi(() => MovieFileInfoHelper.ApplyMovieSizeToRecord(rec, sizeKb));
         }
     }
 }

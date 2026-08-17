@@ -31,6 +31,9 @@ namespace IndigoMovieManager.Services
             dbInfo.ThumbFolder = SelectValue(systemData, "thum");
             dbInfo.BookmarkFolder = SelectValue(systemData, "bookmark");
             dbInfo.ExcludeExt = SelectValue(systemData, "excludeExt");
+            dbInfo.PreGenThumbsOnNewMovies = PreGenThumbSkinSelection.ParseEnabled(
+                SelectValue(systemData, PreGenThumbSkinSelection.SystemAttrEnabled));
+            dbInfo.PreGenThumbSkinKeys = SelectValue(systemData, PreGenThumbSkinSelection.SystemAttrSkinKeys);
         }
     }
 }

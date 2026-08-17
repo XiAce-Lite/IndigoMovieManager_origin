@@ -1,9 +1,49 @@
+using System.IO;
 using IndigoMovieManager.Thumbnail;
 
 namespace IndigoMovieManager.Services
 {
     internal static class MovieFileInfoHelper
     {
+        public static long ToMovieSizeKb(long byteLength)
+        {
+            if (byteLength <= 0)
+            {
+                return 0;
+            }
+
+            return byteLength / 1024;
+        }
+
+        public static bool TryGetMovieSizeKb(string moviePath, out long sizeKb)
+        {
+            sizeKb = 0;
+            if (string.IsNullOrWhiteSpace(moviePath) || !File.Exists(moviePath))
+            {
+                return false;
+            }
+
+            try
+            {
+                sizeKb = ToMovieSizeKb(new FileInfo(moviePath).Length);
+                return true;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        public static void ApplyMovieSizeToRecord(MovieRecords rec, long sizeKb)
+        {
+            if (rec == null)
+            {
+                return;
+            }
+
+            rec.Movie_Size = sizeKb;
+        }
+
         public static long GetMovieLengthSeconds(MovieRecords rec)
         {
             if (rec == null || string.IsNullOrEmpty(rec.Movie_Length))

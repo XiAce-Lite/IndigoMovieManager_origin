@@ -7,6 +7,37 @@ namespace IndigoMovieManager.Tests;
 public class ThumbPathHelperTests
 {
     private static readonly ThumbnailLayoutSpec SharedListLayout = new(120, 90, 3, 1);
+    private static readonly ThumbnailLayoutSpec OtherListLayout = new(200, 150, 4, 2);
+
+    [Fact]
+    public void ShouldApplyToVisibleUi_true_when_list_layout_matches_active_key()
+    {
+        var queueObj = new QueueObj { ThumbnailLayout = SharedListLayout };
+        Assert.True(ThumbPathHelper.ShouldApplyToVisibleUi(queueObj, SharedListLayout.Key));
+    }
+
+    [Fact]
+    public void ShouldApplyToVisibleUi_false_when_list_layout_differs_from_active_key()
+    {
+        var queueObj = new QueueObj { ThumbnailLayout = OtherListLayout };
+        Assert.False(ThumbPathHelper.ShouldApplyToVisibleUi(queueObj, SharedListLayout.Key));
+    }
+
+    [Fact]
+    public void ShouldApplyToVisibleUi_true_for_detail_layout_regardless_of_active_list_key()
+    {
+        var queueObj = new QueueObj { ThumbnailLayout = ThumbnailLayoutSpec.DetailPaneLayout };
+        Assert.True(ThumbPathHelper.ShouldApplyToVisibleUi(queueObj, SharedListLayout.Key));
+        Assert.True(ThumbPathHelper.ShouldApplyToVisibleUi(queueObj, ""));
+    }
+
+    [Fact]
+    public void ShouldApplyToVisibleUi_false_when_active_key_empty_for_list_layout()
+    {
+        var queueObj = new QueueObj { ThumbnailLayout = SharedListLayout };
+        Assert.False(ThumbPathHelper.ShouldApplyToVisibleUi(queueObj, ""));
+        Assert.False(ThumbPathHelper.ShouldApplyToVisibleUi(queueObj, null));
+    }
 
     [Fact]
     public void ApplyThumbPaths_updates_WpfSkin_path_when_WPF_engine_active_even_if_layout_matches_WB()

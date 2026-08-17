@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using IndigoMovieManager.Services;
 
 namespace IndigoMovieManager
 {
@@ -51,6 +52,7 @@ namespace IndigoMovieManager
         public MetadataEditWindow()
         {
             InitializeComponent();
+            OwnedModalWindowHelper.ExcludeFromAltTab(this);
             ContentRendered += MetadataEditWindow_ContentRendered;
         }
 

@@ -212,4 +212,45 @@ public class ThumbnailHashSyncTests
             }
         }
     }
+
+    [Fact]
+    public void ShouldEnqueueAfterHashSync_returns_true_when_non_composite_thumb_exists()
+    {
+        // error プレースホルダ相当（小さい非複合ファイル）は再投入する
+        ThumbnailHashSync.ClearFileHashCache();
+        string moviePath = Path.Combine(Path.GetTempPath(), $"imm-movie-{Guid.NewGuid():N}.mp4");
+        var cache = CreateCache(out string thumbRoot);
+
+        try
+        {
+            File.WriteAllText(moviePath, "movie");
+            var record = CreateRecord("movie", moviePath, MatchedHash);
+            string expectedThumb = cache.GetExpectedThumbPath(
+                ListLayout,
+                ThumbnailMovieNaming.GetMovieBody(record),
+                MatchedHash);
+            Directory.CreateDirectory(Path.GetDirectoryName(expectedThumb)!);
+            File.WriteAllBytes(expectedThumb, [1, 2, 3, 4, 5]);
+
+            Assert.True(ThumbnailHashSync.IsLikelyErrorPlaceholder(expectedThumb, cache));
+            Assert.True(ThumbnailHashSync.ShouldEnqueueAfterHashSync(
+                record,
+                ListLayout,
+                cache,
+                context: null));
+        }
+        finally
+        {
+            ThumbnailHashSync.ClearFileHashCache();
+            if (File.Exists(moviePath))
+            {
+                File.Delete(moviePath);
+            }
+
+            if (Directory.Exists(thumbRoot))
+            {
+                Directory.Delete(thumbRoot, true);
+            }
+        }
+    }
 }

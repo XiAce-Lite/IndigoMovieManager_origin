@@ -104,7 +104,9 @@ namespace IndigoMovieManager
                 string sortId = MainVM.DbInfo.Sort ?? "1";
                 await FilterAndSortAsync(sortId, true).ConfigureAwait(true);
                 EnqueueThumbnailWork(batch, beginNewJob: ShouldBeginNewDiscoveredThumbnailJob());
+                EnqueueExtraSkinThumbsForNewMovies(batch);
                 EnqueueAutoDmmFetchForDiscovered(batch);
+                EnqueueSinkuRefreshForDiscovered(batch);
             }).Task.Unwrap().ConfigureAwait(false);
         }
 
@@ -185,6 +187,15 @@ namespace IndigoMovieManager
                 {
 #if DEBUG
                     Debug.WriteLine($"ファイル {e.FullPath} にアクセスできません。");
+#endif
+                    return;
+                }
+
+                // コピー途中で sinku / CRC が空振りしないよう、サイズが安定するまで待つ
+                if (!await WaitForFileSizeStableAsync(e.FullPath).ConfigureAwait(false))
+                {
+#if DEBUG
+                    Debug.WriteLine($"ファイル {e.FullPath} のサイズが安定しませんでした。");
 #endif
                     return;
                 }
@@ -311,5 +322,52 @@ namespace IndigoMovieManager
 
         private void RunWatcher(string watchFolder, bool sub) =>
             _fileWatcherManager.AddWatcher(watchFolder, sub, FileChanged, FileRenamed);
+
+        /// <summary>
+        /// 監視で検知した直後はコピー中のことがある。サイズが2回連続で一致するまで待つ。
+        /// </summary>
+        private static async Task<bool> WaitForFileSizeStableAsync(
+            string path,
+            int settleMs = 750,
+            int timeoutMs = 60_000)
+        {
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            {
+                return false;
+            }
+
+            long previous = -1;
+            var sw = Stopwatch.StartNew();
+            while (sw.ElapsedMilliseconds < timeoutMs)
+            {
+                long length;
+                try
+                {
+                    length = new FileInfo(path).Length;
+                }
+                catch (IOException)
+                {
+                    await Task.Delay(settleMs).ConfigureAwait(false);
+                    continue;
+                }
+
+                if (length > 0 && length == previous)
+                {
+                    return true;
+                }
+
+                previous = length;
+                await Task.Delay(settleMs).ConfigureAwait(false);
+            }
+
+            try
+            {
+                return File.Exists(path) && new FileInfo(path).Length > 0;
+            }
+            catch
+            {
+                return false;
+            }
+        }
     }
 }

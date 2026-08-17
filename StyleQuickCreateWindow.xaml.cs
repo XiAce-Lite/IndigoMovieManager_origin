@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using IndigoMovieManager.Services;
 
 namespace IndigoMovieManager
 {
@@ -13,6 +14,7 @@ namespace IndigoMovieManager
         public StyleQuickCreateWindow(Window owner, string suggestedKey, bool canApplyToSelected)
         {
             InitializeComponent();
+            OwnedModalWindowHelper.ExcludeFromAltTab(this);
             Owner = owner;
             KeyBox.Text = suggestedKey ?? "";
             ApplyToSelectedCheck.IsEnabled = canApplyToSelected;

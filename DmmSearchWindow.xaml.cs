@@ -30,7 +30,8 @@ namespace IndigoMovieManager
             RescueUrls,
         }
 
-        private const string KeywordHintCandidates = "検索語（品番表記の揺れは下の候補をクリック）";
+        private const string KeywordHintCandidates =
+            "検索語（CID・商品URL・品番。揺れは下の候補をクリック）";
         private const string KeywordHintRescue = "CID をそのまま入力（例: abcd00123 / h_000abcd00123）。直して再度ジャケ救済";
 
         /// <summary>手動検索の1ページ件数（0620c02 以降の候補30件方針に合わせる）。</summary>
