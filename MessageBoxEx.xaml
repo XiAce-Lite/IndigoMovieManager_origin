@@ -8,6 +8,7 @@
     Title="確認"
     Width="400"
     Height="287"
+    PreviewKeyDown="Window_PreviewKeyDown"
     ResizeMode="NoResize"
     SizeToContent="Height"
     WindowStartupLocation="CenterOwner"
@@ -41,15 +42,21 @@
                 <StackPanel
                     x:Name="radioArea"
                     Margin="40,17,20,20"
+                    KeyboardNavigation.DirectionalNavigation="Cycle"
+                    KeyboardNavigation.TabNavigation="Once"
                     Orientation="Vertical">
                     <RadioButton
                         x:Name="radioButton1"
                         Content="RadioButton"
-                        FontSize="14" />
+                        FontSize="14"
+                        GotKeyboardFocus="RadioButton_GotKeyboardFocus"
+                        GroupName="MessageBoxExRadio" />
                     <RadioButton
                         x:Name="radioButton2"
                         Content="RadioButton"
-                        FontSize="14" />
+                        FontSize="14"
+                        GotKeyboardFocus="RadioButton_GotKeyboardFocus"
+                        GroupName="MessageBoxExRadio" />
                 </StackPanel>
                 <StackPanel
                     x:Name="checkArea"

@@ -1,6 +1,7 @@
 ﻿using MaterialDesignThemes.Wpf;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using IndigoMovieManager.Services;
 
 namespace IndigoMovieManager
@@ -41,11 +42,11 @@ namespace IndigoMovieManager
             Title = DlogTitle;
             dlogMessage.Text = DlogMessage;
             dlogIcon.Kind = PackIconKind;
-            checkBox.Content = CheckBoxContent;
+            checkBox.Content = ToAccessContent(CheckBoxContent);
             checkBox.IsChecked = CheckBoxIsChecked;
             radioButton1.IsChecked = true;
-            radioButton1.Content = Radio1Content;
-            radioButton2.Content = Radio2Content;
+            radioButton1.Content = ToAccessContent(Radio1Content);
+            radioButton2.Content = ToAccessContent(Radio2Content);
 
             if (!UseCheckBox)
             {
@@ -79,6 +80,78 @@ namespace IndigoMovieManager
         }
 
         public MessageBoxResult CloseStatus() { return _closeStatus; }
+
+        private void RadioButton_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+        {
+            if (sender is RadioButton radio)
+            {
+                radio.IsChecked = true;
+            }
+        }
+
+        private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (Keyboard.Modifiers != ModifierKeys.None)
+            {
+                return;
+            }
+
+            switch (e.Key)
+            {
+                case Key.G:
+                    if (TrySelectRadio(radioButton1))
+                    {
+                        e.Handled = true;
+                    }
+                    break;
+                case Key.D:
+                    if (TrySelectRadio(radioButton2))
+                    {
+                        e.Handled = true;
+                    }
+                    break;
+                case Key.S:
+                    if (TryToggleCheckBox())
+                    {
+                        e.Handled = true;
+                    }
+                    break;
+            }
+        }
+
+        private bool TrySelectRadio(RadioButton radio)
+        {
+            if (!UseRadioButton || radioArea.Visibility != Visibility.Visible)
+            {
+                return false;
+            }
+
+            radio.IsChecked = true;
+            radio.Focus();
+            return true;
+        }
+
+        private bool TryToggleCheckBox()
+        {
+            if (!UseCheckBox || checkArea.Visibility != Visibility.Visible)
+            {
+                return false;
+            }
+
+            checkBox.IsChecked = checkBox.IsChecked != true;
+            checkBox.Focus();
+            return true;
+        }
+
+        private static object ToAccessContent(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return text;
+            }
+
+            return new AccessText { Text = text };
+        }
 
         private void Button_Click(object sender, RoutedEventArgs e)
         {

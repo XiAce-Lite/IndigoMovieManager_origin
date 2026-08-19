@@ -2470,13 +2470,13 @@ namespace IndigoMovieManager
                 msg = "登録元のファイルを削除します。";
                 title = "ファイル削除";
                 useRadio = true;
-                radio1Content = "ゴミ箱に移動して削除";
-                radio2Content = "ディスクから完全に削除";
+                radio1Content = "ゴミ箱に移動して削除(_G)";
+                radio2Content = "ディスクから完全に削除(_D)";
             }
 
             var dialogWindow = new MessageBoxEx(this)
             {
-                CheckBoxContent = "サムネイルも削除する",
+                CheckBoxContent = "サムネイルも削除する(_S)",
                 UseRadioButton = useRadio,
                 UseCheckBox = true,
                 CheckBoxIsChecked = true,
