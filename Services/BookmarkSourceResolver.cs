@@ -37,7 +37,40 @@ namespace IndigoMovieManager.Services
         return bookmark.Comment1;
       }
 
-      if (library == null)
+      MovieRecords match = FindUniqueLibraryMatch(bookmark, library);
+      return match?.Movie_Path;
+    }
+
+    /// <summary>
+    /// Comment1 が空の古いブックマークを、ライブラリで一意に特定できたときだけ埋める。
+    /// 同名が複数ある場合は埋めない。
+    /// </summary>
+    public static bool TryBackfillFromLibrary(MovieRecords bookmark, IEnumerable<MovieRecords> library)
+    {
+      if (bookmark == null || !string.IsNullOrWhiteSpace(bookmark.Comment1))
+      {
+        return false;
+      }
+
+      MovieRecords match = FindUniqueLibraryMatch(bookmark, library);
+      if (match == null || string.IsNullOrWhiteSpace(match.Movie_Path))
+      {
+        return false;
+      }
+
+      bookmark.Comment1 = match.Movie_Path;
+      if (string.IsNullOrWhiteSpace(bookmark.Hash) && !string.IsNullOrWhiteSpace(match.Hash))
+      {
+        bookmark.Hash = match.Hash;
+      }
+
+      bookmark.IsExists = BookmarkRecordMapper.ResolveSourceExists(bookmark.Comment1);
+      return true;
+    }
+
+    public static MovieRecords FindUniqueLibraryMatch(MovieRecords bookmark, IEnumerable<MovieRecords> library)
+    {
+      if (bookmark == null || library == null)
       {
         return null;
       }
@@ -60,11 +93,11 @@ namespace IndigoMovieManager.Services
           string.Equals(rec.Hash, bookmark.Hash, StringComparison.OrdinalIgnoreCase));
         if (byHash != null)
         {
-          return byHash.Movie_Path;
+          return byHash;
         }
       }
 
-      return matches.Count == 1 ? matches[0].Movie_Path : null;
+      return matches.Count == 1 ? matches[0] : null;
     }
   }
 }

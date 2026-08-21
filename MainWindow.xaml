@@ -652,6 +652,9 @@
                                 <Grid
                                     x:Name="MovieListHost"
                                     Margin="0"
+                                    GotKeyboardFocus="MovieListHost_GotKeyboardFocus"
+                                    InputMethod.IsInputMethodEnabled="False"
+                                    InputMethod.PreferredImeState="Off"
                                     PreviewKeyDown="MovieListHost_PreviewKeyDown">
                                     <DockPanel x:Name="WpfSkinHost">
                                         <ScrollViewer
@@ -665,6 +668,8 @@
                                         <ListView
                                             x:Name="WpfSkinList"
                                             BorderThickness="0"
+                                            InputMethod.IsInputMethodEnabled="False"
+                                            InputMethod.PreferredImeState="Off"
                                             PreviewMouseWheel="WpfSkinList_PreviewMouseWheel"
                                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                             ScrollViewer.IsDeferredScrollingEnabled="True"
@@ -679,6 +684,8 @@
                                                     <Setter Property="HorizontalAlignment" Value="Left" />
                                                     <Setter Property="HorizontalContentAlignment" Value="Left" />
                                                     <Setter Property="VerticalContentAlignment" Value="Top" />
+                                                    <Setter Property="InputMethod.IsInputMethodEnabled" Value="False" />
+                                                    <Setter Property="InputMethod.PreferredImeState" Value="Off" />
                                                     <EventSetter Event="PreviewMouseLeftButtonDown" Handler="WpfSkinItem_PreviewMouseLeftButtonDown" />
                                                 </Style>
                                             </ListView.ItemContainerStyle>

@@ -670,6 +670,8 @@ namespace IndigoMovieManager
             style.Setters.Add(new Setter(FrameworkElement.HorizontalAlignmentProperty, hAlign));
             style.Setters.Add(new Setter(Control.HorizontalContentAlignmentProperty, hAlign));
             style.Setters.Add(new Setter(Control.VerticalContentAlignmentProperty, VerticalAlignment.Top));
+            style.Setters.Add(new Setter(InputMethod.IsInputMethodEnabledProperty, false));
+            style.Setters.Add(new Setter(InputMethod.PreferredImeStateProperty, InputMethodState.Off));
             style.Setters.Add(new EventSetter(
                 UIElement.PreviewMouseLeftButtonDownEvent,
                 new MouseButtonEventHandler(WpfSkinItem_PreviewMouseLeftButtonDown)));
@@ -716,6 +718,7 @@ namespace IndigoMovieManager
         // WPF スキンタブのカード内要素クリック時に選択状態にする（ネイティブタブと同じ挙動）。
         private void WpfSkinItem_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
+            SkinListIme.CloseCurrent();
             if (sender is ListViewItem item)
             {
                 if ((Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
@@ -1499,6 +1502,14 @@ namespace IndigoMovieManager
                 MainVM.BookmarkRecs,
                 MainVM.DbInfo.BookmarkFolder,
                 MainVM.DbInfo.DBName);
+            if (!string.IsNullOrEmpty(MainVM.DbInfo.DBFullPath))
+            {
+                BookmarkService.BackfillMissingSources(
+                    MainVM.BookmarkRecs,
+                    MainVM.MovieRecs,
+                    (movieId, path, hash) => UpdateBookmarkSource(MainVM.DbInfo.DBFullPath, movieId, path, hash));
+            }
+
             EnsureMissingBookmarkThumbnails();
         }
 
@@ -4510,20 +4521,27 @@ namespace IndigoMovieManager
             }
         }
 
+        private void MovieListHost_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+        {
+            SkinListIme.CloseCurrent();
+        }
+
         private void MovieListHost_PreviewKeyDown(object sender, KeyEventArgs e)
         {
             if (!IsMovieListActive) { return; }
 
+            Key key = SkinListIme.GetEffectiveKey(e);
+
             if (_currentSkinEngine == SkinEngine.Wb
-                && e.Key is Key.Home or Key.End)
+                && key is Key.Home or Key.End)
             {
                 TabSelectionHelper.GetSkinView(this)
-                    ?.ForwardKeyNav(e.Key, (Keyboard.Modifiers & ModifierKeys.Control) != 0);
+                    ?.ForwardKeyNav(key, (Keyboard.Modifiers & ModifierKeys.Control) != 0);
                 e.Handled = true;
                 return;
             }
 
-            switch (e.Key)
+            switch (key)
             {
                 case Key.Enter:                         //再生
                     PlayMovie_Click(sender, e); break;

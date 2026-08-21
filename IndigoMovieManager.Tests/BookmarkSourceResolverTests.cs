@@ -80,4 +80,49 @@ public class BookmarkSourceResolverTests
 
     Assert.Null(path);
   }
+
+  [Fact]
+  public void TryBackfillFromLibrary_fills_unique_name_match()
+  {
+    var library = new[]
+    {
+      new MovieRecords { Movie_Body = "sample", Movie_Path = @"D:\a\sample.mp4", Hash = "abc" },
+    };
+    var bookmark = new MovieRecords { Movie_Id = 9, Movie_Body = "sample" };
+
+    Assert.True(BookmarkSourceResolver.TryBackfillFromLibrary(bookmark, library));
+    Assert.Equal(@"D:\a\sample.mp4", bookmark.Comment1);
+    Assert.Equal("abc", bookmark.Hash);
+  }
+
+  [Fact]
+  public void TryBackfillFromLibrary_skips_when_comment1_already_set()
+  {
+    var library = new[]
+    {
+      new MovieRecords { Movie_Body = "sample", Movie_Path = @"D:\a\sample.mp4" },
+    };
+    var bookmark = new MovieRecords
+    {
+      Movie_Body = "sample",
+      Comment1 = @"D:\kept\sample.mp4",
+    };
+
+    Assert.False(BookmarkSourceResolver.TryBackfillFromLibrary(bookmark, library));
+    Assert.Equal(@"D:\kept\sample.mp4", bookmark.Comment1);
+  }
+
+  [Fact]
+  public void TryBackfillFromLibrary_skips_ambiguous_duplicate_names()
+  {
+    var library = new[]
+    {
+      new MovieRecords { Movie_Body = "sample", Movie_Path = @"D:\a\sample.mp4" },
+      new MovieRecords { Movie_Body = "sample", Movie_Path = @"D:\b\sample.mp4" },
+    };
+    var bookmark = new MovieRecords { Movie_Body = "sample" };
+
+    Assert.False(BookmarkSourceResolver.TryBackfillFromLibrary(bookmark, library));
+    Assert.True(string.IsNullOrEmpty(bookmark.Comment1));
+  }
 }

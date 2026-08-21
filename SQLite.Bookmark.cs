@@ -105,6 +105,21 @@ namespace IndigoMovieManager
             });
         }
 
+        public static void UpdateBookmarkSource(string dbFullPath, long movieId, string sourceMoviePath, string sourceHash)
+        {
+            SqliteDataAccess.ExecuteNonQuery(dbFullPath, (connection, transaction) =>
+            {
+                using SQLiteCommand cmd = connection.CreateCommand();
+                cmd.Transaction = transaction;
+                cmd.CommandText =
+                    "update bookmark set comment1 = @comment1, hash = @hash where movie_id = @id";
+                cmd.Parameters.Add(new SQLiteParameter("@id", movieId));
+                cmd.Parameters.Add(new SQLiteParameter("@comment1", (sourceMoviePath ?? "").ToLower()));
+                cmd.Parameters.Add(new SQLiteParameter("@hash", (sourceHash ?? "").ToLower()));
+                cmd.ExecuteNonQuery();
+            });
+        }
+
         public static void UpdateBookmarkRename(string dbFullPath, string oldName, string newName)
         {
             oldName = oldName.ToLower();

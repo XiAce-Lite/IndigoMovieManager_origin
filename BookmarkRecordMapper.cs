@@ -33,10 +33,24 @@ namespace IndigoMovieManager
                 Roma = row["roma"].ToString(),
                 Hash = row["hash"]?.ToString() ?? "",
                 Comment1 = row["comment1"]?.ToString() ?? "",
-                IsExists = true,
+                IsExists = ResolveSourceExists(row["comment1"]?.ToString()),
                 Ext = ext,
                 ThumbDetail = thumbFile
             };
+        }
+
+        /// <summary>
+        /// 元動画が特定でき、かつファイルが存在するときだけ true。
+        /// Comment1 が空（古いブックマーク）やパス先が無い場合は false（一覧と同じ白黒表示）。
+        /// </summary>
+        public static bool ResolveSourceExists(string comment1)
+        {
+            if (string.IsNullOrWhiteSpace(comment1))
+            {
+                return false;
+            }
+
+            return Path.Exists(comment1);
         }
 
         public static string ResolveBookmarkFolder(string configuredFolder, string dbName)

@@ -419,16 +419,22 @@ namespace IndigoMovieManager.UserControls
             return [.. source.Where(x => _selectedIds.Contains(x.Movie_Id))];
         }
 
+        private void Browser_GotFocus(object sender, RoutedEventArgs e)
+        {
+            SkinListIme.CloseImeForHwndHost(Browser);
+        }
+
         private void Browser_PreviewKeyDown(object sender, KeyEventArgs e)
         {
-            if (e.Key is not Key.Home and not Key.End)
+            Key key = SkinListIme.GetEffectiveKey(e);
+            if (key is not Key.Home and not Key.End)
             {
                 return;
             }
 
             // Home/End は WebView2 から WPF へ転送される。Handled にして TabControl のタブ切替を止め、JS へ送る。
             e.Handled = true;
-            ForwardKeyNav(e.Key, (Keyboard.Modifiers & ModifierKeys.Control) != 0);
+            ForwardKeyNav(key, (Keyboard.Modifiers & ModifierKeys.Control) != 0);
         }
 
         public void ForwardKeyNav(Key key, bool ctrl)

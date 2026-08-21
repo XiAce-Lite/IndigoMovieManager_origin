@@ -9,7 +9,11 @@
     d:DesignWidth="800"
     mc:Ignorable="d">
     <Grid>
-        <wv2:WebView2 x:Name="Browser" />
+        <wv2:WebView2
+            x:Name="Browser"
+            GotFocus="Browser_GotFocus"
+            InputMethod.IsInputMethodEnabled="False"
+            InputMethod.PreferredImeState="Off" />
         <TextBlock
             x:Name="ErrorText"
             Margin="12"
